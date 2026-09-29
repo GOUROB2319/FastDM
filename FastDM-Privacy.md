@@ -1,5 +1,5 @@
 ---
-title: FastDM Privacy Policy
+Title: FastDM Privacy Policy
 ---
 
 # Privacy Policy for FastDM
@@ -10,7 +10,9 @@ FastDM ("the app") is a desktop download manager for Windows, developed by Gouro
 
 ## Data Collection
 
-FastDM does **not** collect, store, or transmit any personal information to the developer or any third party. Specifically:
+FastDM does **not** collect, store, or transmit any personal information to the developer or any third party. 
+
+Specifically:
 
 - FastDM does not collect your name, email address, location, or any other personal identifiers.
 - FastDM does not use analytics, advertising SDKs, or tracking technologies.
@@ -18,7 +20,7 @@ FastDM does **not** collect, store, or transmit any personal information to the 
 
 ## Local Data Storage
 
-FastDM stores the following information **only on your own device**, and this data never leaves your computer:
+FastDM stores the following information **only on your own device**, and this data never leaves your computer :
 
 - The list of your downloads (file names, URLs, download status, and progress) is saved locally in a settings file on your PC so the app can resume downloads after restarting.
 - Files you choose to download are saved to the folder you select on your own device.
@@ -41,7 +43,7 @@ This privacy policy may be updated occasionally. Any changes will be posted on t
 
 ## Contact
 
-If you have questions about this privacy policy, you can contact the developer:
+If you have questions about this privacy policy, you can contact the developer :
 
 **Gourob Saha**
-Email: (আপনার ইমেইল এখানে বসিয়ে দিন)
+Email: gourobsaha2319@gmail.com
