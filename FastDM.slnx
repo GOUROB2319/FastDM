@@ -10,6 +10,6 @@
     <Deploy />
   </Project>
   <Project Path="FastDM/FastDM.csproj">
-    <Platform Solution="Release|x64" Project="x64" />
+    <Platform Solution="*|x64" Project="x64" />
   </Project>
 </Solution>
