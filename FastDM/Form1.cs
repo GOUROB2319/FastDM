@@ -44,6 +44,7 @@ namespace FastDM
         public string Folder { get; set; }
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
+        public bool NeedsProbe { get; set; }            // [এডিট ২] ফোল্ডার ডাউনলোডের আইটেম: শুরুর সময় সাইজ/resume জানবে
         public DlState State { get; set; }
         public string Error { get; set; }
         public DateTime Added { get; set; } = DateTime.Now;
@@ -77,7 +78,7 @@ namespace FastDM
     }
 
     // ====================== ডাউনলোড ইঞ্জিন ======================
-    public static class Engine
+    public static partial class Engine     // [এডিট ১] partial
     {
         static readonly HttpClient Http = CreateClient();
 
@@ -114,9 +115,14 @@ namespace FastDM
         // ফাইলের সাইজ, resume সাপোর্ট আর নাম জানার জন্য
         public static async Task ProbeAsync(DownloadItem it, CancellationToken ct)
         {
+            // [এডিট ৩] ftp/sftp হলে আলাদা প্রোব
+            if (!IsHttp(it.Url)) { await RemoteTransfer.ProbeAsync(it, ct); return; }
+
             using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
             req.Headers.Range = new RangeHeaderValue(0, 0);
+            ApplyAuth(req);                                                   // [এডিট ৩]
             using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            CheckAuth(resp);                                                  // [এডিট ৩]
             resp.EnsureSuccessStatusCode();
 
             if (resp.StatusCode == HttpStatusCode.PartialContent && resp.Content.Headers.ContentRange?.Length != null)
@@ -214,8 +220,10 @@ namespace FastDM
 
                     using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
                     if (it.SupportsRange) req.Headers.Range = new RangeHeaderValue(pos, seg.End);
+                    ApplyAuth(req);                                           // [এডিট ৪]
 
                     using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                    CheckAuth(resp);                                          // [এডিট ৪]
                     resp.EnsureSuccessStatusCode();
                     if (it.SupportsRange && resp.StatusCode != HttpStatusCode.PartialContent)
                         throw new IOException("Server does not support resume.");
@@ -248,6 +256,7 @@ namespace FastDM
                     return;
                 }
                 catch (OperationCanceledException) { throw; }
+                catch (AuthRequiredException) { throw; }                      // [এডিট ৪] লগইন ভুল হলে retry নয়
                 catch (Exception) when (++attempt < 6)
                 {
                     await Task.Delay(1500 * attempt, ct).ConfigureAwait(false);   // আবার চেষ্টা
@@ -279,7 +288,7 @@ namespace FastDM
             ClientSize = new Size(560, 336);
             Font = new Font("Segoe UI", 9.5f);
 
-            Controls.Add(new Label { Text = "URL(s) — one link per line", Location = new Point(16, 12), AutoSize = true });
+            Controls.Add(new Label { Text = "URL(s) — one link per line (file or folder)", Location = new Point(16, 12), AutoSize = true });
             txtUrls = new TextBox { Location = new Point(16, 34), Size = new Size(528, 110), Multiline = true, ScrollBars = ScrollBars.Vertical, Text = initialUrl ?? "" };
             Controls.Add(txtUrls);
 
@@ -287,7 +296,8 @@ namespace FastDM
             txtName = new TextBox { Location = new Point(16, 178), Size = new Size(528, 26) };
             Controls.Add(txtName);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 214), AutoSize = true }); txtFolder = new TextBox { Location = new Point(16, 236), Size = new Size(436, 26), Text = folder };
+            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 214), AutoSize = true });
+            txtFolder = new TextBox { Location = new Point(16, 236), Size = new Size(436, 26), Text = folder };
             Controls.Add(txtFolder);
             var browse = new Button { Text = "Browse…", Location = new Point(460, 235), Size = new Size(84, 28) };
             browse.Click += (s, e) =>
@@ -311,9 +321,11 @@ namespace FastDM
             if (Urls.Length == 0) { MessageBox.Show(this, "Please enter at least one URL."); return false; }
             foreach (var u in Urls)
             {
+                // [এডিট ৬] http, https, ftp, sftp
                 if (!Uri.TryCreate(u, UriKind.Absolute, out var uri) ||
-                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                { MessageBox.Show(this, "Invalid link (only http/https):\n" + u); return false; }
+                    !(uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ||
+                      uri.Scheme == Uri.UriSchemeFtp || uri.Scheme == "sftp"))
+                { MessageBox.Show(this, "Invalid link (http, https, ftp, sftp only):\n" + u); return false; }
             }
             if (Folder.Length == 0) { MessageBox.Show(this, "Please choose a folder."); return false; }
             return true;
@@ -772,7 +784,7 @@ namespace FastDM
 
             try
             {
-                await Engine.RunAsync(it, settings.Connections, cts.Token);
+                await Engine.RunItemAsync(it, settings.Connections, cts.Token);   // [এডিট ৫]
                 if (it.TotalBytes <= 0) it.TotalBytes = it.Downloaded;
                 it.State = DlState.Completed;
             }
@@ -895,6 +907,7 @@ namespace FastDM
         }
 
         // ---------- Add / Settings ----------
+        // [এডিট ৭] ফাইল আর ফোল্ডার লিঙ্ক আলাদা করে হ্যান্ডেল
         async void ShowAddDialog(string url)
         {
             using var dlg = new AddUrlForm(url, settings.DefaultFolder);
@@ -906,25 +919,82 @@ namespace FastDM
             string nameText = dlg.FileNameText;
             string folder = dlg.Folder;
 
-            lblActive.Text = "Fetching file info…";
+            // ১) কোনটা ফাইল আর কোনটা ফোল্ডার, আলাদা করা
+            lblActive.Text = "Checking link(s)…";
+            var fileUrls = new List<string>();
+            var folderUris = new List<Uri>();
             foreach (var u in urls)
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                    var (isFolder, resolved) = await Engine.DetectFolderAsync(new Uri(u), cts.Token);
+                    if (isFolder) { folderUris.Add(resolved); continue; }
+                }
+                catch { /* ডিটেক্ট না হলে ফাইল ধরে নেবে */ }
+                fileUrls.Add(u);
+            }
+
+            // ২) ফাইল লিঙ্ক: আগের মতোই অটো ডাউনলোড (লগইন লাগলে চাইবে)
+            lblActive.Text = "Fetching file info…";
+            foreach (var u in fileUrls)
             {
                 var it = new DownloadItem
                 {
                     Url = u,
                     Folder = folder,
-                    FileName = urls.Length == 1 && nameText.Length > 0 ? Engine.Sanitize(nameText) : ""
+                    FileName = fileUrls.Count == 1 && folderUris.Count == 0 && nameText.Length > 0
+                               ? Engine.Sanitize(nameText) : ""
                 };
-                try
+
+                bool retry = true;
+                while (retry)
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-                    await Engine.ProbeAsync(it, cts.Token);
+                    retry = false;
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+                        await Engine.ProbeAsync(it, cts.Token);
+                    }
+                    catch (AuthRequiredException)
+                    {
+                        if (CredentialForm.Prompt(this, new Uri(u))) retry = true;
+                    }
+                    catch { /* ইনফো না পেলেও যোগ হবে; আসল এরর ডাউনলোডের সময় দেখাবে */ }
                 }
-                catch { /* ইনফো না পেলেও যোগ হবে; আসল এরর ডাউনলোডের সময় দেখাবে */ }
 
                 if (string.IsNullOrWhiteSpace(it.FileName)) it.FileName = Engine.NameFromUrl(u);
                 it.FileName = UniqueName(folder, it.FileName);
                 it.State = startNow ? DlState.Queued : DlState.Paused;
+                items.Add(it);
+            }
+            MarkChanged();
+            SaveState();
+
+            // ৩) ফোল্ডার লিঙ্ক: উইন্ডো খুলবে (নাম, লোকেশন, ট্রি, ফিল্টার)
+            foreach (var fu in folderUris) AddFolder(fu, startNow);
+        }
+
+        // [এডিট ৭] ফোল্ডার ডাউনলোড: ডায়ালগ থেকে বাছাই করা ফাইলগুলো কিউতে যোগ
+        void AddFolder(Uri uri, bool startNow)
+        {
+            using var f = new FolderDownloadForm(uri, settings.DefaultFolder, settings.MaxSimultaneous);
+            if (f.ShowDialog(this) != DialogResult.OK) return;
+
+            settings.MaxSimultaneous = f.Simultaneous;
+
+            foreach (var pf in f.Files)
+            {
+                string dir = pf.RelDir.Length == 0 ? f.TargetFolder : Path.Combine(f.TargetFolder, pf.RelDir);
+                var it = new DownloadItem
+                {
+                    Url = pf.Url,
+                    Folder = dir,
+                    FileName = UniqueName(dir, Engine.Sanitize(pf.Name)),
+                    TotalBytes = pf.Size,
+                    NeedsProbe = Engine.IsHttp(pf.Url),     // http-তে সাইজ/resume ডাউনলোড শুরুর সময় জানবে
+                    State = startNow ? DlState.Queued : DlState.Paused
+                };
                 items.Add(it);
             }
             MarkChanged();
