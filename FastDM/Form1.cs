@@ -1,4 +1,4 @@
-#nullable disable
+﻿#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,6 +14,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace FastDM
 {
@@ -34,6 +35,17 @@ namespace FastDM
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         public int Connections { get; set; } = 8;       // প্রতি ফাইলে কয়টা কানেকশন
         public int MaxSimultaneous { get; set; } = 3;   // একসাথে কয়টা ফাইল
+        public ThemeMode ThemeChoice { get; set; } = ThemeMode.System;   // System / Light / Dark
+        public bool MinimizeToTray { get; set; } = false;
+        public bool CloseToTray { get; set; } = false;
+        public bool ShowNotifications { get; set; } = true;
+        public bool CheckUpdatesOnStart { get; set; } = true;
+        public int SpeedLimitKBps { get; set; } = 0;                    // 0 = আনলিমিটেড
+        public ProxyMode Proxy { get; set; } = ProxyMode.System;       // None / System / Manual
+        public ProxyKind ProxyType { get; set; } = ProxyKind.Http;     // Http / Socks5
+        public string ProxyHost { get; set; } = "";
+        public int ProxyPort { get; set; } = 8080;
+        public string ProxyUser { get; set; } = "";                    // পাসওয়ার্ড Credential Manager-এ থাকে
     }
 
     public class DownloadItem
@@ -80,12 +92,17 @@ namespace FastDM
     // ====================== ডাউনলোড ইঞ্জিন ======================
     public static partial class Engine     // [এডিট ১] partial
     {
-        static readonly HttpClient Http = CreateClient();
+        static volatile HttpClient Http = CreateClient();
+
+        // প্রক্সি বদলালে নতুন ক্লায়েন্ট (চলমান রিকোয়েস্ট পুরোনোটাতেই শেষ হবে)
+        public static void ResetClient() { Http = CreateClient(); }
 
         static HttpClient CreateClient()
         {
             var handler = new HttpClientHandler
             {
+                UseProxy = true,
+                Proxy = DynamicProxy.Instance,
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 10,
                 AutomaticDecompression = DecompressionMethods.None
@@ -245,6 +262,7 @@ namespace FastDM
                         await fs.WriteAsync(buf.AsMemory(0, n), ct).ConfigureAwait(false);
                         seg.Downloaded += n;
                         it.AddDownloaded(n);
+                        await SpeedLimiter.ThrottleAsync(n, ct).ConfigureAwait(false);   // স্পিড লিমিটার
                         if (it.SupportsRange && seg.Start + seg.Downloaded > seg.End) break;
                     }
 
@@ -337,6 +355,8 @@ namespace FastDM
     {
         readonly NumericUpDown numConn, numSim;
         readonly TextBox txtFolder;
+        readonly ComboBox cmbTheme;
+        readonly CheckBox chkMin, chkClose, chkNotify, chkUpd;
         readonly AppSettings s;
 
         public SettingsForm(AppSettings settings)
@@ -346,21 +366,21 @@ namespace FastDM
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(440, 230);
+            ClientSize = new Size(460, 396);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label { Text = "Connections per download (1–16)", Location = new Point(16, 20), AutoSize = true });
-            numConn = new NumericUpDown { Location = new Point(300, 17), Width = 120, Minimum = 1, Maximum = 16, Value = Math.Clamp(s.Connections, 1, 16) };
+            numConn = new NumericUpDown { Location = new Point(320, 17), Width = 120, Minimum = 1, Maximum = 16, Value = Math.Clamp(s.Connections, 1, 16) };
             Controls.Add(numConn);
 
             Controls.Add(new Label { Text = "Simultaneous downloads (1–10)", Location = new Point(16, 60), AutoSize = true });
-            numSim = new NumericUpDown { Location = new Point(300, 57), Width = 120, Minimum = 1, Maximum = 10, Value = Math.Clamp(s.MaxSimultaneous, 1, 10) };
+            numSim = new NumericUpDown { Location = new Point(320, 57), Width = 120, Minimum = 1, Maximum = 10, Value = Math.Clamp(s.MaxSimultaneous, 1, 10) };
             Controls.Add(numSim);
 
             Controls.Add(new Label { Text = "Default save folder", Location = new Point(16, 100), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 124), Width = 320, Text = s.DefaultFolder };
+            txtFolder = new TextBox { Location = new Point(16, 124), Width = 340, Text = s.DefaultFolder };
             Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(344, 122), Size = new Size(80, 28) };
+            var browse = new Button { Text = "Browse…", Location = new Point(364, 122), Size = new Size(80, 28) };
             browse.Click += (a, b) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
@@ -368,15 +388,41 @@ namespace FastDM
             };
             Controls.Add(browse);
 
-            var ok = new Button { Text = "Save", Location = new Point(230, 178), Size = new Size(90, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(330, 178), Size = new Size(90, 34), DialogResult = DialogResult.Cancel };
+            Controls.Add(new Label { Text = "Theme", Location = new Point(16, 178), AutoSize = true });
+            cmbTheme = new ComboBox { Location = new Point(300, 174), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbTheme.Items.AddRange(new object[] { "Follow system", "Light", "Dark" });
+            cmbTheme.SelectedIndex = Math.Clamp((int)s.ThemeChoice, 0, 2);
+            Controls.Add(cmbTheme);
+
+            chkMin = new CheckBox { Text = "Minimize to the system tray", Location = new Point(16, 216), AutoSize = true, Checked = s.MinimizeToTray };
+            chkClose = new CheckBox { Text = "Close button keeps running in the tray", Location = new Point(16, 244), AutoSize = true, Checked = s.CloseToTray };
+            chkNotify = new CheckBox { Text = "Show notifications", Location = new Point(16, 272), AutoSize = true, Checked = s.ShowNotifications };
+            chkUpd = new CheckBox { Text = "Check for updates on startup (portable version)", Location = new Point(16, 300), AutoSize = true, Checked = s.CheckUpdatesOnStart };
+            Controls.AddRange(new Control[] { chkMin, chkClose, chkNotify, chkUpd });
+
+            var ok = new Button { Text = "Save", Location = new Point(250, 346), Size = new Size(90, 34) };
+            var cancel = new Button { Text = "Cancel", Location = new Point(350, 346), Size = new Size(90, 34), DialogResult = DialogResult.Cancel };
             ok.Click += (a, b) =>
             {
                 s.Connections = (int)numConn.Value;
                 s.MaxSimultaneous = (int)numSim.Value;
                 if (txtFolder.Text.Trim().Length > 0) s.DefaultFolder = txtFolder.Text.Trim();
+                s.ThemeChoice = (ThemeMode)Math.Clamp(cmbTheme.SelectedIndex, 0, 2);
+                s.MinimizeToTray = chkMin.Checked;
+                s.CloseToTray = chkClose.Checked;
+                s.ShowNotifications = chkNotify.Checked;
+                s.CheckUpdatesOnStart = chkUpd.Checked;
                 DialogResult = DialogResult.OK;
             };
+            var net = new Button { Text = "Speed limit && proxy…", Location = new Point(16, 346), Size = new Size(200, 34) };
+            net.Click += (a, b) =>
+            {
+                using var nf = new NetworkForm(s);
+                Theme.Apply(nf);
+                nf.ShowDialog(this);
+            };
+            Controls.Add(net);
+
             Controls.Add(ok); Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;
         }
@@ -385,15 +431,14 @@ namespace FastDM
     // ====================== মূল ফর্ম ======================
     public partial class Form1 : Form
     {
-        // থিম
-        static readonly Color Accent = ColorTranslator.FromHtml("#5B6CFF");
-        static readonly Color SideBg = ColorTranslator.FromHtml("#1E2233");
-        static readonly Color SideSel = ColorTranslator.FromHtml("#2F3550");
-        static readonly Color TextDark = ColorTranslator.FromHtml("#2D3142");
+        // স্ট্যাটাস রঙ (দুই থিমেই একই), বাকি রঙ AppTheme.cs-এ
         static readonly Color Green = ColorTranslator.FromHtml("#2ECC71");
         static readonly Color Orange = ColorTranslator.FromHtml("#F5A623");
         static readonly Color Red = ColorTranslator.FromHtml("#FF5C77");
         static readonly Color Gray = ColorTranslator.FromHtml("#9AA0B4");
+        static readonly Font BarFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+
+        class IconTag { public string Glyph; public bool Accent; }
 
         static readonly string[] FilterNames = { "All Downloads", "Downloading", "Queued / Paused", "Completed", "Errors" };
         static readonly string[] FileExts =
@@ -409,18 +454,35 @@ namespace FastDM
 
         BufferedListView lv;
         ListBox sidebar;
-        ToolStripStatusLabel lblActive, lblSpeed;
+        ToolStripStatusLabel lblActive, lblSpeed, lblLimit;
+        ToolStripDropDownButton speedMenu;
         System.Windows.Forms.Timer timer;
         int filter = 0;
         bool dirty;
         string lastClip;
         DateTime lastSave = DateTime.UtcNow;
 
+        ToolStrip tools;
+        StatusStrip statusBar;
+        NotifyIcon tray;
+        ContextMenuStrip trayMenu;
+        bool exiting, trayTipShown;
+        int sessionCompleted;
+        string lastCompletedName = "";
+        string lastTrayTip = "";
+        DateTime lastErrorNotify = DateTime.MinValue;
+        EventWaitHandle showEvent;
+        RegisteredWaitHandle regWait;
+
         public Form1()
         {
             InitializeComponent();
             LoadState();
+            Theme.SetMode(settings.ThemeChoice);
+            NetworkApply.Load(settings);
             BuildUI();
+            BuildTray();
+            ApplyTheme();
             RebuildList();
             try { lastClip = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : null; } catch { }
 
@@ -429,10 +491,20 @@ namespace FastDM
             timer.Start();
 
             Activated += (s, e) => CheckClipboard();
-            FormClosing += (s, e) =>
+            Resize += OnFormResize;
+            FormClosing += OnFormClosing;
+            FormClosed += (s, e) => Cleanup();
+            SystemEvents.UserPreferenceChanged += OnSysPrefChanged;
+            SetupSingleInstanceListener();
+
+            Shown += (s, e) => FitLastColumn();
+            // স্টার্টআপে নীরব আপডেট চেক (শুধু পোর্টেবল ভার্সনে কাজ করে)
+            Shown += async (s, e) =>
             {
-                foreach (var it in items) it.Cts?.Cancel();
-                SaveState();
+                if (settings.CheckUpdatesOnStart)
+                {
+                    try { await UpdateChecker.CheckAndShowAsync(this, true); } catch { }
+                }
             };
         }
 
@@ -444,7 +516,6 @@ namespace FastDM
             MinimumSize = new Size(900, 480);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9.5f);
-            BackColor = Color.White;
             AllowDrop = true;
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
@@ -470,7 +541,7 @@ namespace FastDM
             lv.Columns.Add("Speed", 95);
             lv.Columns.Add("ETA", 80);
             lv.Columns.Add("Added", 120);
-            lv.DrawColumnHeader += (s, e) => e.DrawDefault = true;
+            lv.DrawColumnHeader += DrawHeader;
             lv.DrawItem += (s, e) => { };
             lv.DrawSubItem += DrawSub;
             lv.DoubleClick += (s, e) => OnDoubleClick();
@@ -484,7 +555,6 @@ namespace FastDM
             {
                 Dock = DockStyle.Left,
                 Width = 200,
-                BackColor = SideBg,
                 BorderStyle = BorderStyle.None,
                 DrawMode = DrawMode.OwnerDrawFixed,
                 ItemHeight = 40
@@ -499,45 +569,71 @@ namespace FastDM
             };
 
             // Status bar
-            var status = new StatusStrip { SizingGrip = false };
+            statusBar = new StatusStrip { SizingGrip = false };
             lblActive = new ToolStripStatusLabel("Active: 0") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
+            lblLimit = new ToolStripStatusLabel("Limit: Off");
             lblSpeed = new ToolStripStatusLabel("↓ 0 B/s");
-            status.Items.Add(lblActive);
-            status.Items.Add(lblSpeed);
+            statusBar.Items.Add(lblActive);
+            statusBar.Items.Add(lblLimit);
+            statusBar.Items.Add(lblSpeed);
 
-            // Toolbar
-            var tools = new ToolStrip
+            // Toolbar (আইকন সহ; আইকন ফন্ট না থাকলে শুধু লেখা)
+            tools = new ToolStrip
             {
                 GripStyle = ToolStripGripStyle.Hidden,
                 Padding = new Padding(8, 6, 8, 6),
                 Font = new Font("Segoe UI", 10f),
-                BackColor = Color.White,
-                RenderMode = ToolStripRenderMode.System
+                ImageScalingSize = new Size(20, 20)
             };
-            tools.Items.Add(Btn("＋ Add URL", (s, e) => ShowAddDialog("")));
+            tools.Items.Add(Btn("Add URL", "＋ ", "\uE710", true, (s, e) => ShowAddDialog("")));
             tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("▶ Resume", (s, e) => ResumeSelected()));
-            tools.Items.Add(Btn("❚❚ Pause", (s, e) => PauseSelected()));
-            tools.Items.Add(Btn("Pause All", (s, e) => PauseAll()));
-            tools.Items.Add(Btn("✕ Remove", (s, e) => RemoveSelected()));
+            tools.Items.Add(Btn("Resume", "▶ ", "\uE768", false, (s, e) => ResumeSelected()));
+            tools.Items.Add(Btn("Pause", "❚❚ ", "\uE769", false, (s, e) => PauseSelected()));
+            tools.Items.Add(Btn("Pause All", "", "\uE769", false, (s, e) => PauseAll()));
+            tools.Items.Add(Btn("Remove", "✕ ", "\uE74D", false, (s, e) => RemoveSelected()));
             tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("Open File", (s, e) => OpenSelected(false)));
-            tools.Items.Add(Btn("Open Folder", (s, e) => OpenSelected(true)));
+            tools.Items.Add(Btn("Open File", "", "\uE8E5", false, (s, e) => OpenSelected(false)));
+            tools.Items.Add(Btn("Open Folder", "", "\uE838", false, (s, e) => OpenSelected(true)));
             tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("⚙ Settings", (s, e) => ShowSettings()));
+            BuildSpeedMenu();
+            tools.Items.Add(speedMenu);
+            tools.Items.Add(Btn("Settings", "⚙ ", "\uE713", false, (s, e) => ShowSettings()));
+            tools.Items.Add(Btn("Updates", "⟳ ", "\uE72C", false,
+                async (s, e) => await UpdateChecker.CheckAndShowAsync(this, false)));
 
             // ক্রম গুরুত্বপূর্ণ: Fill আগে, তারপর বাকিগুলো
             Controls.Add(lv);
             Controls.Add(sidebar);
-            Controls.Add(status);
+            Controls.Add(statusBar);
             Controls.Add(tools);
         }
 
-        static ToolStripButton Btn(string text, EventHandler h)
+        static ToolStripButton Btn(string text, string fallbackPrefix, string glyph, bool accent, EventHandler h)
         {
-            var b = new ToolStripButton(text) { DisplayStyle = ToolStripItemDisplayStyle.Text, Padding = new Padding(4) };
+            bool icons = Icons.Available;
+            var b = new ToolStripButton(icons ? text : fallbackPrefix + text)
+            {
+                DisplayStyle = icons ? ToolStripItemDisplayStyle.ImageAndText : ToolStripItemDisplayStyle.Text,
+                TextImageRelation = TextImageRelation.ImageBeforeText,
+                Padding = new Padding(4),
+                Tag = new IconTag { Glyph = glyph, Accent = accent }
+            };
             b.Click += h;
             return b;
+        }
+
+        void RefreshToolIcons()
+        {
+            if (!Icons.Available) return;
+            foreach (ToolStripItem b in tools.Items)
+            {
+                if (b.Tag is IconTag tag)
+                {
+                    var old = b.Image;
+                    b.Image = Icons.Make(tag.Glyph, tag.Accent ? Theme.P.Accent : Theme.P.Text, 20);
+                    old?.Dispose();
+                }
+            }
         }
 
         ContextMenuStrip BuildContextMenu()
@@ -562,28 +658,45 @@ namespace FastDM
         void DrawSidebar(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
+            var p = Theme.P;
             var g = e.Graphics;
             bool sel = (e.State & DrawItemState.Selected) != 0;
-            using (var b = new SolidBrush(sel ? SideSel : SideBg)) g.FillRectangle(b, e.Bounds);
-            if (sel) using (var b = new SolidBrush(Accent)) g.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 4, e.Bounds.Height);
+            using (var b = new SolidBrush(sel ? p.SideSel : p.SideBg)) g.FillRectangle(b, e.Bounds);
+            if (sel) using (var b = new SolidBrush(p.Accent)) g.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 4, e.Bounds.Height);
 
             var tr = new Rectangle(e.Bounds.X + 18, e.Bounds.Y, e.Bounds.Width - 70, e.Bounds.Height);
-            TextRenderer.DrawText(g, FilterNames[e.Index], Font, tr, Color.White,
+            TextRenderer.DrawText(g, FilterNames[e.Index], Font, tr, p.SideText,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
             int count = items.Count(i => Match(e.Index, i));
             var cr = new Rectangle(e.Bounds.Right - 55, e.Bounds.Y, 45, e.Bounds.Height);
-            TextRenderer.DrawText(g, count.ToString(), Font, cr, Color.FromArgb(160, 168, 200),
+            TextRenderer.DrawText(g, count.ToString(), Font, cr, p.SideCount,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        }
+
+        void DrawHeader(object sender, DrawListViewColumnHeaderEventArgs e)
+        {
+            var p = Theme.P;
+            using (var b = new SolidBrush(p.Header)) e.Graphics.FillRectangle(b, e.Bounds);
+            using (var pen = new Pen(p.Border))
+            {
+                e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+                e.Graphics.DrawLine(pen, e.Bounds.Right - 1, e.Bounds.Top + 6, e.Bounds.Right - 1, e.Bounds.Bottom - 6);
+            }
+            var tr = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.Header.Text, Font, tr, p.SubText,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
 
         void DrawSub(object sender, DrawListViewSubItemEventArgs e)
         {
+            var p = Theme.P;
             var it = (DownloadItem)e.Item.Tag;
             var g = e.Graphics;
             var r = new Rectangle(e.Bounds.X, e.Bounds.Y, lv.Columns[e.ColumnIndex].Width, e.Bounds.Height);
 
-            Color back = e.Item.Selected ? Color.FromArgb(222, 230, 255)
-                       : (e.ItemIndex % 2 == 0 ? Color.White : Color.FromArgb(248, 249, 252));
+            Color back = e.Item.Selected ? p.Selection
+                       : (e.ItemIndex % 2 == 0 ? p.Window : p.RowAlt);
             using (var b = new SolidBrush(back)) g.FillRectangle(b, r);
 
             var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
@@ -595,15 +708,15 @@ namespace FastDM
                 using (var b = new SolidBrush(StateColor(it.State)))
                     g.FillEllipse(b, r.X + 8, r.Y + (r.Height - 10) / 2, 10, 10);
                 var tr = new Rectangle(r.X + 26, r.Y, r.Width - 30, r.Height);
-                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, TextDark, flags);
+                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, p.Text, flags);
             }
             else if (e.ColumnIndex == 2)
             {
                 var bar = new Rectangle(r.X + 6, r.Y + (r.Height - 18) / 2, r.Width - 14, 18);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                using (var p = RoundRect(bar, 8))
-                using (var b = new SolidBrush(Color.FromArgb(230, 233, 242)))
-                    g.FillPath(b, p);
+                using (var gp = RoundRect(bar, 8))
+                using (var b = new SolidBrush(p.Track))
+                    g.FillPath(b, gp);
 
                 string label;
                 if (it.TotalBytes > 0)
@@ -612,20 +725,20 @@ namespace FastDM
                     if (w > 6)
                     {
                         var fill = new Rectangle(bar.X, bar.Y, w, bar.Height);
-                        using (var p = RoundRect(fill, 8))
+                        using (var gp = RoundRect(fill, 8))
                         using (var b = new SolidBrush(StateColor(it.State)))
-                            g.FillPath(b, p);
+                            g.FillPath(b, gp);
                     }
                     label = it.Percent.ToString("0.0") + "%";
                 }
                 else label = it.Downloaded > 0 ? Fmt(it.Downloaded) : "—";
-                TextRenderer.DrawText(g, label, new Font("Segoe UI", 8.5f, FontStyle.Bold), bar, TextDark,
+                TextRenderer.DrawText(g, label, BarFont, bar, p.Text,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
             }
             else
             {
                 var tr = new Rectangle(r.X + 6, r.Y, r.Width - 8, r.Height);
-                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, TextDark, flags);
+                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, p.Text, flags);
             }
         }
 
@@ -645,7 +758,7 @@ namespace FastDM
         {
             switch (s)
             {
-                case DlState.Downloading: return Accent;
+                case DlState.Downloading: return Theme.P.Accent;
                 case DlState.Completed: return Green;
                 case DlState.Paused: return Orange;
                 case DlState.Error: return Red;
@@ -762,10 +875,25 @@ namespace FastDM
                 lv.Invalidate();
             }
 
-            lblActive.Text = "Active: " + items.Count(i => i.State == DlState.Downloading) +
-                             "   Queued: " + items.Count(i => i.State == DlState.Queued);
+            int actNow = items.Count(i => i.State == DlState.Downloading);
+            int queNow = items.Count(i => i.State == DlState.Queued);
+            lblActive.Text = "Active: " + actNow + "   Queued: " + queNow;
             lblSpeed.Text = "↓ " + Fmt(total) + "/s";
+            string limText = settings.SpeedLimitKBps > 0 ? "Limit: " + SpeedLimiter.Describe(settings.SpeedLimitKBps) : "Limit: Off";
+            if (lblLimit.Text != limText) lblLimit.Text = limText;
             sidebar.Invalidate();
+
+            // ট্রে টুলটিপে স্পিড
+            string tip = actNow > 0 ? "FastDM — ↓ " + Fmt(total) + "/s" : "FastDM";
+            if (tray != null && tip != lastTrayTip) { tray.Text = tip; lastTrayTip = tip; }
+
+            // সব ডাউনলোড শেষ হলে একটাই নোটিফিকেশন
+            if (sessionCompleted > 0 && actNow == 0 && queNow == 0)
+            {
+                Notify("Download complete",
+                       sessionCompleted == 1 ? lastCompletedName : sessionCompleted + " downloads completed");
+                sessionCompleted = 0;
+            }
 
             if (active > 0 && (now - lastSave).TotalSeconds > 3) SaveState();
         }
@@ -791,6 +919,12 @@ namespace FastDM
             catch (OperationCanceledException) { it.State = DlState.Paused; }
             catch (Exception ex) { it.State = DlState.Error; it.Error = ex.Message; }
             finally { it.Cts = null; cts.Dispose(); }
+
+            if (!it.RemoveRequested)
+            {
+                if (it.State == DlState.Completed) { sessionCompleted++; lastCompletedName = it.FileName; }
+                else if (it.State == DlState.Error) NotifyError(it);
+            }
 
             it.Speed = 0;
             if (it.RemoveRequested)
@@ -827,6 +961,14 @@ namespace FastDM
                 if (it.State == DlState.Downloading) it.Cts?.Cancel();
                 else if (it.State == DlState.Queued) it.State = DlState.Paused;
             }
+            MarkChanged();
+        }
+
+        void ResumeAll()
+        {
+            foreach (var it in items)
+                if (it.State == DlState.Paused || it.State == DlState.Error)
+                { it.State = DlState.Queued; it.Error = null; }
             MarkChanged();
         }
 
@@ -911,6 +1053,7 @@ namespace FastDM
         async void ShowAddDialog(string url)
         {
             using var dlg = new AddUrlForm(url, settings.DefaultFolder);
+            Theme.Apply(dlg);
             var result = dlg.ShowDialog(this);
             if (result != DialogResult.OK && result != DialogResult.Yes) return;
 
@@ -979,6 +1122,7 @@ namespace FastDM
         void AddFolder(Uri uri, bool startNow)
         {
             using var f = new FolderDownloadForm(uri, settings.DefaultFolder, settings.MaxSimultaneous);
+            Theme.Apply(f);
             if (f.ShowDialog(this) != DialogResult.OK) return;
 
             settings.MaxSimultaneous = f.Simultaneous;
@@ -1017,7 +1161,244 @@ namespace FastDM
         void ShowSettings()
         {
             using var f = new SettingsForm(settings);
-            if (f.ShowDialog(this) == DialogResult.OK) SaveState();
+            Theme.Apply(f);
+            if (f.ShowDialog(this) == DialogResult.OK)
+            {
+                Theme.SetMode(settings.ThemeChoice);
+                ApplyTheme();
+                RebuildList();
+            }
+            SaveState();     // স্পিড/প্রক্সি ডায়ালগে বদল করে Settings Cancel করলেও সেভ হবে
+        }
+
+        // ---------- স্পিড লিমিট মেনু (টুলবার) ----------
+        void BuildSpeedMenu()
+        {
+            bool icons = Icons.Available;
+            speedMenu = new ToolStripDropDownButton(icons ? "Speed" : "⚡ Speed")
+            {
+                DisplayStyle = icons ? ToolStripItemDisplayStyle.ImageAndText : ToolStripItemDisplayStyle.Text,
+                TextImageRelation = TextImageRelation.ImageBeforeText,
+                Padding = new Padding(4),
+                Tag = new IconTag { Glyph = "\uE945", Accent = false }
+            };
+
+            foreach (int preset in new[] { 0, 100, 500, 1024, 2048, 5120 })
+            {
+                int kb = preset;
+                var mi = new ToolStripMenuItem(SpeedLimiter.Describe(kb)) { Tag = kb };
+                mi.Click += (s, e) => SetSpeedLimit(kb);
+                speedMenu.DropDownItems.Add(mi);
+            }
+            speedMenu.DropDownItems.Add(new ToolStripSeparator());
+            speedMenu.DropDownItems.Add("Custom limit & proxy…", null, (s, e) => ShowNetworkSettings());
+
+            speedMenu.DropDownOpening += (s, e) =>
+            {
+                foreach (var mi in speedMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                    if (mi.Tag is int v) mi.Checked = v == settings.SpeedLimitKBps;
+            };
+        }
+
+        void SetSpeedLimit(int kbps)
+        {
+            settings.SpeedLimitKBps = kbps;
+            SpeedLimiter.SetKBps(kbps);
+            SaveState();
+        }
+
+        void ShowNetworkSettings()
+        {
+            using var f = new NetworkForm(settings);
+            Theme.Apply(f);
+            f.ShowDialog(this);
+            SaveState();
+        }
+
+        // ---------- থিম প্রয়োগ ----------
+        void ApplyTheme()
+        {
+            var p = Theme.P;
+            SuspendLayout();
+            BackColor = p.Window;
+            ForeColor = p.Text;
+            lv.BackColor = p.Window;
+            lv.ForeColor = p.Text;
+            sidebar.BackColor = p.SideBg;
+            Theme.StyleStrip(tools);
+            Theme.StyleStrip(statusBar);
+            Theme.StyleStrip(lv.ContextMenuStrip);
+            Theme.StyleStrip(trayMenu);
+            Theme.StyleStrip(speedMenu.DropDown);
+            lblActive.ForeColor = p.SubText;
+            lblSpeed.ForeColor = p.SubText;
+            lblLimit.ForeColor = p.SubText;
+            RefreshToolIcons();
+            Theme.SetTitleBar(this);
+            Theme.StyleScroll(lv);
+            Theme.StyleScroll(sidebar);
+            ResumeLayout(true);
+            lv.Invalidate(true);
+            sidebar.Invalidate();
+            Invalidate(true);
+        }
+
+        void OnSysPrefChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category != UserPreferenceCategory.General || settings.ThemeChoice != ThemeMode.System) return;
+            try
+            {
+                BeginInvoke(new Action(() => { Theme.SetMode(ThemeMode.System); ApplyTheme(); }));
+            }
+            catch { }
+        }
+
+        // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে (ডার্ক মোডে ফাঁকা হেডার এড়াতে)
+        void FitLastColumn()
+        {
+            if (lv == null || lv.Columns.Count == 0 || lv.ClientSize.Width <= 0) return;
+            int used = 0;
+            for (int i = 0; i < lv.Columns.Count - 1; i++) used += lv.Columns[i].Width;
+            int w = Math.Max(120, lv.ClientSize.Width - used);
+            var last = lv.Columns[lv.Columns.Count - 1];
+            if (last.Width != w) last.Width = w;
+        }
+
+        // ---------- সিস্টেম ট্রে ----------
+        void BuildTray()
+        {
+            trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add("Open FastDM", null, (s, e) => RestoreFromTray());
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("Pause all", null, (s, e) => PauseAll());
+            trayMenu.Items.Add("Resume all", null, (s, e) => ResumeAll());
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("Exit", null, (s, e) => ExitApp());
+
+            Icon ico = null;
+            try { ico = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+            tray = new NotifyIcon
+            {
+                Icon = ico ?? SystemIcons.Application,
+                Text = "FastDM",
+                ContextMenuStrip = trayMenu,
+                Visible = true
+            };
+            tray.DoubleClick += (s, e) => RestoreFromTray();
+            tray.BalloonTipClicked += (s, e) => RestoreFromTray();
+        }
+
+        void HideToTray(bool showTip)
+        {
+            Hide();
+            if (showTip && !trayTipShown)
+            {
+                trayTipShown = true;
+                Notify("FastDM", "Still running in the system tray. Click the icon to open it.");
+            }
+        }
+
+        void RestoreFromTray()
+        {
+            if (!Visible) Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        void ExitApp()
+        {
+            exiting = true;
+            Close();
+        }
+
+        void OnFormResize(object sender, EventArgs e)
+        {
+            FitLastColumn();
+            if (tray != null && settings.MinimizeToTray && WindowState == FormWindowState.Minimized)
+                HideToTray(false);
+        }
+
+        void OnFormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (!exiting && e.CloseReason == CloseReason.UserClosing)
+            {
+                if (settings.CloseToTray)
+                {
+                    e.Cancel = true;
+                    HideToTray(true);
+                    return;
+                }
+
+                bool busy = items.Any(i => i.State == DlState.Downloading || i.State == DlState.Queued);
+                if (busy)
+                {
+                    var r = MessageBox.Show(this,
+                        "Downloads are still running.\n\n" +
+                        "Yes = keep running in the system tray\n" +
+                        "No = exit (downloads will be paused)\n" +
+                        "Cancel = stay",
+                        "FastDM", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                    if (r == DialogResult.Cancel) { e.Cancel = true; return; }
+                    if (r == DialogResult.Yes) { e.Cancel = true; HideToTray(true); return; }
+                }
+            }
+
+            foreach (var it in items) it.Cts?.Cancel();
+            SaveState();
+        }
+
+        void Cleanup()
+        {
+            try { SystemEvents.UserPreferenceChanged -= OnSysPrefChanged; } catch { }
+            try { timer?.Stop(); } catch { }
+            try { regWait?.Unregister(null); showEvent?.Dispose(); } catch { }
+            if (tray != null)
+            {
+                tray.Visible = false;
+                tray.Dispose();
+                tray = null;
+            }
+            trayMenu?.Dispose();
+        }
+
+        // দ্বিতীয়বার অ্যাপ চালালে প্রথম উইন্ডোটা সামনে আনবে (Program.cs এর সাথে কাজ করে)
+        void SetupSingleInstanceListener()
+        {
+            try
+            {
+                showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\FastDM.Show");
+                regWait = ThreadPool.RegisterWaitForSingleObject(showEvent, (state, timedOut) =>
+                {
+                    try
+                    {
+                        if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(RestoreFromTray));
+                    }
+                    catch { }
+                }, null, Timeout.Infinite, false);
+            }
+            catch { }
+        }
+
+        // ---------- নোটিফিকেশন ----------
+        void Notify(string title, string text, ToolTipIcon icon = ToolTipIcon.Info)
+        {
+            if (tray == null || !settings.ShowNotifications) return;
+            if (ActiveForm != null) return;      // অ্যাপ সামনে থাকলে নোটিফিকেশন দরকার নেই
+            try
+            {
+                if (title.Length > 60) title = title.Substring(0, 60);
+                if (text.Length > 240) text = text.Substring(0, 240) + "…";
+                tray.ShowBalloonTip(4000, title, text, icon);
+            }
+            catch { }
+        }
+
+        void NotifyError(DownloadItem it)
+        {
+            if ((DateTime.UtcNow - lastErrorNotify).TotalSeconds < 10) return;   // স্প্যাম ঠেকাতে
+            lastErrorNotify = DateTime.UtcNow;
+            Notify("Download failed", it.FileName + "\n" + (it.Error ?? ""), ToolTipIcon.Error);
         }
 
         // ---------- ড্র্যাগ-ড্রপ + ক্লিপবোর্ড ----------
