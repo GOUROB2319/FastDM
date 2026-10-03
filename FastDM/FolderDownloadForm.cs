@@ -28,6 +28,7 @@ namespace FastDM
         public static bool Prompt(IWin32Window owner, Uri uri)
         {
             using var f = new CredentialForm(uri);
+            Theme.Apply(f);
             return f.ShowDialog(owner) == DialogResult.OK;
         }
 

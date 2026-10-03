@@ -401,8 +401,7 @@ namespace FastDM
         {
             // SFTP-তে লগইন সবসময় লাগে
             if (!CredStore.TryGet(u, out var user, out var pass)) throw new AuthRequiredException();
-            return new SftpClient(u.Host, u.Port > 0 ? u.Port : 22, user, pass);
-        }
+            return NetworkHelper.CreateSftp(u.Host, u.Port > 0 ? u.Port : 22, user, pass);        }
 
         // সিঙ্গেল ফাইল লিঙ্কের সাইজ/নাম জানা
         public static async Task ProbeAsync(DownloadItem it, CancellationToken ct)
@@ -507,6 +506,7 @@ namespace FastDM
             {
                 await fs.WriteAsync(buf.AsMemory(0, n), ct);
                 it.AddDownloaded(n);
+                await SpeedLimiter.ThrottleAsync(n, ct);
             }
         }
     }
@@ -536,9 +536,17 @@ namespace FastDM
         { inner.Write(buffer); onWrite(buffer.Length); }
 
         public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
-        { await inner.WriteAsync(buffer, offset, count, ct); onWrite(count); }
+        {
+            await SpeedLimiter.ThrottleAsync(count, ct);
+            await inner.WriteAsync(buffer, offset, count, ct);
+            onWrite(count);
+        }
 
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
-        { await inner.WriteAsync(buffer, ct); onWrite(buffer.Length); }
+        {
+            await SpeedLimiter.ThrottleAsync(buffer.Length, ct);
+            await inner.WriteAsync(buffer, ct);
+            onWrite(buffer.Length);
+        }
     }
 }
