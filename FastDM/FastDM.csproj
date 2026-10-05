@@ -14,6 +14,14 @@
 		<PublishReadyToRun>true</PublishReadyToRun>
 	</PropertyGroup>
 
+	<!-- ffmpeg (ভিডিও জোড়া লাগানোর জন্য): Tools ফোল্ডারে ffmpeg.exe (শেয়ার্ড বিল্ড হলে সব DLL সহ) রাখো -->
+	<ItemGroup>
+	  <None Update="Tools\**\*">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+	  </None>
+	</ItemGroup>
+
 	<ItemGroup>
 	  <PackageReference Include="FluentFTP" Version="55.0.0" />
 	  <PackageReference Include="HtmlAgilityPack" Version="1.13.0" />
