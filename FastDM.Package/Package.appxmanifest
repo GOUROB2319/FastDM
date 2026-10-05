@@ -9,7 +9,7 @@
   <Identity
     Name="GourobSaha.FastDM"
     Publisher="CN=58FEFA1E-D2AC-4137-88CE-8D61C80321B7"
-    Version="1.0.14.0" />
+    Version="1.0.13.0" />
 
   <Properties>
     <DisplayName>FastDM</DisplayName>
