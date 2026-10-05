@@ -489,7 +489,7 @@ namespace FastDM
     public partial class Form1 : Form
     {
         // স্ট্যাটাস রঙ (দুই থিমেই একই), বাকি রঙ AppTheme.cs-এ
-        static readonly Color Green = ColorTranslator.FromHtml("#2ECC71");
+        static readonly Color Green = ColorTranslator.FromHtml("#15803D");
         static readonly Color Orange = ColorTranslator.FromHtml("#F5A623");
         static readonly Color Red = ColorTranslator.FromHtml("#FF5C77");
         static readonly Color Gray = ColorTranslator.FromHtml("#9AA0B4");

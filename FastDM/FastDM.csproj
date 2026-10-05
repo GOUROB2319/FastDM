@@ -12,7 +12,12 @@
 		<Version>1.0.0</Version>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<PublishReadyToRun>true</PublishReadyToRun>
+		<ApplicationIcon>assets\Glossy-3D-Download-App-Icon.ico</ApplicationIcon>
 	</PropertyGroup>
+
+	<ItemGroup>
+	  <Content Include="assets\Glossy-3D-Download-App-Icon.ico" />
+	</ItemGroup>
 
 	<!-- ffmpeg (ভিডিও জোড়া লাগানোর জন্য): Tools ফোল্ডারে ffmpeg.exe (শেয়ার্ড বিল্ড হলে সব DLL সহ) রাখো -->
 	<ItemGroup>
