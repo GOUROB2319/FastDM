@@ -10,7 +10,7 @@ powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
 
 Expected final message: `Core build and extension tests passed.`
 
-This builds the Windows desktop application and runs the six Node tests for
+This builds the Windows desktop application and runs the Node tests for
 the browser-extension bridge.
 
 ## 2. Test the desktop app
@@ -38,6 +38,34 @@ connect** is checked. Keep FastDM running while testing the extension.
 
 Also test **Open FastDM** in the popup after closing the app. The `fastdm://`
 handler should open FastDM and show the Add dialog after a link is sent.
+
+## 3b. Phase 2 checks (context menu, headers, cookies)
+
+After reloading the extension, right-click a link: there should be one
+**FastDM** entry with a submenu.
+
+| Where you right-click | Submenu items | Expected result |
+| --- | --- | --- |
+| A normal file link | **Download with FastDM** | The download starts at once in the default folder, no dialog. |
+| A normal file link | **Open in FastDM** | The Add dialog opens with the link filled in. |
+| A video or audio element | **Download media…** / **Open media…** | Same two behaviours for the media address. |
+| The page background | **Send page link to FastDM** | The Add dialog opens with the page address. |
+
+Notes for the tester:
+
+- If FastDM is closed, both link items start the app through `fastdm://`
+  and the Add dialog opens (the protocol never starts a download by itself).
+- Folder links, video pages and yt-dlp sites always show their own window
+  (folder tree, quality picker), even with **Download**.
+- **Referer / User-Agent:** download a file from a site that blocks direct
+  links (hotlink protection). It should work from the menu and fail when the
+  same link is pasted into the Add dialog by hand.
+- **Cookies:** open the extension **Settings**, turn on **Login cookies** and
+  accept the browser prompt. Then download a file that needs a signed-in
+  session. Turn it off again and confirm the same file fails. Cookies are kept
+  in memory only; after restarting FastDM a resumed item has no cookies.
+- Negative check: send a request to `http://127.0.0.1:17432/v1/add` from a
+  normal web page (for example from the browser console). It must be refused.
 
 ## 4. Package the extension
 

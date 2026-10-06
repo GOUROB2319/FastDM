@@ -106,5 +106,32 @@
   },
   "optionsPrivacy": {
     "message": "এই এক্সটেনশন শুধু আপনার নিজের কম্পিউটারে থাকা FastDM অ্যাপের সাথে (127.0.0.1) কথা বলে। কোনো সার্ভারে ডেটা পাঠায় না।"
+  },
+  "menuOpenLink": {
+    "message": "FastDM-এ খুলুন"
+  },
+  "menuOpenMedia": {
+    "message": "FastDM-এ মিডিয়া খুলুন"
+  },
+  "optionsCookies": {
+    "message": "লগইন কুকি"
+  },
+  "cookiesHint": {
+    "message": "কিছু সাইট লগইন করা অবস্থায় ছাড়া ডাউনলোড করতে দেয় না। এটা চালু করলে ডাউনলোড লিঙ্কের জন্য ব্রাউজারের কুকি এই কম্পিউটারের FastDM অ্যাপে পাঠানো হবে। কুকি শুধু মেমোরিতে থাকে, ডিস্কে সেভ হয় না।"
+  },
+  "cookiesOn": {
+    "message": "কুকি পাঠানো চালু"
+  },
+  "cookiesOff": {
+    "message": "কুকি পাঠানো বন্ধ"
+  },
+  "btnCookiesEnable": {
+    "message": "চালু করুন"
+  },
+  "btnCookiesDisable": {
+    "message": "বন্ধ করুন"
+  },
+  "errCookiesDenied": {
+    "message": "অনুমতি দেওয়া হয়নি, তাই কুকি বন্ধই থাকছে।"
   }
 }

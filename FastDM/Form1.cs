@@ -67,6 +67,8 @@ namespace FastDM
         public string Url { get; set; }
         public string FileName { get; set; }
         public string Folder { get; set; }
+        public string Referer { get; set; }             // এক্সটেনশন থেকে এলে: লিঙ্কটা যে পেজে ছিল
+        public string UserAgent { get; set; }           // এক্সটেনশন থেকে এলে: ব্রাউজারের User-Agent
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
@@ -145,6 +147,11 @@ namespace FastDM
     // ====================== ডাউনলোড ইঞ্জিন ======================
     public static partial class Engine
     {
+        // ব্রাউজার থেকে আসা কুকি শুধু মেমোরিতে থাকে (অ্যাপ বন্ধ হলে চলে যায়)।
+        // CookieContainer ব্যবহার করায় কুকি শুধু মিলে যাওয়া ডোমেইনে যায়, রিডাইরেক্টে অন্য সাইটে ফাঁস হয় না।
+        // (Http-এর আগে থাকতে হবে, কারণ CreateClient এটা ব্যবহার করে)
+        static readonly CookieContainer Jar = new CookieContainer();
+
         static volatile HttpClient Http = CreateClient();
 
         // প্রক্সি বদলালে নতুন ক্লায়েন্ট
@@ -161,7 +168,9 @@ namespace FastDM
                 Proxy = DynamicProxy.Instance,
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 10,
-                AutomaticDecompression = DecompressionMethods.None
+                AutomaticDecompression = DecompressionMethods.None,
+                UseCookies = true,
+                CookieContainer = Jar
             };
 
             var c = new HttpClient(handler)
@@ -173,6 +182,41 @@ namespace FastDM
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FastDM/1.0");
 
             return c;
+        }
+
+        // এক্সটেনশনের পাঠানো কুকি জারে বসানো
+        public static void AddCookies(List<BridgeCookie> cookies)
+        {
+            if (cookies == null) return;
+
+            foreach (var c in cookies)
+            {
+                try
+                {
+                    var ck = new Cookie(
+                        c.Name,
+                        c.Value ?? "",
+                        string.IsNullOrEmpty(c.Path) ? "/" : c.Path,
+                        c.Domain)
+                    {
+                        Secure = c.Secure
+                    };
+
+                    Jar.Add(ck);
+                }
+                catch { /* অবৈধ কুকি বাদ */ }
+            }
+        }
+
+        // আইটেমের নিজস্ব Referer / User-Agent (থাকলে) রিকোয়েস্টে বসানো
+        public static void ApplyItemHeaders(HttpRequestMessage req, DownloadItem it)
+        {
+            if (!string.IsNullOrEmpty(it.Referer) &&
+                Uri.TryCreate(it.Referer, UriKind.Absolute, out var r))
+                req.Headers.Referrer = r;
+
+            if (!string.IsNullOrEmpty(it.UserAgent))
+                req.Headers.TryAddWithoutValidation("User-Agent", it.UserAgent);
         }
 
         public static string Sanitize(string name)
@@ -212,6 +256,7 @@ namespace FastDM
             req.Headers.Range = new RangeHeaderValue(0, 0);
 
             ApplyAuth(req);
+            ApplyItemHeaders(req, it);
 
             using var resp = await Http.SendAsync(
                 req,
@@ -394,6 +439,7 @@ namespace FastDM
                             new RangeHeaderValue(pos, seg.End);
 
                     ApplyAuth(req);
+                    ApplyItemHeaders(req, it);
 
                     using var resp = await Http.SendAsync(
                         req,
@@ -2762,13 +2808,42 @@ namespace FastDM
             new SemaphoreSlim(1, 1);
 
         async void ShowAddDialog(
-            string url)
+            string url,
+            RequestContext ctx = null)
         {
             await addGate.WaitAsync();
 
             try
             {
-                await ShowAddDialogCore(url);
+                await ShowAddDialogCore(url, ctx);
+            }
+            finally
+            {
+                addGate.Release();
+            }
+        }
+
+        // এক্সটেনশনের "Download with FastDM": ডায়ালগ ছাড়া, ডিফল্ট ফোল্ডারে সরাসরি শুরু।
+        // (ফোল্ডার লিঙ্ক, ভিডিও পেজ বা yt-dlp সাইটে ইউজারের পছন্দ লাগে, তাই সেসব ক্ষেত্রে নিজস্ব উইন্ডো আসবেই)
+        async void QuickAdd(
+            string url,
+            RequestContext ctx)
+        {
+            await addGate.WaitAsync();
+
+            try
+            {
+                await ProcessUrlsAsync(
+                    new[] { url },
+                    "",
+                    settings.DefaultFolder,
+                    true,
+                    ctx);
+            }
+            catch (Exception ex)
+            {
+                lblActive.Text =
+                    "Could not add link: " + ex.Message;
             }
             finally
             {
@@ -2777,7 +2852,8 @@ namespace FastDM
         }
 
         async Task ShowAddDialogCore(
-            string url)
+            string url,
+            RequestContext ctx)
         {
             using var dlg =
                 new AddUrlForm(
@@ -2803,6 +2879,22 @@ namespace FastDM
             string folder =
                 dlg.Folder;
 
+            await ProcessUrlsAsync(
+                urls,
+                nameText,
+                folder,
+                startNow,
+                ctx);
+        }
+
+        // Add ডায়ালগ আর এক্সটেনশনের সরাসরি ডাউনলোড, দুই পথেরই মূল কাজ
+        async Task ProcessUrlsAsync(
+            string[] urls,
+            string nameText,
+            string folder,
+            bool startNow,
+            RequestContext ctx)
+        {
             lblActive.Text =
                 "Checking link(s)…";
 
@@ -2885,6 +2977,8 @@ namespace FastDM
                 {
                     Url = u,
                     Folder = folder,
+                    Referer = ctx?.Referer,
+                    UserAgent = ctx?.UserAgent,
                     FileName =
                         fileUrls.Count == 1 &&
                         folderUris.Count == 0 &&
@@ -4133,16 +4227,37 @@ namespace FastDM
             }
 
             public void ExternalAdd(
-                string url,
-                string title)
+                BridgeAddRequest add)
             {
                 try
                 {
+                    var ctx = new RequestContext
+                    {
+                        Referer = add.Referer,
+                        UserAgent = add.UserAgent
+                    };
+
+                    // কুকি আগে জারে, তারপর ডাউনলোড/ডায়ালগ
+                    Engine.AddCookies(add.Cookies);
+
+                    bool direct =
+                        string.Equals(
+                            add.Mode,
+                            "download",
+                            StringComparison.OrdinalIgnoreCase);
+
                     f.BeginInvoke(
                         new Action(() =>
                         {
-                            f.RestoreFromTray();
-                            f.ShowAddDialog(url);
+                            if (direct)
+                            {
+                                f.QuickAdd(add.Url, ctx);
+                            }
+                            else
+                            {
+                                f.RestoreFromTray();
+                                f.ShowAddDialog(add.Url, ctx);
+                            }
                         }));
                 }
                 catch { }

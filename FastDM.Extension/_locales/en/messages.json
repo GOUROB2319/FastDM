@@ -106,5 +106,32 @@
   },
   "optionsPrivacy": {
     "message": "This extension only talks to the FastDM app on your own computer (127.0.0.1). It does not send data to any server."
+  },
+  "menuOpenLink": {
+    "message": "Open in FastDM"
+  },
+  "menuOpenMedia": {
+    "message": "Open media in FastDM"
+  },
+  "optionsCookies": {
+    "message": "Login cookies"
+  },
+  "cookiesHint": {
+    "message": "Some sites only allow downloads when you are signed in. If you turn this on, the extension sends your browser cookies for the download link to the FastDM app on this computer. Cookies are kept in memory only and are never saved to disk."
+  },
+  "cookiesOn": {
+    "message": "Sending cookies is on"
+  },
+  "cookiesOff": {
+    "message": "Sending cookies is off"
+  },
+  "btnCookiesEnable": {
+    "message": "Turn on"
+  },
+  "btnCookiesDisable": {
+    "message": "Turn off"
+  },
+  "errCookiesDenied": {
+    "message": "Permission was not granted, so cookies stay off."
   }
 }

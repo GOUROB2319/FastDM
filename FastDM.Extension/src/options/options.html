@@ -19,6 +19,17 @@
   </section>
 
   <section class="card">
+    <h2 data-i18n="optionsCookies">Login cookies</h2>
+    <p class="muted small" data-i18n="cookiesHint"></p>
+    <p><span id="cookiePill" class="pill"><span class="dot"></span><span id="cookiePillText"></span></span></p>
+    <p id="cookieError" class="error hidden"></p>
+    <div class="actions">
+      <button id="btnCookiesEnable" class="primary" data-i18n="btnCookiesEnable">Turn on</button>
+      <button id="btnCookiesDisable" data-i18n="btnCookiesDisable">Turn off</button>
+    </div>
+  </section>
+
+  <section class="card">
     <dl>
       <dt data-i18n="optionsVersion">Extension version</dt><dd id="extVersion"></dd>
       <dt data-i18n="optionsApp">FastDM app</dt><dd id="appVersion">—</dd>
