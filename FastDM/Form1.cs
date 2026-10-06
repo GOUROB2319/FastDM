@@ -9,6 +9,8 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -33,6 +35,7 @@ namespace FastDM
     {
         public string DefaultFolder { get; set; } =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+
         public int Connections { get; set; } = 8;       // প্রতি ফাইলে কয়টা কানেকশন
         public int MaxSimultaneous { get; set; } = 3;   // একসাথে কয়টা ফাইল
         public ThemeMode ThemeChoice { get; set; } = ThemeMode.System;   // System / Light / Dark
@@ -54,6 +57,8 @@ namespace FastDM
         public bool ShowDetails { get; set; } = true;
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
         public bool SidebarOpen { get; set; } = true;                        // বাম সাইডবার খোলা না বন্ধ
+        public bool BridgeEnabled { get; set; } = true;                      // ব্রাউজার এক্সটেনশনের সংযোগ চালু
+        public List<string> BridgeTokens { get; set; } = new List<string>(); // পেয়ার করা এক্সটেনশনের টোকেন-হ্যাশ
     }
 
     public class DownloadItem
@@ -65,7 +70,7 @@ namespace FastDM
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
-        public bool NeedsProbe { get; set; }            // [এডিট ২] ফোল্ডার ডাউনলোডের আইটেম: শুরুর সময় সাইজ/resume জানবে
+        public bool NeedsProbe { get; set; }            // ফোল্ডার ডাউনলোডের আইটেম: শুরুর সময় সাইজ/resume জানবে
         public StreamSpec Stream { get; set; }          // HLS/DASH ভিডিও আইটেম (সাধারণ ফাইলে null)
         public YtDlpSpec YtDlp { get; set; }            // yt-dlp আইটেম (YouTube/TikTok/Facebook ইত্যাদি)
         public int StreamDone { get; set; }             // নামানো সেগমেন্ট
@@ -76,29 +81,59 @@ namespace FastDM
         public List<Segment> Segments { get; set; } = new List<Segment>();
 
         long _downloaded;
+
         public long Downloaded
         {
             get => Interlocked.Read(ref _downloaded);
             set => Interlocked.Exchange(ref _downloaded, value);
         }
+
         public void AddDownloaded(long n) => Interlocked.Add(ref _downloaded, n);
 
-        [JsonIgnore] public string SavePath => Path.Combine(Folder, FileName);
-        [JsonIgnore] public string TempPath => SavePath + ".part";
-        [JsonIgnore] public string PartsDir => SavePath + ".parts";          // স্ট্রিমের সেগমেন্ট ফোল্ডার
-        [JsonIgnore] public string StatusNote { get; set; } = "";             // "Merging…" ইত্যাদি
-        [JsonIgnore] public CancellationTokenSource Cts { get; set; }
-        [JsonIgnore] public bool RemoveRequested { get; set; }
-        [JsonIgnore] public bool DeleteFile { get; set; }
-        [JsonIgnore] public double Speed { get; set; }
-        [JsonIgnore] public bool IgnoreSchedule { get; set; }                 // "Start now" দিলে শিডিউল উপেক্ষা
-        [JsonIgnore] public System.Collections.Generic.List<double> SpeedHistory { get; } = new System.Collections.Generic.List<double>();
-        [JsonIgnore] public long LastBytes { get; set; }
-        [JsonIgnore] public DateTime LastTick { get; set; }
+        [JsonIgnore]
+        public string SavePath => Path.Combine(Folder, FileName);
+
+        [JsonIgnore]
+        public string TempPath => SavePath + ".part";
+
+        [JsonIgnore]
+        public string PartsDir => SavePath + ".parts";
+
+        [JsonIgnore]
+        public string StatusNote { get; set; } = "";
+
+        [JsonIgnore]
+        public CancellationTokenSource Cts { get; set; }
+
+        [JsonIgnore]
+        public bool RemoveRequested { get; set; }
+
+        [JsonIgnore]
+        public bool DeleteFile { get; set; }
+
+        [JsonIgnore]
+        public double Speed { get; set; }
+
+        [JsonIgnore]
+        public bool IgnoreSchedule { get; set; }
+
+        [JsonIgnore]
+        public System.Collections.Generic.List<double> SpeedHistory { get; } =
+            new System.Collections.Generic.List<double>();
+
+        [JsonIgnore]
+        public long LastBytes { get; set; }
+
+        [JsonIgnore]
+        public DateTime LastTick { get; set; }
+
         [JsonIgnore]
         public double Percent =>
-            Stream != null && StreamTotal > 0 ? Math.Min(100.0, StreamDone * 100.0 / StreamTotal)
-            : TotalBytes > 0 ? Math.Min(100.0, Downloaded * 100.0 / TotalBytes) : 0;
+            Stream != null && StreamTotal > 0
+                ? Math.Min(100.0, StreamDone * 100.0 / StreamTotal)
+                : TotalBytes > 0
+                    ? Math.Min(100.0, Downloaded * 100.0 / TotalBytes)
+                    : 0;
     }
 
     public class AppData
@@ -108,12 +143,15 @@ namespace FastDM
     }
 
     // ====================== ডাউনলোড ইঞ্জিন ======================
-    public static partial class Engine     // [এডিট ১] partial
+    public static partial class Engine
     {
         static volatile HttpClient Http = CreateClient();
 
-        // প্রক্সি বদলালে নতুন ক্লায়েন্ট (চলমান রিকোয়েস্ট পুরোনোটাতেই শেষ হবে)
-        public static void ResetClient() { Http = CreateClient(); }
+        // প্রক্সি বদলালে নতুন ক্লায়েন্ট
+        public static void ResetClient()
+        {
+            Http = CreateClient();
+        }
 
         static HttpClient CreateClient()
         {
@@ -125,14 +163,23 @@ namespace FastDM
                 MaxAutomaticRedirections = 10,
                 AutomaticDecompression = DecompressionMethods.None
             };
-            var c = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-            c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) FastDM/1.0");
+
+            var c = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+
+            c.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FastDM/1.0");
+
             return c;
         }
 
         public static string Sanitize(string name)
         {
-            foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+            foreach (char c in Path.GetInvalidFileNameChars())
+                name = name.Replace(c, '_');
+
             return name.Trim();
         }
 
@@ -140,27 +187,42 @@ namespace FastDM
         {
             try
             {
-                string n = Uri.UnescapeDataString(Path.GetFileName(new Uri(url).AbsolutePath));
-                if (!string.IsNullOrWhiteSpace(n)) return Sanitize(n);
+                string n = Uri.UnescapeDataString(
+                    Path.GetFileName(new Uri(url).AbsolutePath));
+
+                if (!string.IsNullOrWhiteSpace(n))
+                    return Sanitize(n);
             }
             catch { }
+
             return "download.bin";
         }
 
         // ফাইলের সাইজ, resume সাপোর্ট আর নাম জানার জন্য
         public static async Task ProbeAsync(DownloadItem it, CancellationToken ct)
         {
-            // [এডিট ৩] ftp/sftp হলে আলাদা প্রোব
-            if (!IsHttp(it.Url)) { await RemoteTransfer.ProbeAsync(it, ct); return; }
+            // ftp/sftp হলে আলাদা প্রোব
+            if (!IsHttp(it.Url))
+            {
+                await RemoteTransfer.ProbeAsync(it, ct);
+                return;
+            }
 
             using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
             req.Headers.Range = new RangeHeaderValue(0, 0);
-            ApplyAuth(req);                                                   // [এডিট ৩]
-            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-            CheckAuth(resp);                                                  // [এডিট ৩]
+
+            ApplyAuth(req);
+
+            using var resp = await Http.SendAsync(
+                req,
+                HttpCompletionOption.ResponseHeadersRead,
+                ct);
+
+            CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
 
-            if (resp.StatusCode == HttpStatusCode.PartialContent && resp.Content.Headers.ContentRange?.Length != null)
+            if (resp.StatusCode == HttpStatusCode.PartialContent &&
+                resp.Content.Headers.ContentRange?.Length != null)
             {
                 it.TotalBytes = resp.Content.Headers.ContentRange.Length.Value;
                 it.SupportsRange = true;
@@ -175,75 +237,144 @@ namespace FastDM
             {
                 var cd = resp.Content.Headers.ContentDisposition;
                 string name = cd?.FileNameStar ?? cd?.FileName;
-                if (!string.IsNullOrWhiteSpace(name)) it.FileName = Sanitize(name.Trim('"'));
+
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    it.FileName = Sanitize(name.Trim('"'));
+                }
                 else
                 {
                     var uri = resp.RequestMessage?.RequestUri;
-                    it.FileName = NameFromUrl(uri != null ? uri.ToString() : it.Url);
+                    it.FileName = NameFromUrl(
+                        uri != null ? uri.ToString() : it.Url);
                 }
             }
         }
 
-        public static async Task RunAsync(DownloadItem it, int connections, CancellationToken ct)
+        public static async Task RunAsync(
+            DownloadItem it,
+            int connections,
+            CancellationToken ct)
         {
             Directory.CreateDirectory(it.Folder);
 
-            bool fresh = it.Segments.Count == 0 || !it.SupportsRange
-                         || !File.Exists(it.TempPath)
-                         || new FileInfo(it.TempPath).Length != it.TotalBytes;
+            bool fresh =
+                it.Segments.Count == 0 ||
+                !it.SupportsRange ||
+                !File.Exists(it.TempPath) ||
+                new FileInfo(it.TempPath).Length != it.TotalBytes;
+
             if (fresh)
             {
                 it.Segments = new List<Segment>();
                 it.Downloaded = 0;
+
                 if (it.SupportsRange && it.TotalBytes > 0)
                 {
-                    int n = (int)Math.Max(1, Math.Min(connections, it.TotalBytes / (1 << 20)));
+                    int n = (int)Math.Max(
+                        1,
+                        Math.Min(
+                            connections,
+                            it.TotalBytes / (1 << 20)));
+
                     long size = it.TotalBytes / n;
+
                     for (int i = 0; i < n; i++)
                     {
                         long start = i * size;
-                        long end = (i == n - 1) ? it.TotalBytes - 1 : start + size - 1;
-                        it.Segments.Add(new Segment { Start = start, End = end });
+                        long end = (i == n - 1)
+                            ? it.TotalBytes - 1
+                            : start + size - 1;
+
+                        it.Segments.Add(new Segment
+                        {
+                            Start = start,
+                            End = end
+                        });
                     }
                 }
                 else
                 {
-                    it.Segments.Add(new Segment { Start = 0, End = it.TotalBytes > 0 ? it.TotalBytes - 1 : -1 });
+                    it.Segments.Add(new Segment
+                    {
+                        Start = 0,
+                        End = it.TotalBytes > 0
+                            ? it.TotalBytes - 1
+                            : -1
+                    });
                 }
-                using (var fs = new FileStream(it.TempPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+
+                using (var fs = new FileStream(
+                    it.TempPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.ReadWrite))
                 {
-                    if (it.SupportsRange) fs.SetLength(it.TotalBytes);
+                    if (it.SupportsRange)
+                        fs.SetLength(it.TotalBytes);
                 }
             }
 
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var tasks = it.Segments.Where(s => !s.Finished).Select(s => Task.Run(async () =>
-            {
-                try { await SegmentAsync(it, s, linked.Token).ConfigureAwait(false); }
-                catch when (!ct.IsCancellationRequested) { linked.Cancel(); throw; }
-            })).ToList();
+            using var linked =
+                CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-            try { await Task.WhenAll(tasks); }
+            var tasks = it.Segments
+                .Where(s => !s.Finished)
+                .Select(s => Task.Run(async () =>
+                {
+                    try
+                    {
+                        await SegmentAsync(
+                            it,
+                            s,
+                            linked.Token).ConfigureAwait(false);
+                    }
+                    catch when (!ct.IsCancellationRequested)
+                    {
+                        linked.Cancel();
+                        throw;
+                    }
+                }))
+                .ToList();
+
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
             catch
             {
-                if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+                if (ct.IsCancellationRequested)
+                    throw new OperationCanceledException(ct);
+
                 var faulted = tasks.FirstOrDefault(t => t.IsFaulted);
-                throw faulted?.Exception?.GetBaseException() ?? new IOException("Download failed.");
+
+                throw faulted?.Exception?.GetBaseException()
+                    ?? new IOException("Download failed.");
             }
 
-            if (it.SupportsRange && it.Segments.Any(s => !s.Finished))
+            if (it.SupportsRange &&
+                it.Segments.Any(s => !s.Finished))
+            {
                 throw new IOException("Download incomplete.");
+            }
 
-            if (File.Exists(it.SavePath)) File.Delete(it.SavePath);
+            if (File.Exists(it.SavePath))
+                File.Delete(it.SavePath);
+
             File.Move(it.TempPath, it.SavePath);
         }
 
-        static async Task SegmentAsync(DownloadItem it, Segment seg, CancellationToken ct)
+        static async Task SegmentAsync(
+            DownloadItem it,
+            Segment seg,
+            CancellationToken ct)
         {
             int attempt = 0;
+
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
+
                 try
                 {
                     if (!it.SupportsRange)
@@ -251,51 +382,108 @@ namespace FastDM
                         it.AddDownloaded(-seg.Downloaded);
                         seg.Downloaded = 0;
                     }
+
                     long pos = seg.Start + seg.Downloaded;
 
-                    using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
-                    if (it.SupportsRange) req.Headers.Range = new RangeHeaderValue(pos, seg.End);
-                    ApplyAuth(req);                                           // [এডিট ৪]
+                    using var req = new HttpRequestMessage(
+                        HttpMethod.Get,
+                        it.Url);
 
-                    using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-                    CheckAuth(resp);                                          // [এডিট ৪]
+                    if (it.SupportsRange)
+                        req.Headers.Range =
+                            new RangeHeaderValue(pos, seg.End);
+
+                    ApplyAuth(req);
+
+                    using var resp = await Http.SendAsync(
+                        req,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        ct).ConfigureAwait(false);
+
+                    CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
-                    if (it.SupportsRange && resp.StatusCode != HttpStatusCode.PartialContent)
-                        throw new IOException("Server does not support resume.");
 
-                    using var input = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    using var fs = new FileStream(it.TempPath, FileMode.Open, FileAccess.Write,
-                                                  FileShare.ReadWrite, 1 << 16, true);
+                    if (it.SupportsRange &&
+                        resp.StatusCode != HttpStatusCode.PartialContent)
+                    {
+                        throw new IOException(
+                            "Server does not support resume.");
+                    }
+
+                    using var input =
+                        await resp.Content.ReadAsStreamAsync(ct)
+                            .ConfigureAwait(false);
+
+                    using var fs = new FileStream(
+                        it.TempPath,
+                        FileMode.Open,
+                        FileAccess.Write,
+                        FileShare.ReadWrite,
+                        1 << 16,
+                        true);
+
                     fs.Seek(pos, SeekOrigin.Begin);
 
                     var buf = new byte[1 << 16];
                     int n;
-                    while ((n = await input.ReadAsync(buf.AsMemory(), ct).ConfigureAwait(false)) > 0)
+
+                    while ((n = await input.ReadAsync(
+                               buf.AsMemory(),
+                               ct).ConfigureAwait(false)) > 0)
                     {
                         if (it.SupportsRange)
                         {
-                            long room = seg.End - (seg.Start + seg.Downloaded) + 1;
-                            if (n > room) n = (int)room;
+                            long room =
+                                seg.End -
+                                (seg.Start + seg.Downloaded) +
+                                1;
+
+                            if (n > room)
+                                n = (int)room;
                         }
-                        await fs.WriteAsync(buf.AsMemory(0, n), ct).ConfigureAwait(false);
+
+                        await fs.WriteAsync(
+                            buf.AsMemory(0, n),
+                            ct).ConfigureAwait(false);
+
                         seg.Downloaded += n;
                         it.AddDownloaded(n);
-                        await SpeedLimiter.ThrottleAsync(n, ct).ConfigureAwait(false);   // স্পিড লিমিটার
-                        if (it.SupportsRange && seg.Start + seg.Downloaded > seg.End) break;
+
+                        await SpeedLimiter.ThrottleAsync(
+                            n,
+                            ct).ConfigureAwait(false);
+
+                        if (it.SupportsRange &&
+                            seg.Start + seg.Downloaded > seg.End)
+                            break;
                     }
 
-                    if (!it.SupportsRange) fs.SetLength(fs.Position);
-                    if (it.SupportsRange && seg.Start + seg.Downloaded <= seg.End)
-                        throw new IOException("Connection closed early.");
+                    if (!it.SupportsRange)
+                        fs.SetLength(fs.Position);
+
+                    if (it.SupportsRange &&
+                        seg.Start + seg.Downloaded <= seg.End)
+                    {
+                        throw new IOException(
+                            "Connection closed early.");
+                    }
 
                     seg.Finished = true;
                     return;
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (AuthRequiredException) { throw; }                      // [এডিট ৪] লগইন ভুল হলে retry নয়
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (AuthRequiredException)
+                {
+                    throw;
+                }
                 catch (Exception) when (++attempt < 6)
                 {
-                    await Task.Delay(1500 * attempt, ct).ConfigureAwait(false);   // আবার চেষ্টা
+                    await Task.Delay(
+                        1500 * attempt,
+                        ct).ConfigureAwait(false);
                 }
             }
         }
@@ -304,24 +492,39 @@ namespace FastDM
     // ====================== ফ্লিকার-ফ্রি ListView ======================
     class BufferedListView : ListView
     {
-        public BufferedListView() { DoubleBuffered = true; }
+        public BufferedListView()
+        {
+            DoubleBuffered = true;
+        }
     }
 
-    // সাইডবারের ফ্লিকার এড়াতে (ডাবল-বাফার)
     class BufferedListBox : ListBox
     {
         public BufferedListBox()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+
+            SetStyle(
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.ResizeRedraw,
+                true);
         }
     }
 
     // ====================== Add URL ডায়ালগ ======================
     class AddUrlForm : Form
     {
-        readonly TextBox txtUrls, txtName, txtFolder;
-        public string[] Urls => txtUrls.Lines.Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+        readonly TextBox txtUrls;
+        readonly TextBox txtName;
+        readonly TextBox txtFolder;
+
+        public string[] Urls =>
+            txtUrls.Lines
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0)
+                .ToArray();
+
         public string FileNameText => txtName.Text.Trim();
         public string Folder => txtFolder.Text.Trim();
 
@@ -330,50 +533,165 @@ namespace FastDM
             Text = "Add Download";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
             ClientSize = new Size(560, 336);
             Font = new Font("Segoe UI", 9.5f);
 
-            Controls.Add(new Label { Text = "URL(s) — one link per line (file or folder)", Location = new Point(16, 12), AutoSize = true });
-            txtUrls = new TextBox { Location = new Point(16, 34), Size = new Size(528, 110), Multiline = true, ScrollBars = ScrollBars.Vertical, Text = initialUrl ?? "" };
+            Controls.Add(new Label
+            {
+                Text = "URL(s) — one link per line (file or folder)",
+                Location = new Point(16, 12),
+                AutoSize = true
+            });
+
+            txtUrls = new TextBox
+            {
+                Location = new Point(16, 34),
+                Size = new Size(528, 110),
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                Text = initialUrl ?? ""
+            };
+
             Controls.Add(txtUrls);
 
-            Controls.Add(new Label { Text = "File name (optional, single link only)", Location = new Point(16, 156), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 178), Size = new Size(528, 26) };
+            Controls.Add(new Label
+            {
+                Text = "File name (optional, single link only)",
+                Location = new Point(16, 156),
+                AutoSize = true
+            });
+
+            txtName = new TextBox
+            {
+                Location = new Point(16, 178),
+                Size = new Size(528, 26)
+            };
+
             Controls.Add(txtName);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 214), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 236), Size = new Size(436, 26), Text = folder };
+            Controls.Add(new Label
+            {
+                Text = "Save to",
+                Location = new Point(16, 214),
+                AutoSize = true
+            });
+
+            txtFolder = new TextBox
+            {
+                Location = new Point(16, 236),
+                Size = new Size(436, 26),
+                Text = folder
+            };
+
             Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(460, 235), Size = new Size(84, 28) };
+
+            var browse = new Button
+            {
+                Text = "Browse…",
+                Location = new Point(460, 235),
+                Size = new Size(84, 28)
+            };
+
             browse.Click += (s, e) =>
             {
-                using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
-                if (fb.ShowDialog(this) == DialogResult.OK) txtFolder.Text = fb.SelectedPath;
+                using var fb = new FolderBrowserDialog
+                {
+                    SelectedPath = txtFolder.Text
+                };
+
+                if (fb.ShowDialog(this) == DialogResult.OK)
+                    txtFolder.Text = fb.SelectedPath;
             };
+
             Controls.Add(browse);
 
-            var start = new Button { Text = "Start Download", Location = new Point(196, 284), Size = new Size(124, 34) };
-            var later = new Button { Text = "Download Later", Location = new Point(326, 284), Size = new Size(120, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(452, 284), Size = new Size(92, 34), DialogResult = DialogResult.Cancel };
-            start.Click += (s, e) => { if (Check()) DialogResult = DialogResult.OK; };
-            later.Click += (s, e) => { if (Check()) DialogResult = DialogResult.Yes; };
-            Controls.AddRange(new Control[] { start, later, cancel });
-            AcceptButton = start; CancelButton = cancel;
+            var start = new Button
+            {
+                Text = "Start Download",
+                Location = new Point(196, 284),
+                Size = new Size(124, 34)
+            };
+
+            var later = new Button
+            {
+                Text = "Download Later",
+                Location = new Point(326, 284),
+                Size = new Size(120, 34)
+            };
+
+            var cancel = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(452, 284),
+                Size = new Size(92, 34),
+                DialogResult = DialogResult.Cancel
+            };
+
+            start.Click += (s, e) =>
+            {
+                if (Check())
+                    DialogResult = DialogResult.OK;
+            };
+
+            later.Click += (s, e) =>
+            {
+                if (Check())
+                    DialogResult = DialogResult.Yes;
+            };
+
+            Controls.AddRange(new Control[]
+            {
+                start,
+                later,
+                cancel
+            });
+
+            AcceptButton = start;
+            CancelButton = cancel;
         }
 
         bool Check()
         {
-            if (Urls.Length == 0) { MessageBox.Show(this, "Please enter at least one URL."); return false; }
+            if (Urls.Length == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "Please enter at least one URL.");
+
+                return false;
+            }
+
             foreach (var u in Urls)
             {
-                // [এডিট ৬] http, https, ftp, sftp
-                if (!Uri.TryCreate(u, UriKind.Absolute, out var uri) ||
-                    !(uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ||
-                      uri.Scheme == Uri.UriSchemeFtp || uri.Scheme == "sftp"))
-                { MessageBox.Show(this, "Invalid link (http, https, ftp, sftp only):\n" + u); return false; }
+                if (!Uri.TryCreate(
+                        u,
+                        UriKind.Absolute,
+                        out var uri) ||
+                    !(uri.Scheme == Uri.UriSchemeHttp ||
+                      uri.Scheme == Uri.UriSchemeHttps ||
+                      uri.Scheme == Uri.UriSchemeFtp ||
+                      uri.Scheme == "sftp"))
+                {
+                    MessageBox.Show(
+                        this,
+                        "Invalid link (http, https, ftp, sftp only):\n" + u);
+
+                    return false;
+                }
             }
-            if (Folder.Length == 0) { MessageBox.Show(this, "Please choose a folder."); return false; }
+
+            if (Folder.Length == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "Please choose a folder.");
+
+                return false;
+            }
+
             return true;
         }
     }
@@ -381,148 +699,401 @@ namespace FastDM
     // ====================== Settings ডায়ালগ ======================
     class SettingsForm : Form
     {
-        readonly NumericUpDown numConn, numSim;
+        readonly NumericUpDown numConn;
+        readonly NumericUpDown numSim;
         readonly TextBox txtFolder;
         readonly ComboBox cmbTheme;
-        readonly CheckBox chkMin, chkClose, chkNotify, chkUpd;
+        readonly CheckBox chkMin;
+        readonly CheckBox chkClose;
+        readonly CheckBox chkNotify;
+        readonly CheckBox chkUpd;
+        readonly CheckBox chkBridge;
         readonly AppSettings s;
 
         public SettingsForm(AppSettings settings)
         {
             s = settings;
+
             Text = "Settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(460, 448);
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(460, 492);
             Font = new Font("Segoe UI", 9.5f);
 
-            Controls.Add(new Label { Text = "Connections per download (1–16)", Location = new Point(16, 20), AutoSize = true });
-            numConn = new NumericUpDown { Location = new Point(320, 17), Width = 120, Minimum = 1, Maximum = 16, Value = Math.Clamp(s.Connections, 1, 16) };
+            Controls.Add(new Label
+            {
+                Text = "Connections per download (1–16)",
+                Location = new Point(16, 20),
+                AutoSize = true
+            });
+
+            numConn = new NumericUpDown
+            {
+                Location = new Point(320, 17),
+                Width = 120,
+                Minimum = 1,
+                Maximum = 16,
+                Value = Math.Clamp(s.Connections, 1, 16)
+            };
+
             Controls.Add(numConn);
 
-            Controls.Add(new Label { Text = "Simultaneous downloads (1–10)", Location = new Point(16, 60), AutoSize = true });
-            numSim = new NumericUpDown { Location = new Point(320, 57), Width = 120, Minimum = 1, Maximum = 10, Value = Math.Clamp(s.MaxSimultaneous, 1, 10) };
+            Controls.Add(new Label
+            {
+                Text = "Simultaneous downloads (1–10)",
+                Location = new Point(16, 60),
+                AutoSize = true
+            });
+
+            numSim = new NumericUpDown
+            {
+                Location = new Point(320, 57),
+                Width = 120,
+                Minimum = 1,
+                Maximum = 10,
+                Value = Math.Clamp(s.MaxSimultaneous, 1, 10)
+            };
+
             Controls.Add(numSim);
 
-            Controls.Add(new Label { Text = "Default save folder", Location = new Point(16, 100), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 124), Width = 340, Text = s.DefaultFolder };
+            Controls.Add(new Label
+            {
+                Text = "Default save folder",
+                Location = new Point(16, 100),
+                AutoSize = true
+            });
+
+            txtFolder = new TextBox
+            {
+                Location = new Point(16, 124),
+                Width = 340,
+                Text = s.DefaultFolder
+            };
+
             Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(364, 122), Size = new Size(80, 28) };
+
+            var browse = new Button
+            {
+                Text = "Browse…",
+                Location = new Point(364, 122),
+                Size = new Size(80, 28)
+            };
+
             browse.Click += (a, b) =>
             {
-                using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
-                if (fb.ShowDialog(this) == DialogResult.OK) txtFolder.Text = fb.SelectedPath;
+                using var fb = new FolderBrowserDialog
+                {
+                    SelectedPath = txtFolder.Text
+                };
+
+                if (fb.ShowDialog(this) == DialogResult.OK)
+                    txtFolder.Text = fb.SelectedPath;
             };
+
             Controls.Add(browse);
 
-            Controls.Add(new Label { Text = "Theme", Location = new Point(16, 178), AutoSize = true });
-            cmbTheme = new ComboBox { Location = new Point(300, 174), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbTheme.Items.AddRange(new object[] { "Follow system", "Light", "Dark" });
-            cmbTheme.SelectedIndex = Math.Clamp((int)s.ThemeChoice, 0, 2);
+            Controls.Add(new Label
+            {
+                Text = "Theme",
+                Location = new Point(16, 178),
+                AutoSize = true
+            });
+
+            cmbTheme = new ComboBox
+            {
+                Location = new Point(300, 174),
+                Width = 140,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+
+            cmbTheme.Items.AddRange(new object[]
+            {
+                "Follow system",
+                "Light",
+                "Dark"
+            });
+
+            cmbTheme.SelectedIndex =
+                Math.Clamp((int)s.ThemeChoice, 0, 2);
+
             Controls.Add(cmbTheme);
 
-            chkMin = new CheckBox { Text = "Minimize to the system tray", Location = new Point(16, 216), AutoSize = true, Checked = s.MinimizeToTray };
-            chkClose = new CheckBox { Text = "Close button keeps running in the tray", Location = new Point(16, 244), AutoSize = true, Checked = s.CloseToTray };
-            chkNotify = new CheckBox { Text = "Show notifications", Location = new Point(16, 272), AutoSize = true, Checked = s.ShowNotifications };
-            chkUpd = new CheckBox { Text = "Check for updates on startup (portable version)", Location = new Point(16, 300), AutoSize = true, Checked = s.CheckUpdatesOnStart };
-            Controls.AddRange(new Control[] { chkMin, chkClose, chkNotify, chkUpd });
+            chkMin = new CheckBox
+            {
+                Text = "Minimize to the system tray",
+                Location = new Point(16, 216),
+                AutoSize = true,
+                Checked = s.MinimizeToTray
+            };
 
-            var ok = new Button { Text = "Save", Location = new Point(250, 396), Size = new Size(90, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(350, 396), Size = new Size(90, 34), DialogResult = DialogResult.Cancel };
+            chkClose = new CheckBox
+            {
+                Text = "Close button keeps running in the tray",
+                Location = new Point(16, 244),
+                AutoSize = true,
+                Checked = s.CloseToTray
+            };
+
+            chkNotify = new CheckBox
+            {
+                Text = "Show notifications",
+                Location = new Point(16, 272),
+                AutoSize = true,
+                Checked = s.ShowNotifications
+            };
+
+            chkUpd = new CheckBox
+            {
+                Text = "Check for updates on startup (portable version)",
+                Location = new Point(16, 300),
+                AutoSize = true,
+                Checked = s.CheckUpdatesOnStart
+            };
+
+            Controls.AddRange(new Control[]
+            {
+                chkMin,
+                chkClose,
+                chkNotify,
+                chkUpd
+            });
+
+            chkBridge = new CheckBox
+            {
+                Text = "Allow the browser extension to connect",
+                Location = new Point(16, 330),
+                AutoSize = true,
+                Checked = s.BridgeEnabled
+            };
+
+            var forget = new Button
+            {
+                Text = "Forget paired browsers",
+                Location = new Point(270, 326),
+                Size = new Size(170, 30)
+            };
+
+            forget.Click += (a, b) =>
+            {
+                lock (s.BridgeTokens)
+                    s.BridgeTokens.Clear();
+
+                MessageBox.Show(
+                    this,
+                    "All paired browsers were forgotten. Each browser extension must connect (pair) again.",
+                    "FastDM");
+            };
+
+            Controls.Add(chkBridge);
+            Controls.Add(forget);
+
+            var ok = new Button
+            {
+                Text = "Save",
+                Location = new Point(250, 440),
+                Size = new Size(90, 34)
+            };
+
+            var cancel = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(350, 440),
+                Size = new Size(90, 34),
+                DialogResult = DialogResult.Cancel
+            };
+
             ok.Click += (a, b) =>
             {
                 s.Connections = (int)numConn.Value;
                 s.MaxSimultaneous = (int)numSim.Value;
-                if (txtFolder.Text.Trim().Length > 0) s.DefaultFolder = txtFolder.Text.Trim();
-                s.ThemeChoice = (ThemeMode)Math.Clamp(cmbTheme.SelectedIndex, 0, 2);
+
+                if (txtFolder.Text.Trim().Length > 0)
+                    s.DefaultFolder = txtFolder.Text.Trim();
+
+                s.ThemeChoice =
+                    (ThemeMode)Math.Clamp(cmbTheme.SelectedIndex, 0, 2);
+
                 s.MinimizeToTray = chkMin.Checked;
                 s.CloseToTray = chkClose.Checked;
                 s.ShowNotifications = chkNotify.Checked;
                 s.CheckUpdatesOnStart = chkUpd.Checked;
+                s.BridgeEnabled = chkBridge.Checked;
+
                 DialogResult = DialogResult.OK;
             };
-            var net = new Button { Text = "Speed limit && proxy…", Location = new Point(16, 346), Size = new Size(200, 34) };
+
+            var net = new Button
+            {
+                Text = "Speed limit && proxy…",
+                Location = new Point(16, 390),
+                Size = new Size(200, 34)
+            };
+
             net.Click += (a, b) =>
             {
                 using var nf = new NetworkForm(s);
                 Theme.Apply(nf);
                 nf.ShowDialog(this);
             };
+
             Controls.Add(net);
 
-            var sched = new Button { Text = "Scheduler…", Location = new Point(224, 346), Size = new Size(216, 34) };
+            var sched = new Button
+            {
+                Text = "Scheduler…",
+                Location = new Point(224, 390),
+                Size = new Size(216, 34)
+            };
+
             sched.Click += (a, b) =>
             {
                 using var sf = new ScheduleForm(s);
                 Theme.Apply(sf);
                 sf.ShowDialog(this);
             };
+
             Controls.Add(sched);
 
-            var yt = new Button { Text = "Update yt-dlp", Location = new Point(16, 396), Size = new Size(200, 34) };
+            var yt = new Button
+            {
+                Text = "Update yt-dlp",
+                Location = new Point(16, 440),
+                Size = new Size(200, 34)
+            };
+
             yt.Click += async (a, b) =>
             {
                 if (UpdateChecker.IsPackaged)
                 {
-                    MessageBox.Show(this, "In the Store version, yt-dlp is updated together with the app.", "yt-dlp");
+                    MessageBox.Show(
+                        this,
+                        "In the Store version, yt-dlp is updated together with the app.",
+                        "yt-dlp");
+
                     return;
                 }
+
                 yt.Enabled = false;
+
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-                    string msg = await YtDlpUpdater.UpdateAsync(cts.Token);
+                    using var cts =
+                        new CancellationTokenSource(
+                            TimeSpan.FromSeconds(120));
+
+                    string msg =
+                        await YtDlpUpdater.UpdateAsync(cts.Token);
+
                     MessageBox.Show(this, msg, "yt-dlp");
                 }
-                catch (Exception ex) { MessageBox.Show(this, ex.Message, "yt-dlp"); }
-                finally { yt.Enabled = true; }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        this,
+                        ex.Message,
+                        "yt-dlp");
+                }
+                finally
+                {
+                    yt.Enabled = true;
+                }
             };
+
             Controls.Add(yt);
 
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            Controls.Add(ok);
+            Controls.Add(cancel);
+
+            AcceptButton = ok;
+            CancelButton = cancel;
         }
     }
 
     // ====================== মূল ফর্ম ======================
     public partial class Form1 : Form
     {
-        // স্ট্যাটাস রঙ (দুই থিমেই একই), বাকি রঙ AppTheme.cs-এ
-        static readonly Color Green = ColorTranslator.FromHtml("#2ECC71");
-        static readonly Color Orange = ColorTranslator.FromHtml("#F5A623");
-        static readonly Color Red = ColorTranslator.FromHtml("#FF5C77");
-        static readonly Color Gray = ColorTranslator.FromHtml("#9AA0B4");
-        static readonly Font BarFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        static readonly Color Green =
+            ColorTranslator.FromHtml("#2ECC71");
 
-        class IconTag { public string Glyph; public bool Accent; }
+        static readonly Color Orange =
+            ColorTranslator.FromHtml("#F5A623");
 
-        static readonly string[] FilterNames = { "All Downloads", "Downloading", "Queued / Paused", "Completed", "Errors" };
+        static readonly Color Red =
+            ColorTranslator.FromHtml("#FF5C77");
+
+        static readonly Color Gray =
+            ColorTranslator.FromHtml("#9AA0B4");
+
+        static readonly Font BarFont =
+            new Font("Segoe UI", 8.5f, FontStyle.Bold);
+
+        class IconTag
+        {
+            public string Glyph;
+            public bool Accent;
+        }
+
+        static readonly string[] FilterNames =
+        {
+            "All Downloads",
+            "Downloading",
+            "Queued / Paused",
+            "Completed",
+            "Errors"
+        };
+
         static readonly string[] FileExts =
         {
             ".zip", ".rar", ".7z", ".iso", ".exe", ".msi", ".apk", ".pdf",
             ".mp4", ".mkv", ".avi", ".mp3", ".flac", ".bin", ".dmg", ".torrent"
         };
 
-        readonly List<DownloadItem> items = new List<DownloadItem>();
+        readonly List<DownloadItem> items =
+            new List<DownloadItem>();
+
         AppSettings settings = new AppSettings();
-        readonly string dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FastDM");
-        string DataFile => Path.Combine(dataDir, "state.json");
+
+        readonly string dataDir =
+            Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData),
+                "FastDM");
+
+        string DataFile =>
+            Path.Combine(dataDir, "state.json");
 
         BufferedListView lv;
         ListBox sidebar;
-        ToolStripStatusLabel lblActive, lblSpeed, lblLimit;
-        ToolStripDropDownButton speedMenu, doneMenu;
-        System.Windows.Forms.Timer navTimer;      // সাইডবার খোলা/বন্ধের অ্যানিমেশন
+
+        ToolStripStatusLabel lblActive;
+        ToolStripStatusLabel lblSpeed;
+        ToolStripStatusLabel lblLimit;
+
+        ToolStripDropDownButton speedMenu;
+        ToolStripDropDownButton doneMenu;
+
+        System.Windows.Forms.Timer navTimer;
+
         int navTarget = 200;
-        const int SidebarWidth = 200;              // সাইডবারের পূর্ণ প্রস্থ (লেআউট সবসময় এই প্রস্থ ধরে আঁকা হয়)
-        readonly int[] sideCounts = new int[5];    // প্রতিটা ফিল্টারের সংখ্যা (আগে থেকে গোনা)
+
+        const int SidebarWidth = 200;
+
+        readonly int[] sideCounts = new int[5];
+
         ToolStripStatusLabel lblSched;
+
         DetailsPanel details;
-        PostAction afterAll = PostAction.None;     // একবারের জন্য, সেভ হয় না
+
+        PostAction afterAll = PostAction.None;
+
         bool scheduleBlocked;
         bool? lastAllowed;
+
         System.Windows.Forms.Timer timer;
+
         int filter = 0;
         bool dirty;
         string lastClip;
@@ -530,29 +1101,53 @@ namespace FastDM
 
         ToolStrip tools;
         StatusStrip statusBar;
+
         NotifyIcon tray;
         ContextMenuStrip trayMenu;
-        bool exiting, trayTipShown;
+
+        bool exiting;
+        bool trayTipShown;
+
         int sessionCompleted;
         string lastCompletedName = "";
         string lastTrayTip = "";
+
         DateTime lastErrorNotify = DateTime.MinValue;
+
         EventWaitHandle showEvent;
+        BridgeServer bridge;
+        CancellationTokenSource pipeCts;
         RegisteredWaitHandle regWait;
 
         public Form1()
         {
             InitializeComponent();
+
             LoadState();
+
             Theme.SetMode(settings.ThemeChoice);
             NetworkApply.Load(settings);
+
             BuildUI();
             BuildTray();
+
             ApplyTheme();
             RebuildList();
-            try { lastClip = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : null; } catch { }
 
-            timer = new System.Windows.Forms.Timer { Interval = 500 };
+            try
+            {
+                lastClip =
+                    Clipboard.ContainsText()
+                        ? Clipboard.GetText().Trim()
+                        : null;
+            }
+            catch { }
+
+            timer = new System.Windows.Forms.Timer
+            {
+                Interval = 500
+            };
+
             timer.Tick += OnTick;
             timer.Start();
 
@@ -560,20 +1155,54 @@ namespace FastDM
             Resize += OnFormResize;
             FormClosing += OnFormClosing;
             FormClosed += (s, e) => Cleanup();
+
             SystemEvents.UserPreferenceChanged += OnSysPrefChanged;
+
             SetupSingleInstanceListener();
+            StartPipeListener();
+
+            try
+            {
+                ProtocolHandler.RegisterForCurrentUser();
+            }
+            catch { }
+
+            StartBridge();
 
             Shown += (s, e) => FitLastColumn();
+
+            Shown += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(
+                        Program.StartupCommand))
+                {
+                    HandleProtocolCommand(
+                        Program.StartupCommand);
+                }
+            };
+
             Shown += async (s, e) =>
             {
-                try { await YtDlpUpdater.MaybeAutoUpdateAsync(settings); SaveState(); } catch { }
+                try
+                {
+                    await YtDlpUpdater
+                        .MaybeAutoUpdateAsync(settings);
+
+                    SaveState();
+                }
+                catch { }
             };
-            // স্টার্টআপে নীরব আপডেট চেক (শুধু পোর্টেবল ভার্সনে কাজ করে)
+
             Shown += async (s, e) =>
             {
                 if (settings.CheckUpdatesOnStart)
                 {
-                    try { await UpdateChecker.CheckAndShowAsync(this, true); } catch { }
+                    try
+                    {
+                        await UpdateChecker
+                            .CheckAndShowAsync(this, true);
+                    }
+                    catch { }
                 }
             };
         }
@@ -587,6 +1216,7 @@ namespace FastDM
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9.5f);
             AllowDrop = true;
+
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
 
@@ -602,8 +1232,12 @@ namespace FastDM
                 BorderStyle = BorderStyle.None,
                 ShowItemToolTips = true,
                 AllowDrop = true,
-                SmallImageList = new ImageList { ImageSize = new Size(1, 34) }   // row height
+                SmallImageList = new ImageList
+                {
+                    ImageSize = new Size(1, 34)
+                }
             };
+
             lv.Columns.Add("Name", 300);
             lv.Columns.Add("Size", 90);
             lv.Columns.Add("Progress", 170);
@@ -611,18 +1245,32 @@ namespace FastDM
             lv.Columns.Add("Speed", 95);
             lv.Columns.Add("ETA", 80);
             lv.Columns.Add("Added", 120);
+
             lv.DrawColumnHeader += DrawHeader;
             lv.DrawItem += (s, e) => { };
             lv.DrawSubItem += DrawSub;
             lv.DoubleClick += (s, e) => OnDoubleClick();
-            lv.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete) RemoveSelected(); };
+
+            lv.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Delete)
+                    RemoveSelected();
+            };
+
             lv.DragEnter += OnDragEnter;
             lv.DragDrop += OnDragDrop;
+
             lv.ContextMenuStrip = BuildContextMenu();
-            lv.SelectedIndexChanged += (s, e) => details?.SetItem(Sel().FirstOrDefault());
+
+            lv.SelectedIndexChanged += (s, e) =>
+                details?.SetItem(
+                    Sel().FirstOrDefault());
 
             // নিচের ডিটেইলস প্যানেল
-            details = new DetailsPanel { Visible = settings.ShowDetails };
+            details = new DetailsPanel
+            {
+                Visible = settings.ShowDetails
+            };
 
             // Sidebar
             sidebar = new BufferedListBox
@@ -633,33 +1281,70 @@ namespace FastDM
                 DrawMode = DrawMode.OwnerDrawFixed,
                 ItemHeight = 40
             };
+
             sidebar.Items.AddRange(FilterNames);
             sidebar.SelectedIndex = 0;
+
             UpdateSideCounts();
-            sidebar.Width = settings.SidebarOpen ? 200 : 0;
-            sidebar.Visible = settings.SidebarOpen;
-            navTarget = settings.SidebarOpen ? 200 : 0;
-            navTimer = new System.Windows.Forms.Timer { Interval = 15 };
+
+            sidebar.Width =
+                settings.SidebarOpen
+                    ? 200
+                    : 0;
+
+            sidebar.Visible =
+                settings.SidebarOpen;
+
+            navTarget =
+                settings.SidebarOpen
+                    ? 200
+                    : 0;
+
+            navTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 15
+            };
+
             navTimer.Tick += (s, e) => StepSidebar();
+
             sidebar.DrawItem += DrawSidebar;
+
             sidebar.SelectedIndexChanged += (s, e) =>
             {
-                filter = Math.Max(0, sidebar.SelectedIndex);
+                filter = Math.Max(
+                    0,
+                    sidebar.SelectedIndex);
+
                 RebuildList();
             };
 
             // Status bar
-            statusBar = new StatusStrip { SizingGrip = false };
-            lblActive = new ToolStripStatusLabel("Active: 0") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
-            lblLimit = new ToolStripStatusLabel("Limit: Off");
-            lblSched = new ToolStripStatusLabel("Schedule: Off");
-            lblSpeed = new ToolStripStatusLabel("↓ 0 B/s");
+            statusBar = new StatusStrip
+            {
+                SizingGrip = false
+            };
+
+            lblActive = new ToolStripStatusLabel("Active: 0")
+            {
+                Spring = true,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            lblLimit =
+                new ToolStripStatusLabel("Limit: Off");
+
+            lblSched =
+                new ToolStripStatusLabel("Schedule: Off");
+
+            lblSpeed =
+                new ToolStripStatusLabel("↓ 0 B/s");
+
             statusBar.Items.Add(lblActive);
             statusBar.Items.Add(lblSched);
             statusBar.Items.Add(lblLimit);
             statusBar.Items.Add(lblSpeed);
 
-            // Toolbar (আইকন সহ; আইকন ফন্ট না থাকলে শুধু লেখা)
+            // Toolbar
             tools = new ToolStrip
             {
                 GripStyle = ToolStripGripStyle.Hidden,
@@ -667,28 +1352,138 @@ namespace FastDM
                 Font = new Font("Segoe UI", 10f),
                 ImageScalingSize = new Size(20, 20)
             };
-            tools.Items.Add(Btn("Menu", "☰ ", "\uE700", false, (s, e) => ToggleSidebar(), true));
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("Add URL", "＋ ", "\uE710", true, (s, e) => ShowAddDialog("")));
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("Resume", "▶ ", "\uE768", false, (s, e) => ResumeSelected()));
-            tools.Items.Add(Btn("Pause", "❚❚ ", "\uE769", false, (s, e) => PauseSelected()));
-            tools.Items.Add(Btn("Pause All", "", "\uE769", false, (s, e) => PauseAll()));
-            tools.Items.Add(Btn("Remove", "✕ ", "\uE74D", false, (s, e) => RemoveSelected()));
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("Open File", "", "\uE8E5", false, (s, e) => OpenSelected(false), true));
-            tools.Items.Add(Btn("Open Folder", "", "\uE838", false, (s, e) => OpenSelected(true), true));
-            tools.Items.Add(new ToolStripSeparator());
+
+            // সব toolbar action একইভাবে Icon + Text দেখাবে
+            tools.Items.Add(
+                Btn(
+                    "Menu",
+                    "☰  ",
+                    "\uE700",
+                    false,
+                    (s, e) => ToggleSidebar(),
+                    false));
+
+            tools.Items.Add(
+                new ToolStripSeparator());
+
+            tools.Items.Add(
+                Btn(
+                    "Add URL",
+                    "＋  ",
+                    "\uE710",
+                    true,
+                    (s, e) => ShowAddDialog(""),
+                    false));
+
+            tools.Items.Add(
+                new ToolStripSeparator());
+
+            tools.Items.Add(
+                Btn(
+                    "Resume",
+                    "▶  ",
+                    "\uE768",
+                    false,
+                    (s, e) => ResumeSelected(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Pause",
+                    "❚❚  ",
+                    "\uE769",
+                    false,
+                    (s, e) => PauseSelected(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Pause All",
+                    "❚❚  ",
+                    "\uE769",
+                    false,
+                    (s, e) => PauseAll(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Remove",
+                    "✕  ",
+                    "\uE74D",
+                    false,
+                    (s, e) => RemoveSelected(),
+                    false));
+
+            tools.Items.Add(
+                new ToolStripSeparator());
+
+            tools.Items.Add(
+                Btn(
+                    "Open File",
+                    "▣  ",
+                    "\uE8E5",
+                    false,
+                    (s, e) => OpenSelected(false),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Open Folder",
+                    "▰  ",
+                    "\uE838",
+                    false,
+                    (s, e) => OpenSelected(true),
+                    false));
+
+            tools.Items.Add(
+                new ToolStripSeparator());
+
             BuildSpeedMenu();
             tools.Items.Add(speedMenu);
-            tools.Items.Add(Btn("Schedule", "⏰ ", "\uE787", false, (s, e) => ShowSchedule()));
+
+            tools.Items.Add(
+                Btn(
+                    "Schedule",
+                    "⏰  ",
+                    "\uE787",
+                    false,
+                    (s, e) => ShowSchedule(),
+                    false));
+
             BuildDoneMenu();
             tools.Items.Add(doneMenu);
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(Btn("Details", "▤ ", "\uE946", false, (s, e) => ToggleDetails(), true));
-            tools.Items.Add(Btn("Settings", "⚙ ", "\uE713", false, (s, e) => ShowSettings(), true));
-            tools.Items.Add(Btn("Updates", "⟳ ", "\uE72C", false,
-                async (s, e) => await UpdateChecker.CheckAndShowAsync(this, false), true));
+
+            tools.Items.Add(
+                new ToolStripSeparator());
+
+            tools.Items.Add(
+                Btn(
+                    "Details",
+                    "▤  ",
+                    "\uE946",
+                    false,
+                    (s, e) => ToggleDetails(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Settings",
+                    "⚙  ",
+                    "\uE713",
+                    false,
+                    (s, e) => ShowSettings(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
+                    "Updates",
+                    "⟳  ",
+                    "\uE72C",
+                    false,
+                    async (s, e) =>
+                        await UpdateChecker
+                            .CheckAndShowAsync(this, false),
+                    false));
 
             // ক্রম গুরুত্বপূর্ণ: Fill আগে, তারপর বাকিগুলো
             Controls.Add(lv);
@@ -698,30 +1493,62 @@ namespace FastDM
             Controls.Add(tools);
         }
 
-        static ToolStripButton Btn(string text, string fallbackPrefix, string glyph, bool accent, EventHandler h, bool iconOnly = false)
+        static ToolStripButton Btn(
+            string text,
+            string fallbackPrefix,
+            string glyph,
+            bool accent,
+            EventHandler h,
+            bool iconOnly = false)
         {
             bool icons = Icons.Available;
-            var b = new ToolStripButton(icons ? text : fallbackPrefix + text)
+
+            var b = new ToolStripButton(
+                icons
+                    ? text
+                    : fallbackPrefix + text)
             {
                 ToolTipText = text,
-                DisplayStyle = icons ? (iconOnly ? ToolStripItemDisplayStyle.Image : ToolStripItemDisplayStyle.ImageAndText) : ToolStripItemDisplayStyle.Text,
-                TextImageRelation = TextImageRelation.ImageBeforeText,
+
+                // সব button-এ একইভাবে icon + text
+                DisplayStyle = icons
+                    ? ToolStripItemDisplayStyle.ImageAndText
+                    : ToolStripItemDisplayStyle.Text,
+
+                TextImageRelation =
+                    TextImageRelation.ImageBeforeText,
+
                 Padding = new Padding(4),
-                Tag = new IconTag { Glyph = glyph, Accent = accent }
+
+                Tag = new IconTag
+                {
+                    Glyph = glyph,
+                    Accent = accent
+                }
             };
+
             b.Click += h;
             return b;
         }
 
         void RefreshToolIcons()
         {
-            if (!Icons.Available) return;
-            foreach (ToolStripItem b in tools.Items)
+            if (!Icons.Available)
+                return;
+
+            foreach (ToolStripItem item in tools.Items)
             {
-                if (b.Tag is IconTag tag)
+                if (item.Tag is IconTag tag)
                 {
-                    var old = b.Image;
-                    b.Image = Icons.Make(tag.Glyph, tag.Accent ? Theme.P.Accent : Theme.P.Text, 20);
+                    var old = item.Image;
+
+                    item.Image = Icons.Make(
+                        tag.Glyph,
+                        tag.Accent
+                            ? Theme.P.Accent
+                            : Theme.P.Text,
+                        20);
+
                     old?.Dispose();
                 }
             }
@@ -730,120 +1557,363 @@ namespace FastDM
         ContextMenuStrip BuildContextMenu()
         {
             var m = new ContextMenuStrip();
-            m.Items.Add("Resume", null, (s, e) => ResumeSelected());
-            m.Items.Add("Pause", null, (s, e) => PauseSelected());
-            m.Items.Add("Start now (ignore schedule)", null, (s, e) => StartNowSelected());
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("Open File", null, (s, e) => OpenSelected(false));
-            m.Items.Add("Open Folder", null, (s, e) => OpenSelected(true));
-            m.Items.Add("Copy URL", null, (s, e) =>
-            {
-                var sel = Sel();
-                if (sel.Count > 0) Clipboard.SetText(string.Join(Environment.NewLine, sel.Select(i => i.Url)));
-            });
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("Remove", null, (s, e) => RemoveSelected());
+
+            m.Items.Add(
+                "Resume",
+                null,
+                (s, e) => ResumeSelected());
+
+            m.Items.Add(
+                "Pause",
+                null,
+                (s, e) => PauseSelected());
+
+            m.Items.Add(
+                "Start now (ignore schedule)",
+                null,
+                (s, e) => StartNowSelected());
+
+            m.Items.Add(
+                new ToolStripSeparator());
+
+            m.Items.Add(
+                "Open File",
+                null,
+                (s, e) => OpenSelected(false));
+
+            m.Items.Add(
+                "Open Folder",
+                null,
+                (s, e) => OpenSelected(true));
+
+            m.Items.Add(
+                "Copy URL",
+                null,
+                (s, e) =>
+                {
+                    var sel = Sel();
+
+                    if (sel.Count > 0)
+                    {
+                        Clipboard.SetText(
+                            string.Join(
+                                Environment.NewLine,
+                                sel.Select(i => i.Url)));
+                    }
+                });
+
+            m.Items.Add(
+                new ToolStripSeparator());
+
+            m.Items.Add(
+                "Remove",
+                null,
+                (s, e) => RemoveSelected());
+
             return m;
         }
 
         // ---------- ড্রয়িং ----------
-        void DrawSidebar(object sender, DrawItemEventArgs e)
+        void DrawSidebar(
+            object sender,
+            DrawItemEventArgs e)
         {
-            if (e.Index < 0) return;
+            if (e.Index < 0)
+                return;
+
             var p = Theme.P;
             var g = e.Graphics;
-            bool sel = (e.State & DrawItemState.Selected) != 0;
-            using (var b = new SolidBrush(sel ? p.SideSel : p.SideBg)) g.FillRectangle(b, e.Bounds);
-            if (sel) using (var b = new SolidBrush(p.Accent)) g.FillRectangle(b, e.Bounds.X, e.Bounds.Y, 4, e.Bounds.Height);
 
-            // সবসময় পূর্ণ প্রস্থ (200px) ধরে সাজানো: স্লাইডের সময় লেখা/সংখ্যা সরে না, শুধু ঢাকা পড়ে বা প্রকাশ পায়
-            var tr = new Rectangle(e.Bounds.X + 18, e.Bounds.Y, SidebarWidth - 70, e.Bounds.Height);
-            TextRenderer.DrawText(g, FilterNames[e.Index], Font, tr, p.SideText,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
-            int count = e.Index < sideCounts.Length ? sideCounts[e.Index] : 0;
-            var cr = new Rectangle(e.Bounds.X + SidebarWidth - 55, e.Bounds.Y, 45, e.Bounds.Height);
-            TextRenderer.DrawText(g, count.ToString(), Font, cr, p.SideCount,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+            bool sel =
+                (e.State & DrawItemState.Selected) != 0;
+
+            using (var b = new SolidBrush(
+                sel ? p.SideSel : p.SideBg))
+            {
+                g.FillRectangle(b, e.Bounds);
+            }
+
+            if (sel)
+            {
+                using (var b = new SolidBrush(p.Accent))
+                {
+                    g.FillRectangle(
+                        b,
+                        e.Bounds.X,
+                        e.Bounds.Y,
+                        4,
+                        e.Bounds.Height);
+                }
+            }
+
+            var tr = new Rectangle(
+                e.Bounds.X + 18,
+                e.Bounds.Y,
+                SidebarWidth - 70,
+                e.Bounds.Height);
+
+            TextRenderer.DrawText(
+                g,
+                FilterNames[e.Index],
+                Font,
+                tr,
+                p.SideText,
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.Left);
+
+            int count =
+                e.Index < sideCounts.Length
+                    ? sideCounts[e.Index]
+                    : 0;
+
+            var cr = new Rectangle(
+                e.Bounds.X + SidebarWidth - 55,
+                e.Bounds.Y,
+                45,
+                e.Bounds.Height);
+
+            TextRenderer.DrawText(
+                g,
+                count.ToString(),
+                Font,
+                cr,
+                p.SideCount,
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.Right);
         }
 
-        void DrawHeader(object sender, DrawListViewColumnHeaderEventArgs e)
+        void DrawHeader(
+            object sender,
+            DrawListViewColumnHeaderEventArgs e)
         {
             var p = Theme.P;
-            using (var b = new SolidBrush(p.Header)) e.Graphics.FillRectangle(b, e.Bounds);
+
+            using (var b = new SolidBrush(p.Header))
+                e.Graphics.FillRectangle(
+                    b,
+                    e.Bounds);
+
             using (var pen = new Pen(p.Border))
             {
-                e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
-                e.Graphics.DrawLine(pen, e.Bounds.Right - 1, e.Bounds.Top + 6, e.Bounds.Right - 1, e.Bounds.Bottom - 6);
+                e.Graphics.DrawLine(
+                    pen,
+                    e.Bounds.Left,
+                    e.Bounds.Bottom - 1,
+                    e.Bounds.Right,
+                    e.Bounds.Bottom - 1);
+
+                e.Graphics.DrawLine(
+                    pen,
+                    e.Bounds.Right - 1,
+                    e.Bounds.Top + 6,
+                    e.Bounds.Right - 1,
+                    e.Bounds.Bottom - 6);
             }
-            var tr = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
-            TextRenderer.DrawText(e.Graphics, e.Header.Text, Font, tr, p.SubText,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+            var tr = new Rectangle(
+                e.Bounds.X + 8,
+                e.Bounds.Y,
+                Math.Max(
+                    0,
+                    e.Bounds.Width - 12),
+                e.Bounds.Height);
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                e.Header.Text,
+                Font,
+                tr,
+                p.SubText,
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.Left |
+                TextFormatFlags.EndEllipsis |
+                TextFormatFlags.NoPrefix);
         }
 
-        void DrawSub(object sender, DrawListViewSubItemEventArgs e)
+        void DrawSub(
+            object sender,
+            DrawListViewSubItemEventArgs e)
         {
             var p = Theme.P;
             var it = (DownloadItem)e.Item.Tag;
             var g = e.Graphics;
-            var r = new Rectangle(e.Bounds.X, e.Bounds.Y, lv.Columns[e.ColumnIndex].Width, e.Bounds.Height);
 
-            Color back = e.Item.Selected ? p.Selection
-                       : (e.ItemIndex % 2 == 0 ? p.Window : p.RowAlt);
-            using (var b = new SolidBrush(back)) g.FillRectangle(b, r);
+            var r = new Rectangle(
+                e.Bounds.X,
+                e.Bounds.Y,
+                lv.Columns[e.ColumnIndex].Width,
+                e.Bounds.Height);
 
-            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
-                        TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            Color back =
+                e.Item.Selected
+                    ? p.Selection
+                    : (e.ItemIndex % 2 == 0
+                        ? p.Window
+                        : p.RowAlt);
+
+            using (var b = new SolidBrush(back))
+                g.FillRectangle(b, r);
+
+            var flags =
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.Left |
+                TextFormatFlags.EndEllipsis |
+                TextFormatFlags.NoPrefix;
 
             if (e.ColumnIndex == 0)
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                using (var b = new SolidBrush(StateColor(it.State)))
-                    g.FillEllipse(b, r.X + 8, r.Y + (r.Height - 10) / 2, 10, 10);
-                var tr = new Rectangle(r.X + 26, r.Y, r.Width - 30, r.Height);
-                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, p.Text, flags);
+                g.SmoothingMode =
+                    SmoothingMode.AntiAlias;
+
+                using (var b = new SolidBrush(
+                    StateColor(it.State)))
+                {
+                    g.FillEllipse(
+                        b,
+                        r.X + 8,
+                        r.Y + (r.Height - 10) / 2,
+                        10,
+                        10);
+                }
+
+                var tr = new Rectangle(
+                    r.X + 26,
+                    r.Y,
+                    r.Width - 30,
+                    r.Height);
+
+                TextRenderer.DrawText(
+                    g,
+                    e.SubItem.Text,
+                    Font,
+                    tr,
+                    p.Text,
+                    flags);
             }
             else if (e.ColumnIndex == 2)
             {
-                var bar = new Rectangle(r.X + 6, r.Y + (r.Height - 18) / 2, r.Width - 14, 18);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var bar = new Rectangle(
+                    r.X + 6,
+                    r.Y + (r.Height - 18) / 2,
+                    r.Width - 14,
+                    18);
+
+                g.SmoothingMode =
+                    SmoothingMode.AntiAlias;
+
                 using (var gp = RoundRect(bar, 8))
                 using (var b = new SolidBrush(p.Track))
+                {
                     g.FillPath(b, gp);
+                }
 
                 string label;
+
                 if (it.TotalBytes > 0)
                 {
-                    int w = (int)(bar.Width * it.Percent / 100.0);
+                    int w = (int)(
+                        bar.Width *
+                        it.Percent /
+                        100.0);
+
                     if (w > 6)
                     {
-                        var fill = new Rectangle(bar.X, bar.Y, w, bar.Height);
-                        using (var gp = RoundRect(fill, 8))
-                        using (var b = new SolidBrush(StateColor(it.State)))
+                        var fill = new Rectangle(
+                            bar.X,
+                            bar.Y,
+                            w,
+                            bar.Height);
+
+                        using (var gp =
+                               RoundRect(fill, 8))
+                        using (var b =
+                               new SolidBrush(
+                                   StateColor(it.State)))
+                        {
                             g.FillPath(b, gp);
+                        }
                     }
-                    label = it.Percent.ToString("0.0") + "%";
+
+                    label =
+                        it.Percent.ToString("0.0") +
+                        "%";
                 }
-                else label = it.Downloaded > 0 ? Fmt(it.Downloaded) : "—";
-                TextRenderer.DrawText(g, label, BarFont, bar, p.Text,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+                else
+                {
+                    label =
+                        it.Downloaded > 0
+                            ? Fmt(it.Downloaded)
+                            : "—";
+                }
+
+                TextRenderer.DrawText(
+                    g,
+                    label,
+                    BarFont,
+                    bar,
+                    p.Text,
+                    TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.HorizontalCenter);
             }
             else
             {
-                var tr = new Rectangle(r.X + 6, r.Y, r.Width - 8, r.Height);
-                TextRenderer.DrawText(g, e.SubItem.Text, Font, tr, p.Text, flags);
+                var tr = new Rectangle(
+                    r.X + 6,
+                    r.Y,
+                    r.Width - 8,
+                    r.Height);
+
+                TextRenderer.DrawText(
+                    g,
+                    e.SubItem.Text,
+                    Font,
+                    tr,
+                    p.Text,
+                    flags);
             }
         }
 
-        static GraphicsPath RoundRect(Rectangle r, int radius)
+        static GraphicsPath RoundRect(
+            Rectangle r,
+            int radius)
         {
             int d = radius * 2;
             var p = new GraphicsPath();
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+
+            p.AddArc(
+                r.X,
+                r.Y,
+                d,
+                d,
+                180,
+                90);
+
+            p.AddArc(
+                r.Right - d,
+                r.Y,
+                d,
+                d,
+                270,
+                90);
+
+            p.AddArc(
+                r.Right - d,
+                r.Bottom - d,
+                d,
+                d,
+                0,
+                90);
+
+            p.AddArc(
+                r.X,
+                r.Bottom - d,
+                d,
+                d,
+                90,
+                90);
+
             p.CloseFigure();
+
             return p;
         }
 
@@ -851,220 +1921,574 @@ namespace FastDM
         {
             switch (s)
             {
-                case DlState.Downloading: return Theme.P.Accent;
-                case DlState.Completed: return Green;
-                case DlState.Paused: return Orange;
-                case DlState.Error: return Red;
-                default: return Gray;
+                case DlState.Downloading:
+                    return Theme.P.Accent;
+
+                case DlState.Completed:
+                    return Green;
+
+                case DlState.Paused:
+                    return Orange;
+
+                case DlState.Error:
+                    return Red;
+
+                default:
+                    return Gray;
             }
         }
 
         // ---------- লিস্ট ----------
-        static bool Match(int f, DownloadItem i)
+        static bool Match(
+            int f,
+            DownloadItem i)
         {
             switch (f)
             {
-                case 1: return i.State == DlState.Downloading;
-                case 2: return i.State == DlState.Queued || i.State == DlState.Paused;
-                case 3: return i.State == DlState.Completed;
-                case 4: return i.State == DlState.Error;
-                default: return true;
+                case 1:
+                    return i.State == DlState.Downloading;
+
+                case 2:
+                    return i.State == DlState.Queued ||
+                           i.State == DlState.Paused;
+
+                case 3:
+                    return i.State == DlState.Completed;
+
+                case 4:
+                    return i.State == DlState.Error;
+
+                default:
+                    return true;
             }
         }
 
         void RebuildList()
         {
-            var selected = lv.SelectedItems.Cast<ListViewItem>().Select(l => ((DownloadItem)l.Tag).Id).ToHashSet();
+            var selected =
+                lv.SelectedItems
+                  .Cast<ListViewItem>()
+                  .Select(l => ((DownloadItem)l.Tag).Id)
+                  .ToHashSet();
+
             lv.BeginUpdate();
+
             lv.Items.Clear();
-            foreach (var it in items.Where(i => Match(filter, i)).OrderByDescending(i => i.Added))
+
+            foreach (var it in items
+                .Where(i => Match(filter, i))
+                .OrderByDescending(i => i.Added))
             {
-                var lvi = new ListViewItem(new[] { "", "", "", "", "", "", "" }) { Tag = it };
+                var lvi =
+                    new ListViewItem(
+                        new[]
+                        {
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            ""
+                        })
+                    {
+                        Tag = it
+                    };
+
                 lv.Items.Add(lvi);
+
                 FillRow(lvi, it);
-                if (selected.Contains(it.Id)) lvi.Selected = true;
+
+                if (selected.Contains(it.Id))
+                    lvi.Selected = true;
             }
+
             lv.EndUpdate();
+
             UpdateSideCounts();
             sidebar.Invalidate();
         }
 
-        static void SetIf(ListViewItem l, int idx, string text)
+        static void SetIf(
+            ListViewItem l,
+            int idx,
+            string text)
         {
-            if (l.SubItems[idx].Text != text) l.SubItems[idx].Text = text;
+            if (l.SubItems[idx].Text != text)
+                l.SubItems[idx].Text = text;
         }
 
-        void FillRow(ListViewItem l, DownloadItem it)
+        void FillRow(
+            ListViewItem l,
+            DownloadItem it)
         {
-            SetIf(l, 0, it.FileName);
-            SetIf(l, 1, it.TotalBytes > 0 ? (it.Stream != null && it.State != DlState.Completed ? "~" : "") + Fmt(it.TotalBytes) : "—");
-            SetIf(l, 2, it.Percent.ToString("0.0") + "%");
-            SetIf(l, 3, it.State == DlState.Downloading && !string.IsNullOrEmpty(it.StatusNote) ? it.StatusNote
-                      : it.State == DlState.Queued && scheduleBlocked && !it.IgnoreSchedule ? "Scheduled"
-                      : it.State == DlState.Paused && it.PausedBySchedule ? "Paused (schedule)"
-                      : StateText(it.State));
-            SetIf(l, 4, it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "");
-            SetIf(l, 5, Eta(it));
-            SetIf(l, 6, it.Added.ToString("dd MMM HH:mm"));
-            l.ToolTipText = it.State == DlState.Error ? it.Error : it.Url;
+            SetIf(
+                l,
+                0,
+                it.FileName);
+
+            SetIf(
+                l,
+                1,
+                it.TotalBytes > 0
+                    ? (
+                        it.Stream != null &&
+                        it.State != DlState.Completed
+                            ? "~"
+                            : "") +
+                      Fmt(it.TotalBytes)
+                    : "—");
+
+            SetIf(
+                l,
+                2,
+                it.Percent.ToString("0.0") + "%");
+
+            SetIf(
+                l,
+                3,
+                it.State == DlState.Downloading &&
+                !string.IsNullOrEmpty(it.StatusNote)
+                    ? it.StatusNote
+                    : it.State == DlState.Queued &&
+                      scheduleBlocked &&
+                      !it.IgnoreSchedule
+                        ? "Scheduled"
+                        : it.State == DlState.Paused &&
+                          it.PausedBySchedule
+                            ? "Paused (schedule)"
+                            : StateText(it.State));
+
+            SetIf(
+                l,
+                4,
+                it.State == DlState.Downloading
+                    ? Fmt(it.Speed) + "/s"
+                    : "");
+
+            SetIf(
+                l,
+                5,
+                Eta(it));
+
+            SetIf(
+                l,
+                6,
+                it.Added.ToString("dd MMM HH:mm"));
+
+            l.ToolTipText =
+                it.State == DlState.Error
+                    ? it.Error
+                    : it.Url;
         }
 
         static string StateText(DlState s) =>
-            s == DlState.Completed ? "Complete" : s.ToString();
+            s == DlState.Completed
+                ? "Complete"
+                : s.ToString();
 
         static string Fmt(double b)
         {
-            string[] u = { "B", "KB", "MB", "GB", "TB" };
+            string[] u =
+            {
+                "B",
+                "KB",
+                "MB",
+                "GB",
+                "TB"
+            };
+
             int i = 0;
-            while (b >= 1024 && i < u.Length - 1) { b /= 1024; i++; }
-            return (i == 0 ? b.ToString("0") : b.ToString("0.##")) + " " + u[i];
+
+            while (b >= 1024 &&
+                   i < u.Length - 1)
+            {
+                b /= 1024;
+                i++;
+            }
+
+            return (
+                i == 0
+                    ? b.ToString("0")
+                    : b.ToString("0.##"))
+                   + " " +
+                   u[i];
         }
 
         static string Eta(DownloadItem it)
         {
-            if (it.State != DlState.Downloading || it.Speed < 1 || it.TotalBytes <= 0) return "";
-            var t = TimeSpan.FromSeconds((it.TotalBytes - it.Downloaded) / it.Speed);
-            if (t.TotalHours >= 1) return (int)t.TotalHours + "h " + t.Minutes + "m";
-            if (t.TotalMinutes >= 1) return t.Minutes + "m " + t.Seconds + "s";
+            if (it.State != DlState.Downloading ||
+                it.Speed < 1 ||
+                it.TotalBytes <= 0)
+                return "";
+
+            var t = TimeSpan.FromSeconds(
+                (it.TotalBytes - it.Downloaded) /
+                it.Speed);
+
+            if (t.TotalHours >= 1)
+                return (int)t.TotalHours +
+                       "h " +
+                       t.Minutes +
+                       "m";
+
+            if (t.TotalMinutes >= 1)
+                return t.Minutes +
+                       "m " +
+                       t.Seconds +
+                       "s";
+
             return t.Seconds + "s";
         }
 
         List<DownloadItem> Sel() =>
-            lv.SelectedItems.Cast<ListViewItem>().Select(l => (DownloadItem)l.Tag).ToList();
+            lv.SelectedItems
+              .Cast<ListViewItem>()
+              .Select(l => (DownloadItem)l.Tag)
+              .ToList();
 
-        void MarkChanged() { dirty = true; }
+        void MarkChanged()
+        {
+            dirty = true;
+        }
 
         // ---------- টাইমার: কিউ + স্পিড ----------
-        void OnTick(object sender, EventArgs e)
+        void OnTick(
+            object sender,
+            EventArgs e)
         {
-            // শিডিউলার: উইন্ডোর ভেতরে/বাইরে যাওয়ার মুহূর্তে কাজ
-            bool schedOn = settings.SchedulerEnabled;
-            bool allowed = !schedOn || Scheduler.IsAllowed(settings, DateTime.Now);
-            scheduleBlocked = schedOn && !allowed;
+            bool schedOn =
+                settings.SchedulerEnabled;
+
+            bool allowed =
+                !schedOn ||
+                Scheduler.IsAllowed(
+                    settings,
+                    DateTime.Now);
+
+            scheduleBlocked =
+                schedOn &&
+                !allowed;
+
             if (lastAllowed != allowed)
             {
                 lastAllowed = allowed;
+
                 if (!allowed)
                 {
                     if (settings.ScheduleStopOutside)
-                        foreach (var it in items.Where(i => i.State == DlState.Downloading && !i.IgnoreSchedule).ToList())
-                        { it.PausedBySchedule = true; it.Cts?.Cancel(); }
+                    {
+                        foreach (var it in items
+                            .Where(i =>
+                                i.State ==
+                                    DlState.Downloading &&
+                                !i.IgnoreSchedule)
+                            .ToList())
+                        {
+                            it.PausedBySchedule = true;
+                            it.Cts?.Cancel();
+                        }
+                    }
                 }
                 else
                 {
-                    foreach (var it in items.Where(i => i.PausedBySchedule && i.State == DlState.Paused).ToList())
-                    { it.PausedBySchedule = false; it.State = DlState.Queued; }
+                    foreach (var it in items
+                        .Where(i =>
+                            i.PausedBySchedule &&
+                            i.State == DlState.Paused)
+                        .ToList())
+                    {
+                        it.PausedBySchedule = false;
+                        it.State = DlState.Queued;
+                    }
                 }
+
                 MarkChanged();
             }
 
-            int active = items.Count(i => i.State == DlState.Downloading);
-            foreach (var it in items.Where(i => i.State == DlState.Queued).OrderBy(i => i.Added).ToList())
+            int active =
+                items.Count(
+                    i => i.State ==
+                         DlState.Downloading);
+
+            foreach (var it in items
+                .Where(i => i.State == DlState.Queued)
+                .OrderBy(i => i.Added)
+                .ToList())
             {
-                if (active >= settings.MaxSimultaneous) break;
-                if (scheduleBlocked && !it.IgnoreSchedule) continue;
+                if (active >=
+                    settings.MaxSimultaneous)
+                    break;
+
+                if (scheduleBlocked &&
+                    !it.IgnoreSchedule)
+                    continue;
+
                 StartDownload(it);
                 active++;
             }
 
             var now = DateTime.UtcNow;
             double total = 0;
+
             foreach (var it in items)
             {
-                if (it.State == DlState.Downloading)
+                if (it.State ==
+                    DlState.Downloading)
                 {
-                    double dt = (now - it.LastTick).TotalSeconds;
+                    double dt =
+                        (now - it.LastTick)
+                            .TotalSeconds;
+
                     if (dt >= 0.4)
                     {
-                        long cur = it.Downloaded;
-                        double inst = (cur - it.LastBytes) / dt;
-                        it.Speed = it.Speed <= 0 ? inst : it.Speed * 0.6 + inst * 0.4;
+                        long cur =
+                            it.Downloaded;
+
+                        double inst =
+                            (cur - it.LastBytes) /
+                            dt;
+
+                        it.Speed =
+                            it.Speed <= 0
+                                ? inst
+                                : it.Speed * 0.6 +
+                                  inst * 0.4;
+
                         it.LastBytes = cur;
                         it.LastTick = now;
                     }
+
                     total += it.Speed;
-                    it.SpeedHistory.Add(it.Speed);
-                    if (it.SpeedHistory.Count > DetailsPanel.HistoryLength) it.SpeedHistory.RemoveAt(0);
+
+                    it.SpeedHistory.Add(
+                        it.Speed);
+
+                    if (it.SpeedHistory.Count >
+                        DetailsPanel.HistoryLength)
+                    {
+                        it.SpeedHistory.RemoveAt(0);
+                    }
                 }
-                else it.Speed = 0;
+                else
+                {
+                    it.Speed = 0;
+                }
             }
 
-            if (dirty) { dirty = false; RebuildList(); }
+            if (dirty)
+            {
+                dirty = false;
+                RebuildList();
+            }
             else
             {
-                foreach (ListViewItem l in lv.Items) FillRow(l, (DownloadItem)l.Tag);
+                foreach (ListViewItem l in lv.Items)
+                {
+                    FillRow(
+                        l,
+                        (DownloadItem)l.Tag);
+                }
+
                 lv.Invalidate();
             }
 
-            int actNow = items.Count(i => i.State == DlState.Downloading);
-            int queNow = items.Count(i => i.State == DlState.Queued);
-            lblActive.Text = "Active: " + actNow + "   Queued: " + queNow;
-            lblSpeed.Text = "↓ " + Fmt(total) + "/s";
-            string limText = settings.SpeedLimitKBps > 0 ? "Limit: " + SpeedLimiter.Describe(settings.SpeedLimitKBps) : "Limit: Off";
-            if (lblLimit.Text != limText) lblLimit.Text = limText;
+            int actNow =
+                items.Count(
+                    i => i.State ==
+                         DlState.Downloading);
 
-            string schedText = Scheduler.Status(settings, DateTime.Now, allowed);
-            if (afterAll != PostAction.None) schedText += "   When done: " + PowerActions.Name(afterAll);
-            if (lblSched.Text != schedText) lblSched.Text = schedText;
+            int queNow =
+                items.Count(
+                    i => i.State ==
+                         DlState.Queued);
 
-            if (details.Visible && details.Item != null) details.Invalidate();
+            lblActive.Text =
+                "Active: " +
+                actNow +
+                "   Queued: " +
+                queNow;
+
+            lblSpeed.Text =
+                "↓ " +
+                Fmt(total) +
+                "/s";
+
+            string limText =
+                settings.SpeedLimitKBps > 0
+                    ? "Limit: " +
+                      SpeedLimiter.Describe(
+                          settings.SpeedLimitKBps)
+                    : "Limit: Off";
+
+            if (lblLimit.Text != limText)
+                lblLimit.Text = limText;
+
+            string schedText =
+                Scheduler.Status(
+                    settings,
+                    DateTime.Now,
+                    allowed);
+
+            if (afterAll !=
+                PostAction.None)
+            {
+                schedText +=
+                    "   When done: " +
+                    PowerActions.Name(afterAll);
+            }
+
+            if (lblSched.Text != schedText)
+                lblSched.Text = schedText;
+
+            if (details.Visible &&
+                details.Item != null)
+            {
+                details.Invalidate();
+            }
+
             UpdateSideCounts();
             sidebar.Invalidate();
 
-            // ট্রে টুলটিপে স্পিড
-            string tip = actNow > 0 ? "FastDM — ↓ " + Fmt(total) + "/s" : "FastDM";
-            if (tray != null && tip != lastTrayTip) { tray.Text = tip; lastTrayTip = tip; }
+            string tip =
+                actNow > 0
+                    ? "FastDM — ↓ " +
+                      Fmt(total) +
+                      "/s"
+                    : "FastDM";
 
-            // সব ডাউনলোড শেষ হলে একটাই নোটিফিকেশন
-            if (sessionCompleted > 0 && actNow == 0 && queNow == 0)
+            if (tray != null &&
+                tip != lastTrayTip)
             {
-                Notify("Download complete",
-                       sessionCompleted == 1 ? lastCompletedName : sessionCompleted + " downloads completed");
+                tray.Text = tip;
+                lastTrayTip = tip;
+            }
+
+            if (sessionCompleted > 0 &&
+                actNow == 0 &&
+                queNow == 0)
+            {
+                Notify(
+                    "Download complete",
+                    sessionCompleted == 1
+                        ? lastCompletedName
+                        : sessionCompleted +
+                          " downloads completed");
+
                 sessionCompleted = 0;
+
                 RunAfterAllAction();
             }
 
-            if (active > 0 && (now - lastSave).TotalSeconds > 3) SaveState();
+            if (active > 0 &&
+                (now - lastSave).TotalSeconds > 3)
+            {
+                SaveState();
+            }
         }
 
         // ---------- ডাউনলোড কন্ট্রোল ----------
-        async void StartDownload(DownloadItem it)
+        async void StartDownload(
+            DownloadItem it)
         {
-            var cts = new CancellationTokenSource();
+            var cts =
+                new CancellationTokenSource();
+
             it.Cts = cts;
             it.State = DlState.Downloading;
             it.Error = null;
             it.PausedBySchedule = false;
+
             it.SpeedHistory.Clear();
             it.LastBytes = it.Downloaded;
             it.LastTick = DateTime.UtcNow;
             it.Speed = 0;
+
             MarkChanged();
 
             try
             {
-                if (it.YtDlp != null) await YtDlpEngine.RunAsync(it, settings.Connections, cts.Token);
-                else if (it.Stream != null) await StreamEngine.RunAsync(it, settings.Connections, cts.Token);
-                else await Engine.RunItemAsync(it, settings.Connections, cts.Token);   // [এডিট ৫]
-                if (it.TotalBytes <= 0) it.TotalBytes = it.Downloaded;
-                it.State = DlState.Completed;
+                if (it.YtDlp != null)
+                {
+                    await YtDlpEngine.RunAsync(
+                        it,
+                        settings.Connections,
+                        cts.Token);
+                }
+                else if (it.Stream != null)
+                {
+                    await StreamEngine.RunAsync(
+                        it,
+                        settings.Connections,
+                        cts.Token);
+                }
+                else
+                {
+                    await Engine.RunItemAsync(
+                        it,
+                        settings.Connections,
+                        cts.Token);
+                }
+
+                if (it.TotalBytes <= 0)
+                    it.TotalBytes =
+                        it.Downloaded;
+
+                it.State =
+                    DlState.Completed;
             }
-            catch (OperationCanceledException) { it.State = DlState.Paused; }
-            catch (Exception ex) { it.State = DlState.Error; it.Error = ex.Message; }
-            finally { it.Cts = null; it.StatusNote = ""; cts.Dispose(); }
+            catch (OperationCanceledException)
+            {
+                it.State =
+                    DlState.Paused;
+            }
+            catch (Exception ex)
+            {
+                it.State =
+                    DlState.Error;
+
+                it.Error =
+                    ex.Message;
+            }
+            finally
+            {
+                it.Cts = null;
+                it.StatusNote = "";
+                cts.Dispose();
+            }
 
             if (!it.RemoveRequested)
             {
-                if (it.State == DlState.Completed) { sessionCompleted++; lastCompletedName = it.FileName; }
-                else if (it.State == DlState.Error) NotifyError(it);
+                if (it.State ==
+                    DlState.Completed)
+                {
+                    sessionCompleted++;
+                    lastCompletedName =
+                        it.FileName;
+                }
+                else if (it.State ==
+                         DlState.Error)
+                {
+                    NotifyError(it);
+                }
             }
 
             it.Speed = 0;
+
             if (it.RemoveRequested)
             {
-                TryDelete(it.TempPath); TryDelete(it.PartsDir); YtDlpEngine.Cleanup(it);
-                if (it.State == DlState.Completed && it.DeleteFile) TryDelete(it.SavePath);
+                TryDelete(it.TempPath);
+                TryDelete(it.PartsDir);
+                YtDlpEngine.Cleanup(it);
+
+                if (it.State ==
+                        DlState.Completed &&
+                    it.DeleteFile)
+                {
+                    TryDelete(it.SavePath);
+                }
             }
+
             MarkChanged();
             SaveState();
         }
@@ -1072,8 +2496,17 @@ namespace FastDM
         void ResumeSelected()
         {
             foreach (var it in Sel())
-                if (it.State == DlState.Paused || it.State == DlState.Error)
-                { it.State = DlState.Queued; it.Error = null; }
+            {
+                if (it.State ==
+                        DlState.Paused ||
+                    it.State ==
+                        DlState.Error)
+                {
+                    it.State = DlState.Queued;
+                    it.Error = null;
+                }
+            }
+
             MarkChanged();
         }
 
@@ -1081,9 +2514,19 @@ namespace FastDM
         {
             foreach (var it in Sel())
             {
-                if (it.State == DlState.Downloading) it.Cts?.Cancel();
-                else if (it.State == DlState.Queued) it.State = DlState.Paused;
+                if (it.State ==
+                    DlState.Downloading)
+                {
+                    it.Cts?.Cancel();
+                }
+                else if (it.State ==
+                         DlState.Queued)
+                {
+                    it.State =
+                        DlState.Paused;
+                }
             }
+
             MarkChanged();
         }
 
@@ -1091,63 +2534,130 @@ namespace FastDM
         {
             foreach (var it in items)
             {
-                if (it.State == DlState.Downloading) it.Cts?.Cancel();
-                else if (it.State == DlState.Queued) it.State = DlState.Paused;
+                if (it.State ==
+                    DlState.Downloading)
+                {
+                    it.Cts?.Cancel();
+                }
+                else if (it.State ==
+                         DlState.Queued)
+                {
+                    it.State =
+                        DlState.Paused;
+                }
             }
+
             MarkChanged();
         }
 
         void ResumeAll()
         {
             foreach (var it in items)
-                if (it.State == DlState.Paused || it.State == DlState.Error)
-                { it.State = DlState.Queued; it.Error = null; }
+            {
+                if (it.State ==
+                        DlState.Paused ||
+                    it.State ==
+                        DlState.Error)
+                {
+                    it.State =
+                        DlState.Queued;
+
+                    it.Error = null;
+                }
+            }
+
             MarkChanged();
         }
 
         void RemoveSelected()
         {
             var sel = Sel();
-            if (sel.Count == 0) return;
+
+            if (sel.Count == 0)
+                return;
 
             bool deleteDone = false;
-            if (sel.Any(i => i.State == DlState.Completed))
+
+            if (sel.Any(
+                    i => i.State ==
+                         DlState.Completed))
             {
-                var r = MessageBox.Show(this,
-                    "Remove " + sel.Count + " download(s) from the list?\n\n" +
-                    "Yes = remove from list only\nNo = remove AND delete completed file(s) from disk",
-                    "Remove", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                if (r == DialogResult.Cancel) return;
-                deleteDone = r == DialogResult.No;
+                var r = MessageBox.Show(
+                    this,
+                    "Remove " +
+                    sel.Count +
+                    " download(s) from the list?\n\n" +
+                    "Yes = remove from list only\n" +
+                    "No = remove AND delete completed file(s) from disk",
+                    "Remove",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+
+                if (r == DialogResult.Cancel)
+                    return;
+
+                deleteDone =
+                    r == DialogResult.No;
             }
             else
             {
-                if (MessageBox.Show(this, "Remove " + sel.Count + " download(s)? Partial data will be deleted.",
-                    "Remove", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+                if (MessageBox.Show(
+                        this,
+                        "Remove " +
+                        sel.Count +
+                        " download(s)? Partial data will be deleted.",
+                        "Remove",
+                        MessageBoxButtons.OKCancel,
+                        MessageBoxIcon.Question)
+                    != DialogResult.OK)
+                {
+                    return;
+                }
             }
 
             foreach (var it in sel)
             {
                 it.RemoveRequested = true;
                 it.DeleteFile = deleteDone;
+
                 items.Remove(it);
-                if (it.State == DlState.Downloading) it.Cts?.Cancel();   // ফাইল ডিলিট StartDownload শেষে হবে
+
+                if (it.State ==
+                    DlState.Downloading)
+                {
+                    it.Cts?.Cancel();
+                }
                 else
                 {
-                    TryDelete(it.TempPath); TryDelete(it.PartsDir); YtDlpEngine.Cleanup(it);
-                    if (it.State == DlState.Completed && deleteDone) TryDelete(it.SavePath);
+                    TryDelete(it.TempPath);
+                    TryDelete(it.PartsDir);
+
+                    YtDlpEngine.Cleanup(it);
+
+                    if (it.State ==
+                            DlState.Completed &&
+                        deleteDone)
+                    {
+                        TryDelete(it.SavePath);
+                    }
                 }
             }
+
             MarkChanged();
             SaveState();
         }
 
-        static void TryDelete(string path)
+        static void TryDelete(
+            string path)
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
-                else if (Directory.Exists(path)) Directory.Delete(path, true);
+                if (File.Exists(path))
+                    File.Delete(path);
+                else if (Directory.Exists(path))
+                    Directory.Delete(
+                        path,
+                        true);
             }
             catch { }
         }
@@ -1155,133 +2665,311 @@ namespace FastDM
         void OpenSelected(bool folder)
         {
             var sel = Sel();
-            if (sel.Count == 0) return;
+
+            if (sel.Count == 0)
+                return;
+
             var it = sel[0];
+
             try
             {
                 if (folder)
                 {
-                    string target = File.Exists(it.SavePath) ? it.SavePath
-                                  : File.Exists(it.TempPath) ? it.TempPath : null;
-                    if (target != null) Process.Start("explorer.exe", "/select,\"" + target + "\"");
-                    else if (Directory.Exists(it.Folder)) Process.Start("explorer.exe", "\"" + it.Folder + "\"");
+                    string target =
+                        File.Exists(it.SavePath)
+                            ? it.SavePath
+                            : File.Exists(it.TempPath)
+                                ? it.TempPath
+                                : null;
+
+                    if (target != null)
+                    {
+                        Process.Start(
+                            "explorer.exe",
+                            "/select,\"" +
+                            target +
+                            "\"");
+                    }
+                    else if (
+                        Directory.Exists(
+                            it.Folder))
+                    {
+                        Process.Start(
+                            "explorer.exe",
+                            "\"" +
+                            it.Folder +
+                            "\"");
+                    }
                 }
                 else
                 {
-                    if (it.State != DlState.Completed || !File.Exists(it.SavePath))
-                    { MessageBox.Show(this, "File is not completed yet."); return; }
-                    Process.Start(new ProcessStartInfo(it.SavePath) { UseShellExecute = true });
+                    if (it.State !=
+                            DlState.Completed ||
+                        !File.Exists(
+                            it.SavePath))
+                    {
+                        MessageBox.Show(
+                            this,
+                            "File is not completed yet.");
+
+                        return;
+                    }
+
+                    Process.Start(
+                        new ProcessStartInfo(
+                            it.SavePath)
+                        {
+                            UseShellExecute = true
+                        });
                 }
             }
-            catch (Exception ex) { MessageBox.Show(this, ex.Message); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    ex.Message);
+            }
         }
 
         void OnDoubleClick()
         {
             var sel = Sel();
-            if (sel.Count == 0) return;
+
+            if (sel.Count == 0)
+                return;
+
             var it = sel[0];
-            if (it.State == DlState.Completed) OpenSelected(false);
-            else if (it.State == DlState.Downloading) PauseSelected();
-            else ResumeSelected();
+
+            if (it.State ==
+                DlState.Completed)
+            {
+                OpenSelected(false);
+            }
+            else if (
+                it.State ==
+                DlState.Downloading)
+            {
+                PauseSelected();
+            }
+            else
+            {
+                ResumeSelected();
+            }
         }
 
         // ---------- Add / Settings ----------
-        // [এডিট ৭] ফাইল আর ফোল্ডার লিঙ্ক আলাদা করে হ্যান্ডেল
-        async void ShowAddDialog(string url)
+        readonly SemaphoreSlim addGate =
+            new SemaphoreSlim(1, 1);
+
+        async void ShowAddDialog(
+            string url)
         {
-            using var dlg = new AddUrlForm(url, settings.DefaultFolder);
+            await addGate.WaitAsync();
+
+            try
+            {
+                await ShowAddDialogCore(url);
+            }
+            finally
+            {
+                addGate.Release();
+            }
+        }
+
+        async Task ShowAddDialogCore(
+            string url)
+        {
+            using var dlg =
+                new AddUrlForm(
+                    url,
+                    settings.DefaultFolder);
+
             Theme.Apply(dlg);
-            var result = dlg.ShowDialog(this);
-            if (result != DialogResult.OK && result != DialogResult.Yes) return;
 
-            bool startNow = result == DialogResult.OK;
+            var result =
+                dlg.ShowDialog(this);
+
+            if (result != DialogResult.OK &&
+                result != DialogResult.Yes)
+                return;
+
+            bool startNow =
+                result == DialogResult.OK;
+
             string[] urls = dlg.Urls;
-            string nameText = dlg.FileNameText;
-            string folder = dlg.Folder;
+            string nameText =
+                dlg.FileNameText;
 
-            // ১) কোনটা ফাইল আর কোনটা ফোল্ডার, আলাদা করা
-            lblActive.Text = "Checking link(s)…";
-            var fileUrls = new List<string>();
-            var folderUris = new List<Uri>();
-            var mediaItems = new List<MediaProbeResult>();
-            var ytItems = new List<string>();
+            string folder =
+                dlg.Folder;
+
+            lblActive.Text =
+                "Checking link(s)…";
+
+            var fileUrls =
+                new List<string>();
+
+            var folderUris =
+                new List<Uri>();
+
+            var mediaItems =
+                new List<MediaProbeResult>();
+
+            var ytItems =
+                new List<string>();
+
             foreach (var u in urls)
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-                    var (isFolder, resolved) = await Engine.DetectFolderAsync(new Uri(u), cts.Token);
-                    if (isFolder) { folderUris.Add(resolved); continue; }
+                    using var cts =
+                        new CancellationTokenSource(
+                            TimeSpan.FromSeconds(20));
+
+                    var (isFolder, resolved) =
+                        await Engine.DetectFolderAsync(
+                            new Uri(u),
+                            cts.Token);
+
+                    if (isFolder)
+                    {
+                        folderUris.Add(resolved);
+                        continue;
+                    }
                 }
-                catch { /* ডিটেক্ট না হলে ফাইল ধরে নেবে */ }
+                catch { }
 
-                // YouTube/TikTok/Facebook ইত্যাদি পরিচিত সাইট: yt-dlp দিয়ে
-                if (YtDlpSites.IsSupported(u)) { ytItems.Add(u); continue; }
+                if (YtDlpSites.IsSupported(u))
+                {
+                    ytItems.Add(u);
+                    continue;
+                }
 
-                // ভিডিও স্ট্রিম (HLS/DASH) বা ভিডিও থাকা ওয়েবপেজ কি না
                 if (Engine.IsHttp(u))
                 {
                     try
                     {
-                        using var mcts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-                        var media = await MediaDetector.ProbeAsync(new Uri(u), mcts.Token);
-                        if (media.Kind == MediaKind.Hls || media.Kind == MediaKind.Dash || media.Kind == MediaKind.Page)
-                        { mediaItems.Add(media); continue; }
+                        using var mcts =
+                            new CancellationTokenSource(
+                                TimeSpan.FromSeconds(20));
+
+                        var media =
+                            await MediaDetector.ProbeAsync(
+                                new Uri(u),
+                                mcts.Token);
+
+                        if (media.Kind ==
+                                MediaKind.Hls ||
+                            media.Kind ==
+                                MediaKind.Dash ||
+                            media.Kind ==
+                                MediaKind.Page)
+                        {
+                            mediaItems.Add(media);
+                            continue;
+                        }
                     }
-                    catch { /* ডিটেক্ট না হলে সাধারণ ফাইল */ }
+                    catch { }
                 }
+
                 fileUrls.Add(u);
             }
 
-            // ২) ফাইল লিঙ্ক: আগের মতোই অটো ডাউনলোড (লগইন লাগলে চাইবে)
-            lblActive.Text = "Fetching file info…";
+            // ফাইল লিঙ্ক
+            lblActive.Text =
+                "Fetching file info…";
+
             foreach (var u in fileUrls)
             {
                 var it = new DownloadItem
                 {
                     Url = u,
                     Folder = folder,
-                    FileName = fileUrls.Count == 1 && folderUris.Count == 0 && nameText.Length > 0
-                               ? Engine.Sanitize(nameText) : ""
+                    FileName =
+                        fileUrls.Count == 1 &&
+                        folderUris.Count == 0 &&
+                        nameText.Length > 0
+                            ? Engine.Sanitize(
+                                nameText)
+                            : ""
                 };
 
                 bool retry = true;
+
                 while (retry)
                 {
                     retry = false;
+
                     try
                     {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-                        await Engine.ProbeAsync(it, cts.Token);
+                        using var cts =
+                            new CancellationTokenSource(
+                                TimeSpan.FromSeconds(25));
+
+                        await Engine.ProbeAsync(
+                            it,
+                            cts.Token);
                     }
                     catch (AuthRequiredException)
                     {
-                        if (CredentialForm.Prompt(this, new Uri(u))) retry = true;
+                        if (CredentialForm.Prompt(
+                                this,
+                                new Uri(u)))
+                        {
+                            retry = true;
+                        }
                     }
-                    catch { /* ইনফো না পেলেও যোগ হবে; আসল এরর ডাউনলোডের সময় দেখাবে */ }
+                    catch { }
                 }
 
-                if (string.IsNullOrWhiteSpace(it.FileName)) it.FileName = Engine.NameFromUrl(u);
-                it.FileName = UniqueName(folder, it.FileName);
-                it.State = startNow ? DlState.Queued : DlState.Paused;
+                if (string.IsNullOrWhiteSpace(
+                        it.FileName))
+                {
+                    it.FileName =
+                        Engine.NameFromUrl(u);
+                }
+
+                it.FileName =
+                    UniqueName(
+                        folder,
+                        it.FileName);
+
+                it.State =
+                    startNow
+                        ? DlState.Queued
+                        : DlState.Paused;
+
                 items.Add(it);
             }
+
             MarkChanged();
             SaveState();
 
-            // ৩) ফোল্ডার লিঙ্ক: উইন্ডো খুলবে (নাম, লোকেশন, ট্রি, ফিল্টার)
-            foreach (var fu in folderUris) AddFolder(fu, startNow);
+            // ফোল্ডার
+            foreach (var fu in folderUris)
+                AddFolder(
+                    fu,
+                    startNow);
 
-            // ৪) ভিডিও স্ট্রিম/পেজ: কোয়ালিটি বাছাই ডায়ালগ
-            foreach (var mi in mediaItems) await AddMediaAsync(mi, folder, startNow);
+            // মিডিয়া
+            foreach (var mi in mediaItems)
+                await AddMediaAsync(
+                    mi,
+                    folder,
+                    startNow);
 
-            // ৫) yt-dlp সাইট: কোয়ালিটি/অডিও বাছাই
-            foreach (var yu in ytItems) await AddYtDlpAsync(yu, folder, startNow);
+            // yt-dlp
+            foreach (var yu in ytItems)
+                await AddYtDlpAsync(
+                    yu,
+                    folder,
+                    startNow);
         }
 
-        // ভিডিও স্ট্রিম / ভিডিও থাকা ওয়েবপেজ: কোয়ালিটি বাছাই ডায়ালগ দেখিয়ে কিউতে যোগ
-        async Task AddMediaAsync(MediaProbeResult r, string saveFolder, bool startNow)
+        async Task AddMediaAsync(
+            MediaProbeResult r,
+            string saveFolder,
+            bool startNow)
         {
             string url = r.Url;
             string referer = null;
@@ -1290,315 +2978,681 @@ namespace FastDM
             if (kind == MediaKind.Page)
             {
                 MediaCandidate pick;
-                if (r.Candidates.Count == 1) pick = r.Candidates[0];
+
+                if (r.Candidates.Count == 1)
+                {
+                    pick = r.Candidates[0];
+                }
                 else
                 {
-                    using var cf = new CandidateForm(r.Candidates);
+                    using var cf =
+                        new CandidateForm(
+                            r.Candidates);
+
                     Theme.Apply(cf);
-                    if (cf.ShowDialog(this) != DialogResult.OK) return;
+
+                    if (cf.ShowDialog(this) !=
+                        DialogResult.OK)
+                    {
+                        return;
+                    }
+
                     pick = cf.Picked;
                 }
-                referer = r.Url;     // কিছু সার্ভার পেজের Referer ছাড়া ভিডিও দেয় না
 
-                if (pick.Kind == MediaKind.Direct)
+                referer = r.Url;
+
+                if (pick.Kind ==
+                    MediaKind.Direct)
                 {
-                    await AddDirectCandidateAsync(pick.Url, saveFolder, startNow);
+                    await AddDirectCandidateAsync(
+                        pick.Url,
+                        saveFolder,
+                        startNow);
+
                     return;
                 }
+
                 url = pick.Url;
                 kind = pick.Kind;
             }
 
             MediaOptions opts = null;
-            lblActive.Text = "Reading stream info…";
+
+            lblActive.Text =
+                "Reading stream info…";
+
             while (opts == null)
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-                    opts = await MediaParser.LoadAsync(url, kind, referer, r.Title, cts.Token);
+                    using var cts =
+                        new CancellationTokenSource(
+                            TimeSpan.FromSeconds(25));
+
+                    opts =
+                        await MediaParser.LoadAsync(
+                            url,
+                            kind,
+                            referer,
+                            r.Title,
+                            cts.Token);
                 }
                 catch (AuthRequiredException)
                 {
-                    if (!CredentialForm.Prompt(this, new Uri(url))) return;
+                    if (!CredentialForm.Prompt(
+                            this,
+                            new Uri(url)))
+                    {
+                        return;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, "Could not read this stream.\n\n" + ex.GetBaseException().Message,
-                        "Video", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        this,
+                        "Could not read this stream.\n\n" +
+                        ex.GetBaseException().Message,
+                        "Video",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+
                     return;
                 }
             }
 
-            using var pf = new MediaPickerForm(opts, saveFolder);
+            using var pf =
+                new MediaPickerForm(
+                    opts,
+                    saveFolder);
+
             Theme.Apply(pf);
-            if (pf.ShowDialog(this) != DialogResult.OK) return;
+
+            if (pf.ShowDialog(this) !=
+                DialogResult.OK)
+                return;
 
             string folder = pf.SaveFolder;
-            string ext = pf.Spec.AudioOnly ? ".m4a" : ".mp4";
+
+            string ext =
+                pf.Spec.AudioOnly
+                    ? ".m4a"
+                    : ".mp4";
+
             var it = new DownloadItem
             {
                 Url = url,
                 Folder = folder,
-                FileName = UniqueName(folder, Engine.Sanitize(pf.FileName) + ext),
+                FileName =
+                    UniqueName(
+                        folder,
+                        Engine.Sanitize(
+                            pf.FileName) +
+                        ext),
                 Stream = pf.Spec,
-                State = startNow ? DlState.Queued : DlState.Paused
+                State =
+                    startNow
+                        ? DlState.Queued
+                        : DlState.Paused
             };
+
             items.Add(it);
             MarkChanged();
             SaveState();
         }
 
-        // YouTube/TikTok/Facebook ইত্যাদি: yt-dlp দিয়ে তথ্য পড়ে বাছাই ডায়ালগ দেখিয়ে কিউতে যোগ
-        async Task AddYtDlpAsync(string url, string saveFolder, bool startNow)
+        async Task AddYtDlpAsync(
+            string url,
+            string saveFolder,
+            bool startNow)
         {
             if (YtDlpLocator.Find() == null)
             {
-                MessageBox.Show(this,
+                MessageBox.Show(
+                    this,
                     "yt-dlp.exe was not found.\nPut yt-dlp.exe (and deno.exe) in the Tools folder next to the app.",
-                    "Video", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    "Video",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
                 return;
             }
 
-            string path = new Uri(url).AbsolutePath.ToLowerInvariant();
-            if (path.StartsWith("/playlist"))
+            string path =
+                new Uri(url)
+                    .AbsolutePath
+                    .ToLowerInvariant();
+
+            if (path.StartsWith(
+                    "/playlist"))
             {
-                MessageBox.Show(this, "Playlist links are not supported yet.\nOpen a single video link instead.",
-                    "Video", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    this,
+                    "Playlist links are not supported yet.\nOpen a single video link instead.",
+                    "Video",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
                 return;
             }
 
-            lblActive.Text = "Reading video info…";
+            lblActive.Text =
+                "Reading video info…";
+
             UseWaitCursor = true;
+
             YtInfo info;
+
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-                info = await YtDlpInfo.LoadAsync(url, cts.Token);
+                using var cts =
+                    new CancellationTokenSource(
+                        TimeSpan.FromSeconds(90));
+
+                info =
+                    await YtDlpInfo.LoadAsync(
+                        url,
+                        cts.Token);
             }
             catch (OperationCanceledException)
             {
-                MessageBox.Show(this, "Reading the video info took too long.", "Video",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(
+                    this,
+                    "Reading the video info took too long.",
+                    "Video",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
                 return;
             }
             catch (Exception ex)
             {
-                string hint = UpdateChecker.IsPackaged
-                    ? "\n\nIf this keeps happening, a newer app version (with an updated yt-dlp) may fix it."
-                    : "\n\nTry Settings → Update yt-dlp.";
-                MessageBox.Show(this, "Could not read this video.\n\n" + ex.GetBaseException().Message + hint,
-                    "Video", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                string hint =
+                    UpdateChecker.IsPackaged
+                        ? "\n\nIf this keeps happening, a newer app version (with an updated yt-dlp) may fix it."
+                        : "\n\nTry Settings → Update yt-dlp.";
+
+                MessageBox.Show(
+                    this,
+                    "Could not read this video.\n\n" +
+                    ex.GetBaseException().Message +
+                    hint,
+                    "Video",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+
                 return;
             }
-            finally { UseWaitCursor = false; }
+            finally
+            {
+                UseWaitCursor = false;
+            }
 
-            using var pf = new YtPickerForm(info, url, saveFolder);
+            using var pf =
+                new YtPickerForm(
+                    info,
+                    url,
+                    saveFolder);
+
             Theme.Apply(pf);
-            if (pf.ShowDialog(this) != DialogResult.OK) return;
 
-            string folder = pf.SaveFolder;
-            string ext = pf.Spec.AudioOnly ? "." + pf.Spec.AudioFormat : ".mp4";
+            if (pf.ShowDialog(this) !=
+                DialogResult.OK)
+                return;
+
+            string folder =
+                pf.SaveFolder;
+
+            string ext =
+                pf.Spec.AudioOnly
+                    ? "." + pf.Spec.AudioFormat
+                    : ".mp4";
+
             var it = new DownloadItem
             {
                 Url = url,
                 Folder = folder,
-                FileName = UniqueName(folder, pf.Spec.BaseName + ext),
+                FileName =
+                    UniqueName(
+                        folder,
+                        pf.Spec.BaseName +
+                        ext),
                 YtDlp = pf.Spec,
-                State = startNow ? DlState.Queued : DlState.Paused
+                State =
+                    startNow
+                        ? DlState.Queued
+                        : DlState.Paused
             };
+
             items.Add(it);
+
             MarkChanged();
             SaveState();
         }
 
-        // ওয়েবপেজে সরাসরি ভিডিও ফাইল (.mp4 ইত্যাদি) পাওয়া গেলে সাধারণ ডাউনলোড হিসেবে যোগ
-        async Task AddDirectCandidateAsync(string url, string saveFolder, bool startNow)
+        async Task AddDirectCandidateAsync(
+            string url,
+            string saveFolder,
+            bool startNow)
         {
-            var it = new DownloadItem { Url = url, Folder = saveFolder, FileName = "" };
+            var it = new DownloadItem
+            {
+                Url = url,
+                Folder = saveFolder,
+                FileName = ""
+            };
+
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-                await Engine.ProbeAsync(it, cts.Token);
+                using var cts =
+                    new CancellationTokenSource(
+                        TimeSpan.FromSeconds(25));
+
+                await Engine.ProbeAsync(
+                    it,
+                    cts.Token);
             }
             catch { }
-            if (string.IsNullOrWhiteSpace(it.FileName)) it.FileName = Engine.NameFromUrl(url);
-            it.FileName = UniqueName(saveFolder, it.FileName);
-            it.State = startNow ? DlState.Queued : DlState.Paused;
+
+            if (string.IsNullOrWhiteSpace(
+                    it.FileName))
+            {
+                it.FileName =
+                    Engine.NameFromUrl(url);
+            }
+
+            it.FileName =
+                UniqueName(
+                    saveFolder,
+                    it.FileName);
+
+            it.State =
+                startNow
+                    ? DlState.Queued
+                    : DlState.Paused;
+
             items.Add(it);
+
             MarkChanged();
             SaveState();
         }
 
-        // [এডিট ৭] ফোল্ডার ডাউনলোড: ডায়ালগ থেকে বাছাই করা ফাইলগুলো কিউতে যোগ
-        void AddFolder(Uri uri, bool startNow)
+        void AddFolder(
+            Uri uri,
+            bool startNow)
         {
-            using var f = new FolderDownloadForm(uri, settings.DefaultFolder, settings.MaxSimultaneous);
-            Theme.Apply(f);
-            if (f.ShowDialog(this) != DialogResult.OK) return;
+            using var f =
+                new FolderDownloadForm(
+                    uri,
+                    settings.DefaultFolder,
+                    settings.MaxSimultaneous);
 
-            settings.MaxSimultaneous = f.Simultaneous;
+            Theme.Apply(f);
+
+            if (f.ShowDialog(this) !=
+                DialogResult.OK)
+                return;
+
+            settings.MaxSimultaneous =
+                f.Simultaneous;
 
             foreach (var pf in f.Files)
             {
-                string dir = pf.RelDir.Length == 0 ? f.TargetFolder : Path.Combine(f.TargetFolder, pf.RelDir);
+                string dir =
+                    pf.RelDir.Length == 0
+                        ? f.TargetFolder
+                        : Path.Combine(
+                            f.TargetFolder,
+                            pf.RelDir);
+
                 var it = new DownloadItem
                 {
                     Url = pf.Url,
                     Folder = dir,
-                    FileName = UniqueName(dir, Engine.Sanitize(pf.Name)),
+                    FileName =
+                        UniqueName(
+                            dir,
+                            Engine.Sanitize(
+                                pf.Name)),
                     TotalBytes = pf.Size,
-                    NeedsProbe = Engine.IsHttp(pf.Url),     // http-তে সাইজ/resume ডাউনলোড শুরুর সময় জানবে
-                    State = startNow ? DlState.Queued : DlState.Paused
+                    NeedsProbe =
+                        Engine.IsHttp(pf.Url),
+                    State =
+                        startNow
+                            ? DlState.Queued
+                            : DlState.Paused
                 };
+
                 items.Add(it);
             }
+
             MarkChanged();
             SaveState();
         }
 
-        string UniqueName(string folder, string name)
+        string UniqueName(
+            string folder,
+            string name)
         {
-            string stem = Path.GetFileNameWithoutExtension(name);
-            string ext = Path.GetExtension(name);
+            string stem =
+                Path.GetFileNameWithoutExtension(
+                    name);
+
+            string ext =
+                Path.GetExtension(name);
+
             string cand = name;
             int n = 1;
-            while (File.Exists(Path.Combine(folder, cand)) ||
-                   File.Exists(Path.Combine(folder, cand) + ".part") ||
-                   items.Any(i => i.Folder == folder && i.FileName.Equals(cand, StringComparison.OrdinalIgnoreCase)))
-                cand = stem + " (" + (n++) + ")" + ext;
+
+            while (
+                File.Exists(
+                    Path.Combine(
+                        folder,
+                        cand)) ||
+
+                File.Exists(
+                    Path.Combine(
+                        folder,
+                        cand) +
+                    ".part") ||
+
+                items.Any(i =>
+                    i.Folder == folder &&
+                    i.FileName.Equals(
+                        cand,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                cand =
+                    stem +
+                    " (" +
+                    (n++) +
+                    ")" +
+                    ext;
+            }
+
             return cand;
         }
 
         // ---------- শিডিউলার / "সব শেষ হলে" / ডিটেইলস ----------
         void ShowSchedule()
         {
-            using var f = new ScheduleForm(settings);
+            using var f =
+                new ScheduleForm(settings);
+
             Theme.Apply(f);
             f.ShowDialog(this);
+
             SaveState();
-            lastAllowed = null;      // পরের টিকে নতুন সেটিং দিয়ে আবার মূল্যায়ন
+
+            lastAllowed = null;
             MarkChanged();
         }
 
         void StartNowSelected()
         {
             foreach (var it in Sel())
-                if (it.State == DlState.Paused || it.State == DlState.Error || it.State == DlState.Queued)
+            {
+                if (it.State ==
+                        DlState.Paused ||
+                    it.State ==
+                        DlState.Error ||
+                    it.State ==
+                        DlState.Queued)
                 {
                     it.IgnoreSchedule = true;
                     it.PausedBySchedule = false;
                     it.State = DlState.Queued;
                     it.Error = null;
                 }
+            }
+
             MarkChanged();
         }
 
         void ToggleDetails()
         {
-            settings.ShowDetails = !settings.ShowDetails;
-            details.Visible = settings.ShowDetails;
-            details.SetItem(Sel().FirstOrDefault());
+            settings.ShowDetails =
+                !settings.ShowDetails;
+
+            details.Visible =
+                settings.ShowDetails;
+
+            details.SetItem(
+                Sel().FirstOrDefault());
+
             SaveState();
         }
 
         void BuildDoneMenu()
         {
-            bool icons = Icons.Available;
-            doneMenu = new ToolStripDropDownButton(icons ? "When done" : "⏻ When done")
-            {
-                DisplayStyle = icons ? ToolStripItemDisplayStyle.ImageAndText : ToolStripItemDisplayStyle.Text,
-                TextImageRelation = TextImageRelation.ImageBeforeText,
-                Padding = new Padding(4),
-                Tag = new IconTag { Glyph = "\uE7E8", Accent = false }
-            };
+            bool icons =
+                Icons.Available;
 
-            foreach (var a in new[] { PostAction.None, PostAction.Shutdown, PostAction.Sleep, PostAction.Hibernate })
+            doneMenu =
+                new ToolStripDropDownButton(
+                    icons
+                        ? "When done"
+                        : "⏻  When done")
+                {
+                    DisplayStyle = icons
+                        ? ToolStripItemDisplayStyle.ImageAndText
+                        : ToolStripItemDisplayStyle.Text,
+
+                    TextImageRelation =
+                        TextImageRelation.ImageBeforeText,
+
+                    Padding =
+                        new Padding(4),
+
+                    Tag = new IconTag
+                    {
+                        Glyph = "\uE7E8",
+                        Accent = false
+                    }
+                };
+
+            foreach (var a in new[]
+                     {
+                         PostAction.None,
+                         PostAction.Shutdown,
+                         PostAction.Sleep,
+                         PostAction.Hibernate
+                     })
             {
                 var act = a;
-                string label = act == PostAction.None ? "Do nothing"
-                             : act == PostAction.Shutdown ? "Shut down the computer"
-                             : act == PostAction.Sleep ? "Sleep" : "Hibernate";
-                var mi = new ToolStripMenuItem(label) { Tag = act };
-                mi.Click += (s, e) => afterAll = act;
+
+                string label =
+                    act == PostAction.None
+                        ? "Do nothing"
+                        : act == PostAction.Shutdown
+                            ? "Shut down the computer"
+                            : act == PostAction.Sleep
+                                ? "Sleep"
+                                : "Hibernate";
+
+                var mi =
+                    new ToolStripMenuItem(label)
+                    {
+                        Tag = act
+                    };
+
+                mi.Click += (s, e) =>
+                {
+                    afterAll = act;
+                };
+
                 doneMenu.DropDownItems.Add(mi);
             }
+
             doneMenu.DropDownOpening += (s, e) =>
             {
-                foreach (var mi in doneMenu.DropDownItems.OfType<ToolStripMenuItem>())
-                    if (mi.Tag is PostAction pa) mi.Checked = pa == afterAll;
+                foreach (var mi in doneMenu.DropDownItems
+                    .OfType<ToolStripMenuItem>())
+                {
+                    if (mi.Tag is PostAction pa)
+                        mi.Checked =
+                            pa == afterAll;
+                }
             };
         }
 
-        // সব ডাউনলোড শেষ হলে: কাউন্টডাউন দেখিয়ে শাটডাউন/স্লিপ/হাইবারনেট (একবারই)
         void RunAfterAllAction()
         {
             var act = afterAll;
-            if (act == PostAction.None) return;
-            afterAll = PostAction.None;
+
+            if (act ==
+                PostAction.None)
+                return;
+
+            afterAll =
+                PostAction.None;
+
             SaveState();
 
-            using var dlg = new CountdownForm(act, 30);
+            using var dlg =
+                new CountdownForm(
+                    act,
+                    30);
+
             Theme.Apply(dlg);
-            if (dlg.ShowDialog() != DialogResult.OK) return;     // বাতিল করলে কিছুই হবে না
+
+            if (dlg.ShowDialog(this) !=
+                DialogResult.OK)
+                return;
+
             SaveState();
+
             PowerActions.Run(act);
         }
 
         void ShowSettings()
         {
-            using var f = new SettingsForm(settings);
+            using var f =
+                new SettingsForm(settings);
+
             Theme.Apply(f);
-            if (f.ShowDialog(this) == DialogResult.OK)
+
+            if (f.ShowDialog(this) ==
+                DialogResult.OK)
             {
-                Theme.SetMode(settings.ThemeChoice);
+                Theme.SetMode(
+                    settings.ThemeChoice);
+
                 ApplyTheme();
                 RebuildList();
+
+                if (settings.BridgeEnabled &&
+                    bridge == null)
+                {
+                    StartBridge();
+                }
+                else if (
+                    !settings.BridgeEnabled &&
+                    bridge != null)
+                {
+                    StopBridge();
+                }
             }
-            SaveState();     // স্পিড/প্রক্সি ডায়ালগে বদল করে Settings Cancel করলেও সেভ হবে
+
+            SaveState();
         }
 
-        // ---------- স্পিড লিমিট মেনু (টুলবার) ----------
+        // ---------- স্পিড লিমিট মেনু ----------
         void BuildSpeedMenu()
         {
-            bool icons = Icons.Available;
-            speedMenu = new ToolStripDropDownButton(icons ? "Speed" : "⚡ Speed")
-            {
-                DisplayStyle = icons ? ToolStripItemDisplayStyle.ImageAndText : ToolStripItemDisplayStyle.Text,
-                TextImageRelation = TextImageRelation.ImageBeforeText,
-                Padding = new Padding(4),
-                Tag = new IconTag { Glyph = "\uE945", Accent = false }
-            };
+            bool icons =
+                Icons.Available;
 
-            foreach (int preset in new[] { 0, 100, 500, 1024, 2048, 5120 })
+            speedMenu =
+                new ToolStripDropDownButton(
+                    icons
+                        ? "Speed"
+                        : "⚡  Speed")
+                {
+                    DisplayStyle = icons
+                        ? ToolStripItemDisplayStyle.ImageAndText
+                        : ToolStripItemDisplayStyle.Text,
+
+                    TextImageRelation =
+                        TextImageRelation.ImageBeforeText,
+
+                    Padding =
+                        new Padding(4),
+
+                    Tag = new IconTag
+                    {
+                        Glyph = "\uE945",
+                        Accent = false
+                    }
+                };
+
+            foreach (int preset in
+                     new[]
+                     {
+                         0,
+                         100,
+                         500,
+                         1024,
+                         2048,
+                         5120
+                     })
             {
                 int kb = preset;
-                var mi = new ToolStripMenuItem(SpeedLimiter.Describe(kb)) { Tag = kb };
-                mi.Click += (s, e) => SetSpeedLimit(kb);
+
+                var mi =
+                    new ToolStripMenuItem(
+                        SpeedLimiter.Describe(kb))
+                    {
+                        Tag = kb
+                    };
+
+                mi.Click += (s, e) =>
+                    SetSpeedLimit(kb);
+
                 speedMenu.DropDownItems.Add(mi);
             }
-            speedMenu.DropDownItems.Add(new ToolStripSeparator());
-            speedMenu.DropDownItems.Add("Custom limit & proxy…", null, (s, e) => ShowNetworkSettings());
+
+            speedMenu.DropDownItems.Add(
+                new ToolStripSeparator());
+
+            speedMenu.DropDownItems.Add(
+                "Custom limit & proxy…",
+                null,
+                (s, e) => ShowNetworkSettings());
 
             speedMenu.DropDownOpening += (s, e) =>
             {
-                foreach (var mi in speedMenu.DropDownItems.OfType<ToolStripMenuItem>())
-                    if (mi.Tag is int v) mi.Checked = v == settings.SpeedLimitKBps;
+                foreach (var mi in speedMenu.DropDownItems
+                    .OfType<ToolStripMenuItem>())
+                {
+                    if (mi.Tag is int v)
+                    {
+                        mi.Checked =
+                            v ==
+                            settings.SpeedLimitKBps;
+                    }
+                }
             };
         }
 
         void SetSpeedLimit(int kbps)
         {
-            settings.SpeedLimitKBps = kbps;
+            settings.SpeedLimitKBps =
+                kbps;
+
             SpeedLimiter.SetKBps(kbps);
+
             SaveState();
         }
 
         void ShowNetworkSettings()
         {
-            using var f = new NetworkForm(settings);
+            using var f =
+                new NetworkForm(settings);
+
             Theme.Apply(f);
             f.ShowDialog(this);
+
             SaveState();
         }
 
@@ -1606,94 +3660,201 @@ namespace FastDM
         void ApplyTheme()
         {
             var p = Theme.P;
+
             SuspendLayout();
+
             BackColor = p.Window;
             ForeColor = p.Text;
+
             lv.BackColor = p.Window;
             lv.ForeColor = p.Text;
+
             sidebar.BackColor = p.SideBg;
+
             Theme.StyleStrip(tools);
             Theme.StyleStrip(statusBar);
             Theme.StyleStrip(lv.ContextMenuStrip);
             Theme.StyleStrip(trayMenu);
             Theme.StyleStrip(speedMenu.DropDown);
             Theme.StyleStrip(doneMenu.DropDown);
-            lblActive.ForeColor = p.SubText;
-            lblSpeed.ForeColor = p.SubText;
-            lblLimit.ForeColor = p.SubText;
-            lblSched.ForeColor = p.SubText;
+
+            lblActive.ForeColor =
+                p.SubText;
+
+            lblSpeed.ForeColor =
+                p.SubText;
+
+            lblLimit.ForeColor =
+                p.SubText;
+
+            lblSched.ForeColor =
+                p.SubText;
+
             details?.Invalidate();
+
             RefreshToolIcons();
+
             Theme.SetTitleBar(this);
             Theme.StyleScroll(lv);
             Theme.StyleScroll(sidebar);
+
             ResumeLayout(true);
+
             lv.Invalidate(true);
+
             UpdateSideCounts();
             sidebar.Invalidate();
+
             Invalidate(true);
         }
 
-        void OnSysPrefChanged(object sender, UserPreferenceChangedEventArgs e)
+        void OnSysPrefChanged(
+            object sender,
+            UserPreferenceChangedEventArgs e)
         {
-            if (e.Category != UserPreferenceCategory.General || settings.ThemeChoice != ThemeMode.System) return;
+            if (
+                e.Category !=
+                    UserPreferenceCategory.General ||
+                settings.ThemeChoice !=
+                    ThemeMode.System)
+                return;
+
             try
             {
-                BeginInvoke(new Action(() => { Theme.SetMode(ThemeMode.System); ApplyTheme(); }));
+                BeginInvoke(
+                    new Action(() =>
+                    {
+                        Theme.SetMode(
+                            ThemeMode.System);
+
+                        ApplyTheme();
+                    }));
             }
             catch { }
         }
 
-        // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে (ডার্ক মোডে ফাঁকা হেডার এড়াতে)
+        // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে
         void FitLastColumn()
         {
-            if (lv == null || lv.Columns.Count == 0 || lv.ClientSize.Width <= 0) return;
+            if (lv == null ||
+                lv.Columns.Count == 0 ||
+                lv.ClientSize.Width <= 0)
+                return;
+
             int used = 0;
-            for (int i = 0; i < lv.Columns.Count - 1; i++) used += lv.Columns[i].Width;
-            int w = Math.Max(120, lv.ClientSize.Width - used);
-            var last = lv.Columns[lv.Columns.Count - 1];
-            if (last.Width != w) last.Width = w;
+
+            for (int i = 0;
+                 i < lv.Columns.Count - 1;
+                 i++)
+            {
+                used +=
+                    lv.Columns[i].Width;
+            }
+
+            int w =
+                Math.Max(
+                    120,
+                    lv.ClientSize.Width - used);
+
+            var last =
+                lv.Columns[
+                    lv.Columns.Count - 1];
+
+            if (last.Width != w)
+                last.Width = w;
         }
 
         // ---------- সিস্টেম ট্রে ----------
         void BuildTray()
         {
-            trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("Open FastDM", null, (s, e) => RestoreFromTray());
-            trayMenu.Items.Add(new ToolStripSeparator());
-            trayMenu.Items.Add("Pause all", null, (s, e) => PauseAll());
-            trayMenu.Items.Add("Resume all", null, (s, e) => ResumeAll());
-            trayMenu.Items.Add(new ToolStripSeparator());
-            trayMenu.Items.Add("Exit", null, (s, e) => ExitApp());
+            trayMenu =
+                new ContextMenuStrip();
+
+            trayMenu.Items.Add(
+                "Open FastDM",
+                null,
+                (s, e) => RestoreFromTray());
+
+            trayMenu.Items.Add(
+                new ToolStripSeparator());
+
+            trayMenu.Items.Add(
+                "Pause all",
+                null,
+                (s, e) => PauseAll());
+
+            trayMenu.Items.Add(
+                "Resume all",
+                null,
+                (s, e) => ResumeAll());
+
+            trayMenu.Items.Add(
+                new ToolStripSeparator());
+
+            trayMenu.Items.Add(
+                "Exit",
+                null,
+                (s, e) => ExitApp());
 
             Icon ico = null;
-            try { ico = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            tray = new NotifyIcon
+            try
             {
-                Icon = ico ?? SystemIcons.Application,
-                Text = "FastDM",
-                ContextMenuStrip = trayMenu,
-                Visible = true
-            };
-            tray.DoubleClick += (s, e) => RestoreFromTray();
-            tray.BalloonTipClicked += (s, e) => RestoreFromTray();
+                ico =
+                    Icon.ExtractAssociatedIcon(
+                        Application.ExecutablePath);
+            }
+            catch { }
+
+            tray =
+                new NotifyIcon
+                {
+                    Icon =
+                        ico ?? SystemIcons.Application,
+
+                    Text = "FastDM",
+
+                    ContextMenuStrip =
+                        trayMenu,
+
+                    Visible = true
+                };
+
+            tray.DoubleClick +=
+                (s, e) => RestoreFromTray();
+
+            tray.BalloonTipClicked +=
+                (s, e) => RestoreFromTray();
         }
 
-        void HideToTray(bool showTip)
+        void HideToTray(
+            bool showTip)
         {
             Hide();
-            if (showTip && !trayTipShown)
+
+            if (showTip &&
+                !trayTipShown)
             {
                 trayTipShown = true;
-                Notify("FastDM", "Still running in the system tray. Click the icon to open it.");
+
+                Notify(
+                    "FastDM",
+                    "Still running in the system tray. Click the icon to open it.");
             }
         }
 
         void RestoreFromTray()
         {
-            if (!Visible) Show();
-            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            if (!Visible)
+                Show();
+
+            if (WindowState ==
+                FormWindowState.Minimized)
+            {
+                WindowState =
+                    FormWindowState.Normal;
+            }
+
             Activate();
         }
 
@@ -1703,16 +3864,28 @@ namespace FastDM
             Close();
         }
 
-        void OnFormResize(object sender, EventArgs e)
+        void OnFormResize(
+            object sender,
+            EventArgs e)
         {
             FitLastColumn();
-            if (tray != null && settings.MinimizeToTray && WindowState == FormWindowState.Minimized)
+
+            if (tray != null &&
+                settings.MinimizeToTray &&
+                WindowState ==
+                    FormWindowState.Minimized)
+            {
                 HideToTray(false);
+            }
         }
 
-        void OnFormClosing(object sender, FormClosingEventArgs e)
+        void OnFormClosing(
+            object sender,
+            FormClosingEventArgs e)
         {
-            if (!exiting && e.CloseReason == CloseReason.UserClosing)
+            if (!exiting &&
+                e.CloseReason ==
+                    CloseReason.UserClosing)
             {
                 if (settings.CloseToTray)
                 {
@@ -1721,137 +3894,616 @@ namespace FastDM
                     return;
                 }
 
-                bool busy = items.Any(i => i.State == DlState.Downloading || i.State == DlState.Queued);
+                bool busy =
+                    items.Any(i =>
+                        i.State ==
+                            DlState.Downloading ||
+                        i.State ==
+                            DlState.Queued);
+
                 if (busy)
                 {
-                    var r = MessageBox.Show(this,
+                    var r = MessageBox.Show(
+                        this,
                         "Downloads are still running.\n\n" +
                         "Yes = keep running in the system tray\n" +
                         "No = exit (downloads will be paused)\n" +
                         "Cancel = stay",
-                        "FastDM", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                    if (r == DialogResult.Cancel) { e.Cancel = true; return; }
-                    if (r == DialogResult.Yes) { e.Cancel = true; HideToTray(true); return; }
+                        "FastDM",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+
+                    if (r ==
+                        DialogResult.Cancel)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+
+                    if (r ==
+                        DialogResult.Yes)
+                    {
+                        e.Cancel = true;
+                        HideToTray(true);
+                        return;
+                    }
                 }
             }
 
-            foreach (var it in items) it.Cts?.Cancel();
+            foreach (var it in items)
+                it.Cts?.Cancel();
+
             SaveState();
         }
 
         void UpdateSideCounts()
         {
-            for (int i = 0; i < sideCounts.Length; i++)
+            for (int i = 0;
+                 i < sideCounts.Length;
+                 i++)
             {
                 int idx = i;
-                sideCounts[i] = items.Count(x => Match(idx, x));
+
+                sideCounts[i] =
+                    items.Count(
+                        x => Match(idx, x));
             }
         }
 
-        // ---------- বাম সাইডবার: ☰ চাপলে খোলে/বন্ধ হয় ----------
+        // ---------- Sidebar ----------
         void ToggleSidebar()
         {
-            settings.SidebarOpen = !settings.SidebarOpen;
-            UpdateSideCounts();                    // খোলার আগেই সঠিক সংখ্যা তৈরি
-            navTarget = settings.SidebarOpen ? 200 : 0;
-            if (settings.SidebarOpen) sidebar.Visible = true;
+            settings.SidebarOpen =
+                !settings.SidebarOpen;
+
+            UpdateSideCounts();
+
+            navTarget =
+                settings.SidebarOpen
+                    ? 200
+                    : 0;
+
+            if (settings.SidebarOpen)
+                sidebar.Visible = true;
+
             navTimer.Start();
+
             SaveState();
         }
 
         void StepSidebar()
         {
             const int step = 40;
-            int w = sidebar.Width;
-            if (w < navTarget) w = Math.Min(navTarget, w + step);
-            else if (w > navTarget) w = Math.Max(navTarget, w - step);
+
+            int w =
+                sidebar.Width;
+
+            if (w < navTarget)
+            {
+                w =
+                    Math.Min(
+                        navTarget,
+                        w + step);
+            }
+            else if (w > navTarget)
+            {
+                w =
+                    Math.Max(
+                        navTarget,
+                        w - step);
+            }
+
             sidebar.Width = w;
+
             FitLastColumn();
+
             if (w == navTarget)
             {
                 navTimer.Stop();
-                if (w == 0) sidebar.Visible = false;
-                else sidebar.Invalidate();
+
+                if (w == 0)
+                    sidebar.Visible = false;
+                else
+                    sidebar.Invalidate();
             }
         }
 
         void Cleanup()
         {
-            try { SystemEvents.UserPreferenceChanged -= OnSysPrefChanged; } catch { }
-            try { timer?.Stop(); navTimer?.Stop(); } catch { }
-            try { regWait?.Unregister(null); showEvent?.Dispose(); } catch { }
+            try
+            {
+                SystemEvents.UserPreferenceChanged -=
+                    OnSysPrefChanged;
+            }
+            catch { }
+
+            try
+            {
+                timer?.Stop();
+                navTimer?.Stop();
+            }
+            catch { }
+
+            try
+            {
+                regWait?.Unregister(null);
+                showEvent?.Dispose();
+            }
+            catch { }
+
+            try
+            {
+                pipeCts?.Cancel();
+            }
+            catch { }
+
+            StopBridge();
+
             if (tray != null)
             {
                 tray.Visible = false;
                 tray.Dispose();
                 tray = null;
             }
+
             trayMenu?.Dispose();
         }
 
-        // দ্বিতীয়বার অ্যাপ চালালে প্রথম উইন্ডোটা সামনে আনবে (Program.cs এর সাথে কাজ করে)
+        // ---------- ব্রাউজার এক্সটেনশন bridge ----------
+        void StartBridge()
+        {
+            try
+            {
+                if (!settings.BridgeEnabled ||
+                    bridge != null)
+                    return;
+
+                var b =
+                    new BridgeServer(
+                        new BridgeHostAdapter(this));
+
+                if (b.Start())
+                    bridge = b;
+                else
+                    b.Dispose();
+            }
+            catch
+            {
+                bridge = null;
+            }
+        }
+
+        void StopBridge()
+        {
+            try
+            {
+                bridge?.Dispose();
+            }
+            catch { }
+
+            bridge = null;
+        }
+
+        sealed class BridgeHostAdapter : IBridgeHost
+        {
+            readonly Form1 f;
+
+            public BridgeHostAdapter(Form1 form)
+            {
+                f = form;
+            }
+
+            public AppSettings BridgeSettings =>
+                f.settings;
+
+            public Task<bool> AskPairAsync(
+                string origin)
+            {
+                var tcs =
+                    new TaskCompletionSource<bool>();
+
+                try
+                {
+                    f.BeginInvoke(
+                        new Action(() =>
+                        {
+                            f.RestoreFromTray();
+
+                            var r =
+                                MessageBox.Show(
+                                    f,
+                                    "A browser extension wants to connect to FastDM.\n\nOrigin: " +
+                                    origin +
+                                    "\n\nAllow it to send downloads to FastDM?",
+                                    "FastDM — browser extension",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Question,
+                                    MessageBoxDefaultButton.Button2);
+
+                            tcs.TrySetResult(
+                                r == DialogResult.Yes);
+                        }));
+                }
+                catch
+                {
+                    tcs.TrySetResult(false);
+                }
+
+                return tcs.Task;
+            }
+
+            public void ExternalAdd(
+                string url,
+                string title)
+            {
+                try
+                {
+                    f.BeginInvoke(
+                        new Action(() =>
+                        {
+                            f.RestoreFromTray();
+                            f.ShowAddDialog(url);
+                        }));
+                }
+                catch { }
+            }
+
+            public List<BridgeTaskInfo> GetTasks()
+            {
+                try
+                {
+                    return (List<BridgeTaskInfo>)f.Invoke(
+                        new Func<List<BridgeTaskInfo>>(
+                            () =>
+                                f.items
+                                 .OrderByDescending(
+                                     i => i.Added)
+                                 .Take(30)
+                                 .Select(
+                                     i =>
+                                         new BridgeTaskInfo
+                                         {
+                                             Id = i.Id,
+                                             Name = i.FileName,
+                                             State =
+                                                 i.State ==
+                                                     DlState.Completed
+                                                     ? "Complete"
+                                                     : i.State.ToString(),
+                                             Percent =
+                                                 i.Percent,
+                                             Speed =
+                                                 i.Speed,
+                                             Size =
+                                                 i.TotalBytes,
+                                             Downloaded =
+                                                 i.Downloaded,
+                                             Eta =
+                                                 Eta(i)
+                                         })
+                                 .ToList()));
+                }
+                catch
+                {
+                    return new List<BridgeTaskInfo>();
+                }
+            }
+
+            public bool TaskAction(
+                string id,
+                string action)
+            {
+                try
+                {
+                    return (bool)f.Invoke(
+                        new Func<bool>(() =>
+                        {
+                            var it =
+                                f.items.FirstOrDefault(
+                                    x => x.Id == id);
+
+                            if (it == null)
+                                return false;
+
+                            if (action == "pause")
+                            {
+                                if (it.State ==
+                                    DlState.Downloading)
+                                {
+                                    it.Cts?.Cancel();
+                                }
+                                else if (
+                                    it.State ==
+                                    DlState.Queued)
+                                {
+                                    it.State =
+                                        DlState.Paused;
+                                }
+                            }
+                            else if (
+                                action == "resume")
+                            {
+                                if (
+                                    it.State ==
+                                        DlState.Paused ||
+                                    it.State ==
+                                        DlState.Error)
+                                {
+                                    it.State =
+                                        DlState.Queued;
+
+                                    it.Error = null;
+                                }
+                            }
+
+                            f.MarkChanged();
+
+                            return true;
+                        }));
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            public void SaveSettings()
+            {
+                try
+                {
+                    f.BeginInvoke(
+                        new Action(
+                            f.SaveState));
+                }
+                catch { }
+            }
+        }
+
+        // ---------- fastdm:// কমান্ড ----------
+        void StartPipeListener()
+        {
+            pipeCts =
+                new CancellationTokenSource();
+
+            var token =
+                pipeCts.Token;
+
+            string name =
+                ProtocolHandler.PipeName();
+
+            _ = Task.Run(
+                async () =>
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            using var server =
+                                new NamedPipeServerStream(
+                                    name,
+                                    PipeDirection.In,
+                                    1,
+                                    PipeTransmissionMode.Byte,
+                                    PipeOptions.Asynchronous);
+
+                            await server
+                                .WaitForConnectionAsync(token);
+
+                            using var sr =
+                                new StreamReader(
+                                    server,
+                                    Encoding.UTF8);
+
+                            string line =
+                                await sr.ReadLineAsync();
+
+                            if (!string.IsNullOrWhiteSpace(line) &&
+                                IsHandleCreated &&
+                                !IsDisposed)
+                            {
+                                BeginInvoke(
+                                    new Action(
+                                        () =>
+                                            HandleProtocolCommand(
+                                                line)));
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                await Task.Delay(
+                                    500,
+                                    token);
+                            }
+                            catch
+                            {
+                                break;
+                            }
+                        }
+                    }
+                });
+        }
+
+        void HandleProtocolCommand(
+            string raw)
+        {
+            var cmd =
+                ProtocolHandler.Parse(raw);
+
+            if (cmd == null)
+                return;
+
+            RestoreFromTray();
+
+            if (cmd.Action == "add" &&
+                !string.IsNullOrEmpty(cmd.Url))
+            {
+                ShowAddDialog(
+                    cmd.Url);
+            }
+        }
+
         void SetupSingleInstanceListener()
         {
             try
             {
-                showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\FastDM.Show");
-                regWait = ThreadPool.RegisterWaitForSingleObject(showEvent, (state, timedOut) =>
-                {
-                    try
-                    {
-                        if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(RestoreFromTray));
-                    }
-                    catch { }
-                }, null, Timeout.Infinite, false);
+                showEvent =
+                    new EventWaitHandle(
+                        false,
+                        EventResetMode.AutoReset,
+                        @"Local\FastDM.Show");
+
+                regWait =
+                    ThreadPool.RegisterWaitForSingleObject(
+                        showEvent,
+                        (state, timedOut) =>
+                        {
+                            try
+                            {
+                                if (!IsDisposed &&
+                                    IsHandleCreated)
+                                {
+                                    BeginInvoke(
+                                        new Action(
+                                            RestoreFromTray));
+                                }
+                            }
+                            catch { }
+                        },
+                        null,
+                        Timeout.Infinite,
+                        false);
             }
             catch { }
         }
 
         // ---------- নোটিফিকেশন ----------
-        void Notify(string title, string text, ToolTipIcon icon = ToolTipIcon.Info)
+        void Notify(
+            string title,
+            string text,
+            ToolTipIcon icon =
+                ToolTipIcon.Info)
         {
-            if (tray == null || !settings.ShowNotifications) return;
-            if (ActiveForm != null) return;      // অ্যাপ সামনে থাকলে নোটিফিকেশন দরকার নেই
+            if (tray == null ||
+                !settings.ShowNotifications)
+                return;
+
+            if (ActiveForm != null)
+                return;
+
             try
             {
-                if (title.Length > 60) title = title.Substring(0, 60);
-                if (text.Length > 240) text = text.Substring(0, 240) + "…";
-                tray.ShowBalloonTip(4000, title, text, icon);
+                if (title.Length > 60)
+                    title =
+                        title.Substring(
+                            0,
+                            60);
+
+                if (text.Length > 240)
+                    text =
+                        text.Substring(
+                            0,
+                            240) +
+                        "…";
+
+                tray.ShowBalloonTip(
+                    4000,
+                    title,
+                    text,
+                    icon);
             }
             catch { }
         }
 
-        void NotifyError(DownloadItem it)
+        void NotifyError(
+            DownloadItem it)
         {
-            if ((DateTime.UtcNow - lastErrorNotify).TotalSeconds < 10) return;   // স্প্যাম ঠেকাতে
-            lastErrorNotify = DateTime.UtcNow;
-            Notify("Download failed", it.FileName + "\n" + (it.Error ?? ""), ToolTipIcon.Error);
+            if (
+                (DateTime.UtcNow -
+                 lastErrorNotify)
+                    .TotalSeconds < 10)
+                return;
+
+            lastErrorNotify =
+                DateTime.UtcNow;
+
+            Notify(
+                "Download failed",
+                it.FileName +
+                "\n" +
+                (it.Error ?? ""),
+                ToolTipIcon.Error);
         }
 
         // ---------- ড্র্যাগ-ড্রপ + ক্লিপবোর্ড ----------
-        void OnDragEnter(object s, DragEventArgs e)
+        void OnDragEnter(
+            object s,
+            DragEventArgs e)
         {
-            e.Effect = e.Data.GetDataPresent(DataFormats.Text) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Effect =
+                e.Data.GetDataPresent(
+                    DataFormats.Text)
+                    ? DragDropEffects.Copy
+                    : DragDropEffects.None;
         }
 
-        void OnDragDrop(object s, DragEventArgs e)
+        void OnDragDrop(
+            object s,
+            DragEventArgs e)
         {
-            if (e.Data.GetData(DataFormats.Text) is string t) ShowAddDialog(t.Trim());
+            if (e.Data.GetData(
+                    DataFormats.Text)
+                is string t)
+            {
+                ShowAddDialog(
+                    t.Trim());
+            }
         }
 
         void CheckClipboard()
         {
             try
             {
-                if (!Clipboard.ContainsText()) return;
-                string t = Clipboard.GetText().Trim();
-                if (t == lastClip) return;
+                if (!Clipboard.ContainsText())
+                    return;
+
+                string t =
+                    Clipboard.GetText().Trim();
+
+                if (t == lastClip)
+                    return;
+
                 lastClip = t;
-                if (!Uri.TryCreate(t, UriKind.Absolute, out var u) ||
-                    (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps)) return;
-                string ext = Path.GetExtension(u.AbsolutePath).ToLowerInvariant();
-                if (!FileExts.Contains(ext)) return;
-                BeginInvoke(new Action(() => ShowAddDialog(t)));
+
+                if (!Uri.TryCreate(
+                        t,
+                        UriKind.Absolute,
+                        out var u) ||
+                    (u.Scheme !=
+                        Uri.UriSchemeHttp &&
+                     u.Scheme !=
+                        Uri.UriSchemeHttps))
+                {
+                    return;
+                }
+
+                string ext =
+                    Path.GetExtension(
+                        u.AbsolutePath)
+                        .ToLowerInvariant();
+
+                if (!FileExts.Contains(ext))
+                    return;
+
+                BeginInvoke(
+                    new Action(
+                        () =>
+                            ShowAddDialog(t)));
             }
             catch { }
         }
@@ -1859,16 +4511,39 @@ namespace FastDM
         // ---------- সেভ / লোড ----------
         void SaveState()
         {
-            lastSave = DateTime.UtcNow;
+            lastSave =
+                DateTime.UtcNow;
+
             try
             {
-                Directory.CreateDirectory(dataDir);
-                var json = JsonSerializer.Serialize(
-                    new AppData { Settings = settings, Items = items.ToList() },
-                    new JsonSerializerOptions { WriteIndented = true });
-                string tmp = DataFile + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, DataFile, true);
+                Directory.CreateDirectory(
+                    dataDir);
+
+                var json =
+                    JsonSerializer.Serialize(
+                        new AppData
+                        {
+                            Settings =
+                                settings,
+                            Items =
+                                items.ToList()
+                        },
+                        new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        });
+
+                string tmp =
+                    DataFile + ".tmp";
+
+                File.WriteAllText(
+                    tmp,
+                    json);
+
+                File.Move(
+                    tmp,
+                    DataFile,
+                    true);
             }
             catch { }
         }
@@ -1877,13 +4552,32 @@ namespace FastDM
         {
             try
             {
-                if (!File.Exists(DataFile)) return;
-                var data = JsonSerializer.Deserialize<AppData>(File.ReadAllText(DataFile));
-                if (data == null) return;
-                if (data.Settings != null) settings = data.Settings;
-                foreach (var it in data.Items ?? new List<DownloadItem>())
+                if (!File.Exists(DataFile))
+                    return;
+
+                var data =
+                    JsonSerializer.Deserialize<AppData>(
+                        File.ReadAllText(
+                            DataFile));
+
+                if (data == null)
+                    return;
+
+                if (data.Settings != null)
+                    settings =
+                        data.Settings;
+
+                foreach (var it in
+                    data.Items ??
+                    new List<DownloadItem>())
                 {
-                    if (it.State == DlState.Downloading) it.State = DlState.Paused;
+                    if (it.State ==
+                        DlState.Downloading)
+                    {
+                        it.State =
+                            DlState.Paused;
+                    }
+
                     items.Add(it);
                 }
             }

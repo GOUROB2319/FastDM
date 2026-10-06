@@ -1,0 +1,74 @@
+/* FastDM ডিজাইন টোকেন: ডেস্কটপ অ্যাপের Theme.P প্যালেটের সাথে মেলানো (AppTheme.cs) */
+:root {
+  --window: #FFFFFF;
+  --row-alt: #F8F9FC;
+  --text: #2D3142;
+  --sub: #6B7089;
+  --border: #E3E6EF;
+  --accent: #5B6CFF;
+  --selection: #DEE6FF;
+  --track: #E6E9F2;
+  --hover: #EDEFF7;
+  --button: #F4F5FA;
+  --green: #2ECC71;
+  --orange: #F5A623;
+  --red: #FF5C77;
+  --gray: #9AA0B4;
+  --radius: 8px;
+  --font: "Segoe UI", system-ui, -apple-system, "Noto Sans Bengali", sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --window: #171923;
+    --row-alt: #1C1F2B;
+    --text: #E6E8F2;
+    --sub: #9AA0B4;
+    --border: #2C3043;
+    --accent: #7482FF;
+    --selection: #2A3157;
+    --track: #2C3043;
+    --hover: #2A2E42;
+    --button: #262A3B;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--window);
+  color: var(--text);
+  font: 13px/1.4 var(--font);
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--button);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+button:hover { background: var(--hover); }
+button:disabled { opacity: .55; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.icon { padding: 4px 8px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px;
+  background: var(--row-alt); border: 1px solid var(--border);
+  color: var(--sub); font-size: 12px;
+}
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
+.pill.ok .dot { background: var(--green); }
+.pill.warn .dot { background: var(--orange); }
+.pill.bad .dot { background: var(--red); }
+
+.muted { color: var(--sub); }
+.hidden { display: none !important; }
