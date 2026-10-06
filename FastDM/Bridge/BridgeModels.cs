@@ -9,7 +9,7 @@ namespace FastDM
     {
         public string Url { get; set; }
         public string Kind { get; set; } = "auto";      // auto | file | folder | media | page
-        public string Mode { get; set; } = "open";      // open = Add ডায়ালগ খোলে (ডিফল্ট, পুরোনো এক্সটেনশনের জন্য নিরাপদ) | download = ডায়ালগ ছাড়া শুরু
+        public string Mode { get; set; } = "open";      // open = Add ডায়ালগ (ডিফল্ট) | download = ডায়ালগ ছাড়া শুরু | playlist = ফোল্ডার উইন্ডো প্লেলিস্ট মোডে
         public string Title { get; set; }
         public string Referer { get; set; }
         public string UserAgent { get; set; }

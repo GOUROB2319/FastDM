@@ -133,5 +133,11 @@
   },
   "errCookiesDenied": {
     "message": "Permission was not granted, so cookies stay off."
+  },
+  "menuPlaylistLink": {
+    "message": "Create playlist with FastDM"
+  },
+  "menuPlaylistPage": {
+    "message": "Create playlist from this folder"
   }
 }

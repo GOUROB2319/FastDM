@@ -13,7 +13,7 @@ namespace FastDM
     // অ্যাপের ভেতরের লোকাল সার্ভার: শুধু 127.0.0.1, শুধু ব্রাউজার এক্সটেনশনের Origin, প্রতি রিকোয়েস্টে টোকেন।
     //   GET  /v1/ping                      → অ্যাপ চলছে কি না (টোকেন ঐচ্ছিক, থাকলে paired: true/false)
     //   POST /v1/pair                      → অ্যাপে অনুমোদন ডায়ালগ, অনুমোদনে নতুন টোকেন
-    //   POST /v1/add        {url,mode,...} → mode=open: Add ডায়ালগ খোলে (ডিফল্ট) | mode=download: ডায়ালগ ছাড়া শুরু
+    //   POST /v1/add        {url,mode,...} → mode=open: Add ডায়ালগ (ডিফল্ট) | download: ডায়ালগ ছাড়া শুরু | playlist: ফোল্ডার উইন্ডো প্লেলিস্ট মোডে
     //                                        referer / userAgent / cookies ঐচ্ছিক (Phase 2)
     //   GET  /v1/tasks                     → সাম্প্রতিক ডাউনলোডের অবস্থা
     //   POST /v1/tasks/{id}/{pause|resume}

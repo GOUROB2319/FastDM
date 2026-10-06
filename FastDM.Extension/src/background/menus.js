@@ -9,10 +9,12 @@ export const MENU = Object.freeze({
   DL_MEDIA: 'fastdm-dl-media',
   OPEN_MEDIA: 'fastdm-open-media',
   OPEN_PAGE: 'fastdm-open-page',
+  PLAYLIST_LINK: 'fastdm-playlist-link',
+  PLAYLIST_PAGE: 'fastdm-playlist-page',
 });
 
 // bridge-এর mode: download = ডায়ালগ ছাড়া শুরু, open = Add ডায়ালগ
-export const MODE = Object.freeze({ DOWNLOAD: 'download', OPEN: 'open' });
+export const MODE = Object.freeze({ DOWNLOAD: 'download', OPEN: 'open', PLAYLIST: 'playlist' });
 
 const MODE_BY_MENU = Object.freeze({
   [MENU.DL_LINK]: MODE.DOWNLOAD,
@@ -20,7 +22,12 @@ const MODE_BY_MENU = Object.freeze({
   [MENU.OPEN_LINK]: MODE.OPEN,
   [MENU.OPEN_MEDIA]: MODE.OPEN,
   [MENU.OPEN_PAGE]: MODE.OPEN,
+  [MENU.PLAYLIST_LINK]: MODE.PLAYLIST,
+  [MENU.PLAYLIST_PAGE]: MODE.PLAYLIST,
 });
+
+// ফোল্ডার-মতো লিঙ্ক/পেজ (শেষে "/"), শুধু এগুলোতেই "Create playlist" দেখাবে
+const FOLDER_LIKE = ['http://*/*/', 'https://*/*/', 'ftp://*/*/'];
 
 const t = (key) => chrome.i18n.getMessage(key) || key;
 
@@ -33,6 +40,14 @@ export function createMenus() {
     chrome.contextMenus.create({ id: MENU.DL_MEDIA, parentId: parent, title: t('menuDownloadMedia'), contexts: ['video', 'audio'] });
     chrome.contextMenus.create({ id: MENU.OPEN_MEDIA, parentId: parent, title: t('menuOpenMedia'), contexts: ['video', 'audio'] });
     chrome.contextMenus.create({ id: MENU.OPEN_PAGE, parentId: parent, title: t('menuSendPage'), contexts: ['page'] });
+    chrome.contextMenus.create({
+      id: MENU.PLAYLIST_LINK, parentId: parent, title: t('menuPlaylistLink'),
+      contexts: ['link'], targetUrlPatterns: FOLDER_LIKE,
+    });
+    chrome.contextMenus.create({
+      id: MENU.PLAYLIST_PAGE, parentId: parent, title: t('menuPlaylistPage'),
+      contexts: ['page'], documentUrlPatterns: FOLDER_LIKE,
+    });
   });
 }
 
@@ -43,7 +58,7 @@ export function modeFor(menuItemId) {
 // ক্লিক থেকে পাঠানোর লিঙ্ক বের করা
 export function targetUrl(info, tab) {
   const usable = (u) => u && !u.startsWith('blob:') && !u.startsWith('data:');
-  if (info.menuItemId === MENU.DL_LINK || info.menuItemId === MENU.OPEN_LINK) return info.linkUrl;
+  if (info.menuItemId === MENU.DL_LINK || info.menuItemId === MENU.OPEN_LINK || info.menuItemId === MENU.PLAYLIST_LINK) return info.linkUrl;
   if (info.menuItemId === MENU.DL_MEDIA || info.menuItemId === MENU.OPEN_MEDIA) {
     return usable(info.srcUrl) ? info.srcUrl : (info.pageUrl || (tab && tab.url));
   }
@@ -52,6 +67,6 @@ export function targetUrl(info, tab) {
 
 // Referer: লিঙ্ক/মিডিয়া যে পেজ বা iframe-এ ছিল। পেজের লিঙ্ক নিজেই পাঠালে Referer নেই।
 export function refererFor(info) {
-  if (info.menuItemId === MENU.OPEN_PAGE) return undefined;
+  if (info.menuItemId === MENU.OPEN_PAGE || info.menuItemId === MENU.PLAYLIST_PAGE) return undefined;
   return info.frameUrl || info.pageUrl || undefined;
 }

@@ -133,5 +133,11 @@
   },
   "errCookiesDenied": {
     "message": "অনুমতি দেওয়া হয়নি, তাই কুকি বন্ধই থাকছে।"
+  },
+  "menuPlaylistLink": {
+    "message": "FastDM দিয়ে প্লেলিস্ট বানান"
+  },
+  "menuPlaylistPage": {
+    "message": "এই ফোল্ডার থেকে প্লেলিস্ট বানান"
   }
 }

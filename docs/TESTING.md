@@ -67,6 +67,31 @@ Notes for the tester:
 - Negative check: send a request to `http://127.0.0.1:17432/v1/add` from a
   normal web page (for example from the browser console). It must be refused.
 
+## 3c. Phase 3 checks (playlists for VLC)
+
+Open a folder window (right-click a directory-listing link, or add a folder
+link in the Add dialog). At the bottom you now have two playlist options:
+
+| Option | What it does |
+| --- | --- |
+| **Save stream playlist…** | Writes a `.m3u8` with the server links of the ticked video/audio files. VLC plays them straight from the server, no download. Files are sorted naturally (Ep 2 before Ep 10). |
+| **Also create a local playlist (.m3u8)…** (checkbox) | When you press **Download**, a `<folder name>.m3u8` with relative paths is written into the download folder. It plays offline once the files have arrived. |
+
+Browser extension: right-click a link or page whose address ends with `/`
+(for example `https://server/movies/`). The **FastDM** submenu has
+**Create playlist with FastDM** (link) or **Create playlist from this folder**
+(page). The folder window opens directly with the playlist button as the main action.
+
+Checks:
+
+- Open the saved stream playlist in VLC. Episodes must play in order.
+- For an FTP/SFTP server that needs a login, open the `.m3u8` in Notepad:
+  there must be **no** username or password in any line. VLC asks for them itself.
+- Non-media files (`.srt`, `.nfo`, images) must not be in the playlist; the status
+  line says how many were skipped.
+- Close FastDM, then use the menu again: `fastdm://playlist` opens the app and asks
+  you to confirm before it scans the folder.
+
 ## 4. Package the extension
 
 ```powershell

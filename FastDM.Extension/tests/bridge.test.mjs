@@ -223,3 +223,27 @@ test('Phase 2: permission থাকলে কুকি bridge ফরম্যা
   assert.deepEqual(await cookies.cookiesFor(''), []);
   assert.equal(cookieCalls.length, 1);
 });
+
+// ---------------- Phase 3 ----------------
+
+test('Phase 3: playlist মেনু → mode playlist, লিঙ্ক ও পেজের URL', () => {
+  const M = menus.MENU;
+  assert.equal(menus.modeFor(M.PLAYLIST_LINK), 'playlist');
+  assert.equal(menus.modeFor(M.PLAYLIST_PAGE), 'playlist');
+  const info = { linkUrl: 'https://a.test/movies/', pageUrl: 'https://a.test/', frameUrl: 'https://a.test/' };
+  assert.equal(menus.targetUrl({ ...info, menuItemId: M.PLAYLIST_LINK }, {}), 'https://a.test/movies/');
+  assert.equal(menus.targetUrl({ pageUrl: 'https://a.test/movies/', menuItemId: M.PLAYLIST_PAGE }, {}), 'https://a.test/movies/');
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.PLAYLIST_PAGE }), undefined);
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.PLAYLIST_LINK }), 'https://a.test/');
+});
+
+test('Phase 3: অ্যাপ বন্ধ থাকলে playlist mode fastdm://playlist দিয়ে চালু করে', async () => {
+  reset();
+  // কোনো অ্যাপ চলছে না → bridge পৌঁছায় না → ফলব্যাক
+  const r = await bridge.sendLink('https://a.test/movies/', { mode: 'playlist' });
+  assert.deepEqual(r, { via: 'protocol' });
+  assert.ok(tabsCreated.at(-1).startsWith('fastdm://playlist?url='));
+  const r2 = await bridge.sendLink('https://a.test/f.zip', { mode: 'download' });
+  assert.deepEqual(r2, { via: 'protocol' });
+  assert.ok(tabsCreated.at(-1).startsWith('fastdm://add?url='));
+});

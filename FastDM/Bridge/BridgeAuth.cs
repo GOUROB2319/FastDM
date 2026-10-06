@@ -64,8 +64,12 @@ namespace FastDM
         public const int MaxCookies = 100;
         const int MaxCookieField = 4096;
 
-        public static string NormalizeMode(string mode) =>
-            string.Equals(mode, "download", StringComparison.OrdinalIgnoreCase) ? "download" : "open";
+        public static string NormalizeMode(string mode)
+        {
+            if (string.Equals(mode, "download", StringComparison.OrdinalIgnoreCase)) return "download";
+            if (string.Equals(mode, "playlist", StringComparison.OrdinalIgnoreCase)) return "playlist";
+            return "open";
+        }
 
         static bool HasControlChars(string v)
         {

@@ -3373,13 +3373,15 @@ namespace FastDM
 
         void AddFolder(
             Uri uri,
-            bool startNow)
+            bool startNow,
+            bool playlistMode = false)
         {
             using var f =
                 new FolderDownloadForm(
                     uri,
                     settings.DefaultFolder,
-                    settings.MaxSimultaneous);
+                    settings.MaxSimultaneous,
+                    playlistMode);
 
             Theme.Apply(f);
 
@@ -3389,6 +3391,9 @@ namespace FastDM
 
             settings.MaxSimultaneous =
                 f.Simultaneous;
+
+            var localPaths =
+                new List<string>();
 
             foreach (var pf in f.Files)
             {
@@ -3418,10 +3423,139 @@ namespace FastDM
                 };
 
                 items.Add(it);
+
+                localPaths.Add(
+                    Path.Combine(
+                        pf.RelDir,
+                        it.FileName));
             }
 
             MarkChanged();
             SaveState();
+
+            if (f.SaveLocalPlaylist)
+                WriteLocalPlaylist(
+                    f.TargetFolder,
+                    localPaths);
+        }
+
+        // ডাউনলোড ফোল্ডারের ভেতর <ফোল্ডারের নাম>.m3u8 (রিলেটিভ পাথ, ফাইল নামলেই VLC-তে চলবে)
+        void WriteLocalPlaylist(
+            string targetFolder,
+            List<string> relPaths)
+        {
+            try
+            {
+                var result =
+                    PlaylistBuilder.BuildLocal(
+                        relPaths);
+
+                if (result.Count == 0)
+                {
+                    lblActive.Text =
+                        "No video or audio files selected: local playlist not created.";
+                    return;
+                }
+
+                Directory.CreateDirectory(
+                    targetFolder);
+
+                string leaf =
+                    Engine.Sanitize(
+                        Path.GetFileName(
+                            targetFolder.TrimEnd(
+                                '\\',
+                                '/')));
+
+                if (string.IsNullOrWhiteSpace(leaf))
+                    leaf = "playlist";
+
+                string file =
+                    Path.Combine(
+                        targetFolder,
+                        leaf + ".m3u8");
+
+                PlaylistBuilder.Save(
+                    file,
+                    result.Text);
+
+                lblActive.Text =
+                    "Local playlist saved: " +
+                    file;
+            }
+            catch (Exception ex)
+            {
+                lblActive.Text =
+                    "Could not save the local playlist: " +
+                    ex.Message;
+            }
+        }
+
+        // এক্সটেনশনের "Create playlist": Add ডায়ালগ ছাড়া সরাসরি ফোল্ডার উইন্ডো (প্লেলিস্ট মোডে)
+        async void OpenFolderForPlaylist(
+            string url)
+        {
+            await addGate.WaitAsync();
+
+            try
+            {
+                if (!Uri.TryCreate(
+                        url,
+                        UriKind.Absolute,
+                        out var u))
+                    return;
+
+                Uri folder = u;
+
+                if (Engine.IsHttp(url))
+                {
+                    using var cts =
+                        new CancellationTokenSource(
+                            TimeSpan.FromSeconds(20));
+
+                    var (isFolder, resolved) =
+                        await Engine.DetectFolderAsync(
+                            u,
+                            cts.Token);
+
+                    if (!isFolder)
+                    {
+                        MessageBox.Show(
+                            this,
+                            "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
+                            "Playlist",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+
+                        return;
+                    }
+
+                    folder = resolved;
+                }
+                else if (!u.AbsolutePath.EndsWith("/"))
+                {
+                    folder =
+                        new Uri(
+                            u.GetLeftPart(
+                                UriPartial.Path) +
+                            "/");
+                }
+
+                AddFolder(
+                    folder,
+                    true,
+                    true);
+            }
+            catch (Exception ex)
+            {
+                lblActive.Text =
+                    "Could not open the folder: " +
+                    ex.Message;
+            }
+            finally
+            {
+                addGate.Release();
+            }
         }
 
         string UniqueName(
@@ -4246,12 +4380,23 @@ namespace FastDM
                             "download",
                             StringComparison.OrdinalIgnoreCase);
 
+                    bool playlist =
+                        string.Equals(
+                            add.Mode,
+                            "playlist",
+                            StringComparison.OrdinalIgnoreCase);
+
                     f.BeginInvoke(
                         new Action(() =>
                         {
                             if (direct)
                             {
                                 f.QuickAdd(add.Url, ctx);
+                            }
+                            else if (playlist)
+                            {
+                                f.RestoreFromTray();
+                                f.OpenFolderForPlaylist(add.Url);
                             }
                             else
                             {
@@ -4460,6 +4605,25 @@ namespace FastDM
             {
                 ShowAddDialog(
                     cmd.Url);
+            }
+            else if (cmd.Action == "playlist" &&
+                     !string.IsNullOrEmpty(cmd.Url))
+            {
+                // fastdm:// যেকোনো ওয়েবপেজ ট্রিগার করতে পারে, তাই স্ক্যানের আগে ইউজারের হ্যাঁ লাগবে
+                var ask =
+                    MessageBox.Show(
+                        this,
+                        "A web link asks FastDM to scan this folder and make a playlist:\n\n" +
+                        cmd.Url +
+                        "\n\nContinue?",
+                        "FastDM",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question,
+                        MessageBoxDefaultButton.Button2);
+
+                if (ask == DialogResult.Yes)
+                    OpenFolderForPlaylist(
+                        cmd.Url);
             }
         }
 
