@@ -1,0 +1,900 @@
+From 2d2ecb5274e2c04e39f9dd4cd9e1a9822009b46c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 6 Oct 2026 10:32:55 +0000
+Subject: [PATCH] Phase 2: FastDM parent context menu (Download / Open),
+ Referer + User-Agent + optional cookies forwarding
+
+---
+ FastDM.Extension/_locales/bn/messages.json    |  29 +++-
+ FastDM.Extension/_locales/en/messages.json    |  29 +++-
+ FastDM.Extension/manifest.json                |  15 +-
+ FastDM.Extension/src/background/cookies.js    |  38 +++++
+ FastDM.Extension/src/background/menus.js      |  51 +++++--
+ .../src/background/service-worker.js          |  17 ++-
+ FastDM.Extension/src/options/options.html     |  11 ++
+ FastDM.Extension/src/options/options.js       |  27 ++++
+ FastDM.Extension/tests/bridge.test.mjs        |  87 +++++++++++-
+ FastDM/Bridge/BridgeAuth.cs                   |  56 ++++++++
+ FastDM/Bridge/BridgeModels.cs                 |  23 ++-
+ FastDM/Bridge/BridgeServer.cs                 |  13 +-
+ FastDM/Form1.cs                               | 131 ++++++++++++++++--
+ docs/Extension-Architecture.md                |   1 +
+ docs/TESTING.md                               |  30 +++-
+ 15 files changed, 528 insertions(+), 30 deletions(-)
+ create mode 100644 FastDM.Extension/src/background/cookies.js
+
+diff --git a/FastDM.Extension/_locales/bn/messages.json b/FastDM.Extension/_locales/bn/messages.json
+index 6b85db0..47b7c0f 100644
+--- a/FastDM.Extension/_locales/bn/messages.json
++++ b/FastDM.Extension/_locales/bn/messages.json
+@@ -106,5 +106,32 @@
+   },
+   "optionsPrivacy": {
+     "message": "এই এক্সটেনশন শুধু আপনার নিজের কম্পিউটারে থাকা FastDM অ্যাপের সাথে (127.0.0.1) কথা বলে। কোনো সার্ভারে ডেটা পাঠায় না।"
++  },
++  "menuOpenLink": {
++    "message": "FastDM-এ খুলুন"
++  },
++  "menuOpenMedia": {
++    "message": "FastDM-এ মিডিয়া খুলুন"
++  },
++  "optionsCookies": {
++    "message": "লগইন কুকি"
++  },
++  "cookiesHint": {
++    "message": "কিছু সাইট লগইন করা অবস্থায় ছাড়া ডাউনলোড করতে দেয় না। এটা চালু করলে ডাউনলোড লিঙ্কের জন্য ব্রাউজারের কুকি এই কম্পিউটারের FastDM অ্যাপে পাঠানো হবে। কুকি শুধু মেমোরিতে থাকে, ডিস্কে সেভ হয় না।"
++  },
++  "cookiesOn": {
++    "message": "কুকি পাঠানো চালু"
++  },
++  "cookiesOff": {
++    "message": "কুকি পাঠানো বন্ধ"
++  },
++  "btnCookiesEnable": {
++    "message": "চালু করুন"
++  },
++  "btnCookiesDisable": {
++    "message": "বন্ধ করুন"
++  },
++  "errCookiesDenied": {
++    "message": "অনুমতি দেওয়া হয়নি, তাই কুকি বন্ধই থাকছে।"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/FastDM.Extension/_locales/en/messages.json b/FastDM.Extension/_locales/en/messages.json
+index 235ea64..50c5cab 100644
+--- a/FastDM.Extension/_locales/en/messages.json
++++ b/FastDM.Extension/_locales/en/messages.json
+@@ -106,5 +106,32 @@
+   },
+   "optionsPrivacy": {
+     "message": "This extension only talks to the FastDM app on your own computer (127.0.0.1). It does not send data to any server."
++  },
++  "menuOpenLink": {
++    "message": "Open in FastDM"
++  },
++  "menuOpenMedia": {
++    "message": "Open media in FastDM"
++  },
++  "optionsCookies": {
++    "message": "Login cookies"
++  },
++  "cookiesHint": {
++    "message": "Some sites only allow downloads when you are signed in. If you turn this on, the extension sends your browser cookies for the download link to the FastDM app on this computer. Cookies are kept in memory only and are never saved to disk."
++  },
++  "cookiesOn": {
++    "message": "Sending cookies is on"
++  },
++  "cookiesOff": {
++    "message": "Sending cookies is off"
++  },
++  "btnCookiesEnable": {
++    "message": "Turn on"
++  },
++  "btnCookiesDisable": {
++    "message": "Turn off"
++  },
++  "errCookiesDenied": {
++    "message": "Permission was not granted, so cookies stay off."
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/FastDM.Extension/manifest.json b/FastDM.Extension/manifest.json
+index a20a0e3..ef6d91d 100644
+--- a/FastDM.Extension/manifest.json
++++ b/FastDM.Extension/manifest.json
+@@ -27,6 +27,17 @@
+     "page": "src/options/options.html",
+     "open_in_tab": false
+   },
+-  "permissions": ["contextMenus", "storage"],
+-  "host_permissions": ["http://127.0.0.1/*"]
++  "permissions": [
++    "contextMenus",
++    "storage"
++  ],
++  "host_permissions": [
++    "http://127.0.0.1/*"
++  ],
++  "optional_permissions": [
++    "cookies"
++  ],
++  "optional_host_permissions": [
++    "<all_urls>"
++  ]
+ }
+diff --git a/FastDM.Extension/src/background/cookies.js b/FastDM.Extension/src/background/cookies.js
+new file mode 100644
+index 0000000..bb795dc
+--- /dev/null
++++ b/FastDM.Extension/src/background/cookies.js
+@@ -0,0 +1,38 @@
++// ঐচ্ছিক কুকি পাঠানো। ইউজার অপশন পেজে চালু করলে তবেই "cookies" + হোস্ট permission চাওয়া হয়।
++// permission না থাকলে এই ফাংশনগুলো চুপচাপ খালি ফেরত দেয়: কুকি ছাড়াই ডাউনলোড চলে।
++export const COOKIE_PERMS = Object.freeze({ permissions: ['cookies'], origins: ['<all_urls>'] });
++
++export async function hasCookieAccess() {
++  try {
++    return await chrome.permissions.contains(COOKIE_PERMS);
++  } catch {
++    return false;
++  }
++}
++
++// অপশন পেজের বাটন-ক্লিক (user gesture) থেকে ডাকতে হবে
++export async function enableCookieAccess() {
++  return chrome.permissions.request(COOKIE_PERMS);
++}
++
++export async function disableCookieAccess() {
++  return chrome.permissions.remove(COOKIE_PERMS);
++}
++
++// এই URL-এর জন্য ব্রাউজারের কুকি → bridge ফরম্যাট। শুধু http/https।
++export async function cookiesFor(url) {
++  if (!/^https?:/i.test(url || '')) return [];
++  if (!(await hasCookieAccess())) return [];
++  try {
++    const list = await chrome.cookies.getAll({ url });
++    return list.map((c) => ({
++      name: c.name,
++      value: c.value,
++      domain: c.domain,
++      path: c.path,
++      secure: !!c.secure,
++    }));
++  } catch {
++    return [];
++  }
++}
+diff --git a/FastDM.Extension/src/background/menus.js b/FastDM.Extension/src/background/menus.js
+index 94e7a8d..de75644 100644
+--- a/FastDM.Extension/src/background/menus.js
++++ b/FastDM.Extension/src/background/menus.js
+@@ -1,24 +1,57 @@
++// Phase 2: একটাই "FastDM" parent মেনু, নিচে সাবমেনু।
++//   লিঙ্ক/ভিডিও/অডিওতে: "Download with FastDM" (সরাসরি শুরু) + "Open in FastDM" (Add ডায়ালগ)
++//   পেজে: "Send page link to FastDM" (Add ডায়ালগ, কারণ পেজ ভিডিও/ফোল্ডার হতে পারে, ইউজার ঠিক করবে)
++// কোনো সাইট-নির্দিষ্ট মেনু নেই (স্টোর নীতির কারণে)।
+ export const MENU = Object.freeze({
+-  LINK: 'fastdm-link',
+-  MEDIA: 'fastdm-media',
+-  PAGE: 'fastdm-page',
++  PARENT: 'fastdm-parent',
++  DL_LINK: 'fastdm-dl-link',
++  OPEN_LINK: 'fastdm-open-link',
++  DL_MEDIA: 'fastdm-dl-media',
++  OPEN_MEDIA: 'fastdm-open-media',
++  OPEN_PAGE: 'fastdm-open-page',
++});
++
++// bridge-এর mode: download = ডায়ালগ ছাড়া শুরু, open = Add ডায়ালগ
++export const MODE = Object.freeze({ DOWNLOAD: 'download', OPEN: 'open' });
++
++const MODE_BY_MENU = Object.freeze({
++  [MENU.DL_LINK]: MODE.DOWNLOAD,
++  [MENU.DL_MEDIA]: MODE.DOWNLOAD,
++  [MENU.OPEN_LINK]: MODE.OPEN,
++  [MENU.OPEN_MEDIA]: MODE.OPEN,
++  [MENU.OPEN_PAGE]: MODE.OPEN,
+ });
+ 
+ const t = (key) => chrome.i18n.getMessage(key) || key;
+ 
+-// Phase 1: তিনটা সাধারণ মেনু (লিঙ্ক, ভিডিও/অডিও, পেজ)। কোনো সাইট-নির্দিষ্ট মেনু নেই।
+ export function createMenus() {
+   chrome.contextMenus.removeAll(() => {
+-    chrome.contextMenus.create({ id: MENU.LINK, title: t('menuDownloadLink'), contexts: ['link'] });
+-    chrome.contextMenus.create({ id: MENU.MEDIA, title: t('menuDownloadMedia'), contexts: ['video', 'audio'] });
+-    chrome.contextMenus.create({ id: MENU.PAGE, title: t('menuSendPage'), contexts: ['page'] });
++    const parent = MENU.PARENT;
++    chrome.contextMenus.create({ id: parent, title: 'FastDM', contexts: ['link', 'video', 'audio', 'page'] });
++    chrome.contextMenus.create({ id: MENU.DL_LINK, parentId: parent, title: t('menuDownloadLink'), contexts: ['link'] });
++    chrome.contextMenus.create({ id: MENU.OPEN_LINK, parentId: parent, title: t('menuOpenLink'), contexts: ['link'] });
++    chrome.contextMenus.create({ id: MENU.DL_MEDIA, parentId: parent, title: t('menuDownloadMedia'), contexts: ['video', 'audio'] });
++    chrome.contextMenus.create({ id: MENU.OPEN_MEDIA, parentId: parent, title: t('menuOpenMedia'), contexts: ['video', 'audio'] });
++    chrome.contextMenus.create({ id: MENU.OPEN_PAGE, parentId: parent, title: t('menuSendPage'), contexts: ['page'] });
+   });
+ }
+ 
++export function modeFor(menuItemId) {
++  return MODE_BY_MENU[menuItemId] || null;     // অজানা আইটেম (যেমন parent) → null
++}
++
+ // ক্লিক থেকে পাঠানোর লিঙ্ক বের করা
+ export function targetUrl(info, tab) {
+   const usable = (u) => u && !u.startsWith('blob:') && !u.startsWith('data:');
+-  if (info.menuItemId === MENU.LINK) return info.linkUrl;
+-  if (info.menuItemId === MENU.MEDIA) return usable(info.srcUrl) ? info.srcUrl : (info.pageUrl || (tab && tab.url));
++  if (info.menuItemId === MENU.DL_LINK || info.menuItemId === MENU.OPEN_LINK) return info.linkUrl;
++  if (info.menuItemId === MENU.DL_MEDIA || info.menuItemId === MENU.OPEN_MEDIA) {
++    return usable(info.srcUrl) ? info.srcUrl : (info.pageUrl || (tab && tab.url));
++  }
+   return info.pageUrl || (tab && tab.url);
+ }
++
++// Referer: লিঙ্ক/মিডিয়া যে পেজ বা iframe-এ ছিল। পেজের লিঙ্ক নিজেই পাঠালে Referer নেই।
++export function refererFor(info) {
++  if (info.menuItemId === MENU.OPEN_PAGE) return undefined;
++  return info.frameUrl || info.pageUrl || undefined;
++}
+diff --git a/FastDM.Extension/src/background/service-worker.js b/FastDM.Extension/src/background/service-worker.js
+index a2f6597..1368644 100644
+--- a/FastDM.Extension/src/background/service-worker.js
++++ b/FastDM.Extension/src/background/service-worker.js
+@@ -1,5 +1,6 @@
+-import { createMenus, targetUrl } from './menus.js';
++import { createMenus, targetUrl, modeFor, refererFor } from './menus.js';
+ import { sendLink, launchApp } from './bridge.js';
++import { cookiesFor } from './cookies.js';
+ 
+ // মেনু: ইনস্টল ও ব্রাউজার চালুর সময় আবার তৈরি (removeAll দিয়ে, তাই ডুপ্লিকেট হয় না)
+ chrome.runtime.onInstalled.addListener(() => createMenus());
+@@ -12,13 +13,25 @@ function flashBadge(text, color) {
+ }
+ 
+ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
++  const mode = modeFor(info.menuItemId);
++  if (!mode) return;                          // parent মেনু বা অজানা আইটেম
++
+   const url = targetUrl(info, tab);
+   if (!url || !/^(https?|ftp|sftp):/i.test(url)) {
+     flashBadge('!', '#FF5C77');
+     return;
+   }
+ 
+-  const r = await sendLink(url, { title: tab && tab.title });
++  const meta = {
++    mode,
++    title: tab && tab.title,
++    referer: refererFor(info),
++    userAgent: navigator.userAgent,
++    cookies: await cookiesFor(url),           // permission না থাকলে []
++  };
++  if (!meta.cookies.length) delete meta.cookies;
++
++  const r = await sendLink(url, meta);
+   if (r.via) {
+     flashBadge('✓', '#2ECC71');
+   } else if (r.needsPairing) {
+diff --git a/FastDM.Extension/src/options/options.html b/FastDM.Extension/src/options/options.html
+index 855f67a..8bcfb1d 100644
+--- a/FastDM.Extension/src/options/options.html
++++ b/FastDM.Extension/src/options/options.html
+@@ -18,6 +18,17 @@
+     </div>
+   </section>
+ 
++  <section class="card">
++    <h2 data-i18n="optionsCookies">Login cookies</h2>
++    <p class="muted small" data-i18n="cookiesHint"></p>
++    <p><span id="cookiePill" class="pill"><span class="dot"></span><span id="cookiePillText"></span></span></p>
++    <p id="cookieError" class="error hidden"></p>
++    <div class="actions">
++      <button id="btnCookiesEnable" class="primary" data-i18n="btnCookiesEnable">Turn on</button>
++      <button id="btnCookiesDisable" data-i18n="btnCookiesDisable">Turn off</button>
++    </div>
++  </section>
++
+   <section class="card">
+     <dl>
+       <dt data-i18n="optionsVersion">Extension version</dt><dd id="extVersion"></dd>
+diff --git a/FastDM.Extension/src/options/options.js b/FastDM.Extension/src/options/options.js
+index d6456fd..c1aaff2 100644
+--- a/FastDM.Extension/src/options/options.js
++++ b/FastDM.Extension/src/options/options.js
+@@ -1,6 +1,7 @@
+ import { getStatus, pair, forgetPairing } from '../background/bridge.js';
+ import { CONN } from '../shared/protocol.js';
+ import { applyI18n, t } from '../shared/i18n.js';
++import { hasCookieAccess, enableCookieAccess, disableCookieAccess } from '../background/cookies.js';
+ 
+ const $ = (id) => document.getElementById(id);
+ 
+@@ -52,6 +53,32 @@ $('btnForget').addEventListener('click', async () => {
+   refresh();
+ });
+ 
++async function refreshCookies() {
++  const on = await hasCookieAccess();
++  $('cookiePill').className = `pill ${on ? 'ok' : 'warn'}`;
++  $('cookiePillText').textContent = t(on ? 'cookiesOn' : 'cookiesOff');
++  $('btnCookiesEnable').classList.toggle('hidden', on);
++  $('btnCookiesDisable').classList.toggle('hidden', !on);
++}
++
++// permissions.request অবশ্যই এই বাটন-ক্লিক (user gesture) থেকেই ডাকতে হয়
++$('btnCookiesEnable').addEventListener('click', async () => {
++  $('cookieError').classList.add('hidden');
++  let granted = false;
++  try { granted = await enableCookieAccess(); } catch { /* granted = false */ }
++  if (!granted) {
++    $('cookieError').textContent = t('errCookiesDenied');
++    $('cookieError').classList.remove('hidden');
++  }
++  refreshCookies();
++});
++
++$('btnCookiesDisable').addEventListener('click', async () => {
++  try { await disableCookieAccess(); } catch { /* ignore */ }
++  refreshCookies();
++});
++
+ $('extVersion').textContent = chrome.runtime.getManifest().version;
+ applyI18n();
+ refresh();
++refreshCookies();
+diff --git a/FastDM.Extension/tests/bridge.test.mjs b/FastDM.Extension/tests/bridge.test.mjs
+index 17c38cc..321ea6f 100644
+--- a/FastDM.Extension/tests/bridge.test.mjs
++++ b/FastDM.Extension/tests/bridge.test.mjs
+@@ -6,6 +6,9 @@ import http from 'node:http';
+ // ---- chrome API-র নকল ----
+ const store = {};
+ const tabsCreated = [];
++const permState = { granted: false };
++const cookieCalls = [];
++let cookieJar = [];
+ globalThis.chrome = {
+   storage: {
+     local: {
+@@ -19,10 +22,18 @@ globalThis.chrome = {
+     remove() { return Promise.resolve(); },
+   },
+   i18n: { getMessage: (k) => k },
++  permissions: {
++    async contains() { return permState.granted; },
++  },
++  cookies: {
++    async getAll({ url }) { cookieCalls.push(url); return cookieJar; },
++  },
+ };
+ 
+ const bridge = await import('../src/background/bridge.js');
+ const { CONN, PORTS } = await import('../src/shared/protocol.js');
++const menus = await import('../src/background/menus.js');
++const cookies = await import('../src/background/cookies.js');
+ 
+ // ---- নকল অ্যাপ ----
+ function fakeApp(port, opts = {}) {
+@@ -66,7 +77,13 @@ function fakeApp(port, opts = {}) {
+   };
+ }
+ 
+-const reset = () => { for (const k of Object.keys(store)) delete store[k]; tabsCreated.length = 0; };
++const reset = () => {
++  for (const k of Object.keys(store)) delete store[k];
++  tabsCreated.length = 0;
++  permState.granted = false;
++  cookieCalls.length = 0;
++  cookieJar = [];
++};
+ 
+ test('অ্যাপ বন্ধ থাকলে NOT_RUNNING', async () => {
+   reset();
+@@ -138,3 +155,71 @@ test('পেয়ারিং প্রত্যাখ্যান/ব্যস
+     assert.equal(store.token, undefined);
+   } finally { await app.stop(); }
+ });
++
++// ---------------- Phase 2 ----------------
++
++test('Phase 2: mode, referer, userAgent, cookies অ্যাপের কাছে পৌঁছায়', async () => {
++  reset();
++  const app = fakeApp(PORTS[0]);
++  await app.start();
++  try {
++    await bridge.pair();
++    const meta = {
++      mode: 'download',
++      referer: 'https://site.example/page',
++      userAgent: 'UA/1.0',
++      cookies: [{ name: 'sid', value: 'abc', domain: '.site.example', path: '/', secure: true }],
++    };
++    assert.deepEqual(await bridge.sendLink('https://cdn.site.example/f.zip', meta), { via: 'bridge' });
++    const body = app.added[0];
++    assert.equal(body.mode, 'download');
++    assert.equal(body.referer, 'https://site.example/page');
++    assert.equal(body.userAgent, 'UA/1.0');
++    assert.equal(body.cookies[0].name, 'sid');
++    assert.equal(body.kind, 'auto');
++  } finally { await app.stop(); }
++});
++
++test('Phase 2: মেনু আইটেম → mode (Download = সরাসরি, Open/Page = ডায়ালগ)', () => {
++  const M = menus.MENU;
++  assert.equal(menus.modeFor(M.DL_LINK), 'download');
++  assert.equal(menus.modeFor(M.DL_MEDIA), 'download');
++  assert.equal(menus.modeFor(M.OPEN_LINK), 'open');
++  assert.equal(menus.modeFor(M.OPEN_MEDIA), 'open');
++  assert.equal(menus.modeFor(M.OPEN_PAGE), 'open');
++  assert.equal(menus.modeFor(M.PARENT), null);
++  assert.equal(menus.modeFor('something-else'), null);
++});
++
++test('Phase 2: targetUrl আর refererFor', () => {
++  const M = menus.MENU;
++  const info = { linkUrl: 'https://a.test/f.zip', pageUrl: 'https://a.test/dl', frameUrl: 'https://a.test/frame', srcUrl: 'blob:xyz' };
++  assert.equal(menus.targetUrl({ ...info, menuItemId: M.DL_LINK }, {}), 'https://a.test/f.zip');
++  assert.equal(menus.targetUrl({ ...info, menuItemId: M.OPEN_LINK }, {}), 'https://a.test/f.zip');
++  // blob: মিডিয়া হলে পেজের লিঙ্কে ফলব্যাক
++  assert.equal(menus.targetUrl({ ...info, menuItemId: M.DL_MEDIA }, {}), 'https://a.test/dl');
++  assert.equal(menus.targetUrl({ ...info, srcUrl: 'https://a.test/v.mp4', menuItemId: M.OPEN_MEDIA }, {}), 'https://a.test/v.mp4');
++  assert.equal(menus.targetUrl({ pageUrl: 'https://a.test/dl', menuItemId: M.OPEN_PAGE }, {}), 'https://a.test/dl');
++  assert.equal(menus.refererFor({ ...info, menuItemId: M.DL_LINK }), 'https://a.test/frame');
++  assert.equal(menus.refererFor({ pageUrl: 'https://a.test/dl', menuItemId: M.DL_LINK }), 'https://a.test/dl');
++  assert.equal(menus.refererFor({ ...info, menuItemId: M.OPEN_PAGE }), undefined);
++});
++
++test('Phase 2: permission না থাকলে কুকি খালি, getAll ডাকাই হয় না', async () => {
++  reset();
++  cookieJar = [{ name: 'sid', value: 'abc', domain: 'a.test', path: '/', secure: true }];
++  assert.deepEqual(await cookies.cookiesFor('https://a.test/f.zip'), []);
++  assert.equal(cookieCalls.length, 0);
++});
++
++test('Phase 2: permission থাকলে কুকি bridge ফরম্যাটে; ftp/অবৈধ URL-এ খালি', async () => {
++  reset();
++  permState.granted = true;
++  cookieJar = [{ name: 'sid', value: 'abc', domain: '.a.test', path: '/x', secure: true, httpOnly: true, storeId: '0' }];
++  assert.deepEqual(await cookies.cookiesFor('https://a.test/f.zip'), [
++    { name: 'sid', value: 'abc', domain: '.a.test', path: '/x', secure: true },
++  ]);
++  assert.deepEqual(await cookies.cookiesFor('ftp://a.test/f.zip'), []);
++  assert.deepEqual(await cookies.cookiesFor(''), []);
++  assert.equal(cookieCalls.length, 1);
++});
+diff --git a/FastDM/Bridge/BridgeAuth.cs b/FastDM/Bridge/BridgeAuth.cs
+index 4840255..affb6fa 100644
+--- a/FastDM/Bridge/BridgeAuth.cs
++++ b/FastDM/Bridge/BridgeAuth.cs
+@@ -60,6 +60,62 @@ namespace FastDM
+                 || origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase);
+         }
+ 
++        // ---------- Phase 2: অনুরোধের অতিরিক্ত ফিল্ড যাচাই (পেয়ার করা এক্সটেনশনকেও অন্ধভাবে বিশ্বাস করি না) ----------
++        public const int MaxCookies = 100;
++        const int MaxCookieField = 4096;
++
++        public static string NormalizeMode(string mode) =>
++            string.Equals(mode, "download", StringComparison.OrdinalIgnoreCase) ? "download" : "open";
++
++        static bool HasControlChars(string v)
++        {
++            foreach (char c in v)
++                if (c < 0x20 || c == 0x7F) return true;
++            return false;
++        }
++
++        public static string CleanReferer(string referer)
++        {
++            if (string.IsNullOrWhiteSpace(referer) || referer.Length > 2048 || HasControlChars(referer)) return null;
++            if (!Uri.TryCreate(referer.Trim(), UriKind.Absolute, out var u)) return null;
++            return u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps ? u.AbsoluteUri : null;
++        }
++
++        public static string CleanUserAgent(string ua)
++        {
++            if (string.IsNullOrWhiteSpace(ua) || ua.Length > 512 || HasControlChars(ua)) return null;
++            return ua.Trim();
++        }
++
++        // কুকির ডোমেইন অবশ্যই ডাউনলোড-লিঙ্কের হোস্টের সাথে মিলতে হবে; না মিললে বাদ।
++        // শুধু http/https লিঙ্কে কুকি চলে (ftp/sftp-এ অর্থহীন)।
++        public static List<BridgeCookie> CleanCookies(List<BridgeCookie> cookies, string url)
++        {
++            if (cookies == null || cookies.Count == 0) return null;
++            if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
++            if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return null;
++
++            string host = u.Host.ToLowerInvariant();
++            var clean = new List<BridgeCookie>();
++
++            foreach (var c in cookies)
++            {
++                if (clean.Count >= MaxCookies) break;
++                if (c == null || string.IsNullOrEmpty(c.Name) || string.IsNullOrEmpty(c.Domain)) continue;
++                if (c.Name.Length > MaxCookieField || (c.Value ?? "").Length > MaxCookieField) continue;
++                if (HasControlChars(c.Name) || HasControlChars(c.Value ?? "") || c.Name.IndexOfAny(new[] { ';', '=', ',', ' ' }) >= 0) continue;
++
++                string d = c.Domain.Trim().TrimStart('.').ToLowerInvariant();
++                if (d.Length == 0 || !(host == d || host.EndsWith("." + d, StringComparison.Ordinal))) continue;
++
++                string path = string.IsNullOrEmpty(c.Path) || c.Path[0] != '/' || HasControlChars(c.Path) ? "/" : c.Path;
++                // প্রথমের ডট রাখি: ডট থাকলে সাবডোমেইনেও যায় (ব্রাউজারের domain cookie), না থাকলে শুধু ওই হোস্টে (host-only)
++                bool domainWide = c.Domain.TrimStart().StartsWith(".");
++                clean.Add(new BridgeCookie { Name = c.Name, Value = c.Value ?? "", Domain = domainWide ? "." + d : d, Path = path, Secure = c.Secure });
++            }
++            return clean.Count > 0 ? clean : null;
++        }
++
+         public static bool IsAllowedUrl(string url)
+         {
+             if (string.IsNullOrWhiteSpace(url) || url.Length > 8192) return false;
+diff --git a/FastDM/Bridge/BridgeModels.cs b/FastDM/Bridge/BridgeModels.cs
+index 8ade7d8..fd46f54 100644
+--- a/FastDM/Bridge/BridgeModels.cs
++++ b/FastDM/Bridge/BridgeModels.cs
+@@ -4,14 +4,33 @@ using System.Collections.Generic;
+ namespace FastDM
+ {
+     // এক্সটেনশন → অ্যাপ: নতুন ডাউনলোডের অনুরোধ
+-    // Phase 1-এ শুধু Url ব্যবহার হয়; বাকি ফিল্ড প্রোটোকলের জন্য রাখা (Phase 2-এ কুকি/Referer প্রয়োগ হবে)
++    // Phase 2: Mode, Referer, UserAgent আর Cookies এখন সত্যিই প্রয়োগ হয়।
+     public class BridgeAddRequest
+     {
+         public string Url { get; set; }
+         public string Kind { get; set; } = "auto";      // auto | file | folder | media | page
++        public string Mode { get; set; } = "open";      // open = Add ডায়ালগ খোলে (ডিফল্ট, পুরোনো এক্সটেনশনের জন্য নিরাপদ) | download = ডায়ালগ ছাড়া শুরু
+         public string Title { get; set; }
+         public string Referer { get; set; }
+         public string UserAgent { get; set; }
++        public List<BridgeCookie> Cookies { get; set; }
++    }
++
++    // ব্রাউজারের কুকি (chrome.cookies.getAll-এর ফল)। শুধু মেমোরিতে রাখা হয়, ডিস্কে সেভ হয় না।
++    public class BridgeCookie
++    {
++        public string Name { get; set; }
++        public string Value { get; set; }
++        public string Domain { get; set; }
++        public string Path { get; set; }
++        public bool Secure { get; set; }
++    }
++
++    // একটা অনুরোধের সাথে আসা অতিরিক্ত তথ্য (Add ডায়ালগ বা সরাসরি ডাউনলোড, দুই পথেই লাগে)
++    public class RequestContext
++    {
++        public string Referer { get; set; }
++        public string UserAgent { get; set; }
+     }
+ 
+     // অ্যাপ → এক্সটেনশন: ডাউনলোডের অবস্থা (পপআপে দেখানোর জন্য)
+@@ -32,7 +51,7 @@ namespace FastDM
+     {
+         AppSettings BridgeSettings { get; }
+         System.Threading.Tasks.Task<bool> AskPairAsync(string origin);
+-        void ExternalAdd(string url, string title);
++        void ExternalAdd(BridgeAddRequest add);       // Mode অনুযায়ী ডায়ালগ খোলে বা সরাসরি ডাউনলোড শুরু করে
+         List<BridgeTaskInfo> GetTasks();
+         bool TaskAction(string id, string action);       // pause | resume
+         void SaveSettings();
+diff --git a/FastDM/Bridge/BridgeServer.cs b/FastDM/Bridge/BridgeServer.cs
+index bb5704a..7a882d0 100644
+--- a/FastDM/Bridge/BridgeServer.cs
++++ b/FastDM/Bridge/BridgeServer.cs
+@@ -13,7 +13,8 @@ namespace FastDM
+     // অ্যাপের ভেতরের লোকাল সার্ভার: শুধু 127.0.0.1, শুধু ব্রাউজার এক্সটেনশনের Origin, প্রতি রিকোয়েস্টে টোকেন।
+     //   GET  /v1/ping                      → অ্যাপ চলছে কি না (টোকেন ঐচ্ছিক, থাকলে paired: true/false)
+     //   POST /v1/pair                      → অ্যাপে অনুমোদন ডায়ালগ, অনুমোদনে নতুন টোকেন
+-    //   POST /v1/add        {url,...}      → অ্যাপে Add ডায়ালগ খোলে (ইউজার নিশ্চিত করবে)
++    //   POST /v1/add        {url,mode,...} → mode=open: Add ডায়ালগ খোলে (ডিফল্ট) | mode=download: ডায়ালগ ছাড়া শুরু
++    //                                        referer / userAgent / cookies ঐচ্ছিক (Phase 2)
+     //   GET  /v1/tasks                     → সাম্প্রতিক ডাউনলোডের অবস্থা
+     //   POST /v1/tasks/{id}/{pause|resume}
+     public sealed class BridgeServer : IDisposable
+@@ -231,8 +232,14 @@ namespace FastDM
+                 return;
+             }
+ 
+-            host.ExternalAdd(add.Url.Trim(), add.Title);
+-            await Send(res, 200, new { ok = true, status = "opened" });
++            add.Url = add.Url.Trim();
++            add.Mode = BridgeAuth.NormalizeMode(add.Mode);
++            add.Referer = BridgeAuth.CleanReferer(add.Referer);
++            add.UserAgent = BridgeAuth.CleanUserAgent(add.UserAgent);
++            add.Cookies = BridgeAuth.CleanCookies(add.Cookies, add.Url);
++
++            host.ExternalAdd(add);
++            await Send(res, 200, new { ok = true, status = add.Mode == "download" ? "started" : "opened" });
+         }
+ 
+         static async Task<string> ReadBody(HttpListenerRequest req)
+diff --git a/FastDM/Form1.cs b/FastDM/Form1.cs
+index 3c9b3de..4cd4eb7 100644
+--- a/FastDM/Form1.cs
++++ b/FastDM/Form1.cs
+@@ -67,6 +67,8 @@ namespace FastDM
+         public string Url { get; set; }
+         public string FileName { get; set; }
+         public string Folder { get; set; }
++        public string Referer { get; set; }             // এক্সটেনশন থেকে এলে: লিঙ্কটা যে পেজে ছিল
++        public string UserAgent { get; set; }           // এক্সটেনশন থেকে এলে: ব্রাউজারের User-Agent
+         public long TotalBytes { get; set; }
+         public bool SupportsRange { get; set; }
+         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
+@@ -145,6 +147,11 @@ namespace FastDM
+     // ====================== ডাউনলোড ইঞ্জিন ======================
+     public static partial class Engine
+     {
++        // ব্রাউজার থেকে আসা কুকি শুধু মেমোরিতে থাকে (অ্যাপ বন্ধ হলে চলে যায়)।
++        // CookieContainer ব্যবহার করায় কুকি শুধু মিলে যাওয়া ডোমেইনে যায়, রিডাইরেক্টে অন্য সাইটে ফাঁস হয় না।
++        // (Http-এর আগে থাকতে হবে, কারণ CreateClient এটা ব্যবহার করে)
++        static readonly CookieContainer Jar = new CookieContainer();
++
+         static volatile HttpClient Http = CreateClient();
+ 
+         // প্রক্সি বদলালে নতুন ক্লায়েন্ট
+@@ -161,7 +168,9 @@ namespace FastDM
+                 Proxy = DynamicProxy.Instance,
+                 AllowAutoRedirect = true,
+                 MaxAutomaticRedirections = 10,
+-                AutomaticDecompression = DecompressionMethods.None
++                AutomaticDecompression = DecompressionMethods.None,
++                UseCookies = true,
++                CookieContainer = Jar
+             };
+ 
+             var c = new HttpClient(handler)
+@@ -175,6 +184,41 @@ namespace FastDM
+             return c;
+         }
+ 
++        // এক্সটেনশনের পাঠানো কুকি জারে বসানো
++        public static void AddCookies(List<BridgeCookie> cookies)
++        {
++            if (cookies == null) return;
++
++            foreach (var c in cookies)
++            {
++                try
++                {
++                    var ck = new Cookie(
++                        c.Name,
++                        c.Value ?? "",
++                        string.IsNullOrEmpty(c.Path) ? "/" : c.Path,
++                        c.Domain)
++                    {
++                        Secure = c.Secure
++                    };
++
++                    Jar.Add(ck);
++                }
++                catch { /* অবৈধ কুকি বাদ */ }
++            }
++        }
++
++        // আইটেমের নিজস্ব Referer / User-Agent (থাকলে) রিকোয়েস্টে বসানো
++        public static void ApplyItemHeaders(HttpRequestMessage req, DownloadItem it)
++        {
++            if (!string.IsNullOrEmpty(it.Referer) &&
++                Uri.TryCreate(it.Referer, UriKind.Absolute, out var r))
++                req.Headers.Referrer = r;
++
++            if (!string.IsNullOrEmpty(it.UserAgent))
++                req.Headers.TryAddWithoutValidation("User-Agent", it.UserAgent);
++        }
++
+         public static string Sanitize(string name)
+         {
+             foreach (char c in Path.GetInvalidFileNameChars())
+@@ -212,6 +256,7 @@ namespace FastDM
+             req.Headers.Range = new RangeHeaderValue(0, 0);
+ 
+             ApplyAuth(req);
++            ApplyItemHeaders(req, it);
+ 
+             using var resp = await Http.SendAsync(
+                 req,
+@@ -394,6 +439,7 @@ namespace FastDM
+                             new RangeHeaderValue(pos, seg.End);
+ 
+                     ApplyAuth(req);
++                    ApplyItemHeaders(req, it);
+ 
+                     using var resp = await Http.SendAsync(
+                         req,
+@@ -2762,13 +2808,42 @@ namespace FastDM
+             new SemaphoreSlim(1, 1);
+ 
+         async void ShowAddDialog(
+-            string url)
++            string url,
++            RequestContext ctx = null)
+         {
+             await addGate.WaitAsync();
+ 
+             try
+             {
+-                await ShowAddDialogCore(url);
++                await ShowAddDialogCore(url, ctx);
++            }
++            finally
++            {
++                addGate.Release();
++            }
++        }
++
++        // এক্সটেনশনের "Download with FastDM": ডায়ালগ ছাড়া, ডিফল্ট ফোল্ডারে সরাসরি শুরু।
++        // (ফোল্ডার লিঙ্ক, ভিডিও পেজ বা yt-dlp সাইটে ইউজারের পছন্দ লাগে, তাই সেসব ক্ষেত্রে নিজস্ব উইন্ডো আসবেই)
++        async void QuickAdd(
++            string url,
++            RequestContext ctx)
++        {
++            await addGate.WaitAsync();
++
++            try
++            {
++                await ProcessUrlsAsync(
++                    new[] { url },
++                    "",
++                    settings.DefaultFolder,
++                    true,
++                    ctx);
++            }
++            catch (Exception ex)
++            {
++                lblActive.Text =
++                    "Could not add link: " + ex.Message;
+             }
+             finally
+             {
+@@ -2777,7 +2852,8 @@ namespace FastDM
+         }
+ 
+         async Task ShowAddDialogCore(
+-            string url)
++            string url,
++            RequestContext ctx)
+         {
+             using var dlg =
+                 new AddUrlForm(
+@@ -2803,6 +2879,22 @@ namespace FastDM
+             string folder =
+                 dlg.Folder;
+ 
++            await ProcessUrlsAsync(
++                urls,
++                nameText,
++                folder,
++                startNow,
++                ctx);
++        }
++
++        // Add ডায়ালগ আর এক্সটেনশনের সরাসরি ডাউনলোড, দুই পথেরই মূল কাজ
++        async Task ProcessUrlsAsync(
++            string[] urls,
++            string nameText,
++            string folder,
++            bool startNow,
++            RequestContext ctx)
++        {
+             lblActive.Text =
+                 "Checking link(s)…";
+ 
+@@ -2885,6 +2977,8 @@ namespace FastDM
+                 {
+                     Url = u,
+                     Folder = folder,
++                    Referer = ctx?.Referer,
++                    UserAgent = ctx?.UserAgent,
+                     FileName =
+                         fileUrls.Count == 1 &&
+                         folderUris.Count == 0 &&
+@@ -4133,16 +4227,37 @@ namespace FastDM
+             }
+ 
+             public void ExternalAdd(
+-                string url,
+-                string title)
++                BridgeAddRequest add)
+             {
+                 try
+                 {
++                    var ctx = new RequestContext
++                    {
++                        Referer = add.Referer,
++                        UserAgent = add.UserAgent
++                    };
++
++                    // কুকি আগে জারে, তারপর ডাউনলোড/ডায়ালগ
++                    Engine.AddCookies(add.Cookies);
++
++                    bool direct =
++                        string.Equals(
++                            add.Mode,
++                            "download",
++                            StringComparison.OrdinalIgnoreCase);
++
+                     f.BeginInvoke(
+                         new Action(() =>
+                         {
+-                            f.RestoreFromTray();
+-                            f.ShowAddDialog(url);
++                            if (direct)
++                            {
++                                f.QuickAdd(add.Url, ctx);
++                            }
++                            else
++                            {
++                                f.RestoreFromTray();
++                                f.ShowAddDialog(add.Url, ctx);
++                            }
+                         }));
+                 }
+                 catch { }
+diff --git a/docs/Extension-Architecture.md b/docs/Extension-Architecture.md
+index 80f553c..d92e9a5 100644
+--- a/docs/Extension-Architecture.md
++++ b/docs/Extension-Architecture.md
+@@ -65,6 +65,7 @@ POST /v1/add        {token}        → { id, status }
+ GET  /v1/tasks      {token}        → [{ id, name, state, percent, speed, eta }]   (পপআপ প্রগ্রেসের জন্য)
+ POST /v1/tasks/{id}/pause|resume|remove {token}
+ ```
++- **Phase 2 ফিল্ড:** `mode` = `"open"` (ডিফল্ট, Add ডায়ালগ খোলে) বা `"download"` (ডায়ালগ ছাড়া ডিফল্ট ফোল্ডারে শুরু); `referer`, `userAgent`, `cookies` ঐচ্ছিক। অ্যাপ সব ফিল্ড আবার যাচাই করে (কুকির ডোমেইন লিঙ্কের হোস্টের সাথে না মিললে বাদ, কুকি শুধু মেমোরিতে)। `fastdm://` পথ কখনো `download` mode চালায় না।
+ - `kind: "auto"` মানে অ্যাপ নিজেই লিঙ্কের ধরন চিনে নেবে (বর্তমান `ShowAddDialog` পাইপলাইন)।
+ - রিকোয়েস্টে `version` ফিল্ড, যাতে পরে প্রোটোকল বদলালে পুরোনো/নতুন এক্সটেনশন-অ্যাপ জুটি ভাঙে না।
+ 
+diff --git a/docs/TESTING.md b/docs/TESTING.md
+index 6ee9ad2..dbb3974 100644
+--- a/docs/TESTING.md
++++ b/docs/TESTING.md
+@@ -10,7 +10,7 @@ powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
+ 
+ Expected final message: `Core build and extension tests passed.`
+ 
+-This builds the Windows desktop application and runs the six Node tests for
++This builds the Windows desktop application and runs the Node tests for
+ the browser-extension bridge.
+ 
+ ## 2. Test the desktop app
+@@ -39,6 +39,34 @@ connect** is checked. Keep FastDM running while testing the extension.
+ Also test **Open FastDM** in the popup after closing the app. The `fastdm://`
+ handler should open FastDM and show the Add dialog after a link is sent.
+ 
++## 3b. Phase 2 checks (context menu, headers, cookies)
++
++After reloading the extension, right-click a link: there should be one
++**FastDM** entry with a submenu.
++
++| Where you right-click | Submenu items | Expected result |
++| --- | --- | --- |
++| A normal file link | **Download with FastDM** | The download starts at once in the default folder, no dialog. |
++| A normal file link | **Open in FastDM** | The Add dialog opens with the link filled in. |
++| A video or audio element | **Download media…** / **Open media…** | Same two behaviours for the media address. |
++| The page background | **Send page link to FastDM** | The Add dialog opens with the page address. |
++
++Notes for the tester:
++
++- If FastDM is closed, both link items start the app through `fastdm://`
++  and the Add dialog opens (the protocol never starts a download by itself).
++- Folder links, video pages and yt-dlp sites always show their own window
++  (folder tree, quality picker), even with **Download**.
++- **Referer / User-Agent:** download a file from a site that blocks direct
++  links (hotlink protection). It should work from the menu and fail when the
++  same link is pasted into the Add dialog by hand.
++- **Cookies:** open the extension **Settings**, turn on **Login cookies** and
++  accept the browser prompt. Then download a file that needs a signed-in
++  session. Turn it off again and confirm the same file fails. Cookies are kept
++  in memory only; after restarting FastDM a resumed item has no cookies.
++- Negative check: send a request to `http://127.0.0.1:17432/v1/add` from a
++  normal web page (for example from the browser console). It must be refused.
++
+ ## 4. Package the extension
+ 
+ ```powershell
+-- 
+2.43.0
+
