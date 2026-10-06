@@ -92,6 +92,37 @@ Checks:
 - Close FastDM, then use the menu again: `fastdm://playlist` opens the app and asks
   you to confirm before it scans the folder.
 
+## 3d. Preferences page (Step 1a)
+
+Open **Settings** (gear icon or tray menu). The new **Preferences** window has a
+list on the left (General, Downloads, Browser Integration, Network, Antivirus,
+Notifications, Advanced). Clicking a name scrolls to that section; scrolling
+moves the highlight. Resize the window and test at 100%, 125% and 150% screen scaling.
+
+Check each setting does something:
+
+| Setting | How to check |
+| --- | --- |
+| Suggest folders by file type / URL | Add a `.pdf` link with the default folder: it lands in `Documents` (and `<site name>`). Pick another folder by hand: no sub-folder is added. |
+| Compact view | Rows become shorter at once after Save. |
+| Auto-remove deleted files | Delete a finished file in Explorer: the row disappears within ~30 seconds. |
+| Auto-remove completed | A download vanishes from the list when it finishes; the file stays. |
+| Auto-retry | Start a download, turn the network off for a few seconds: status goes to retry (5 s, 10 s, 15 s) instead of failing at once. |
+| Do not download web pages | Add a link that returns an HTML page (a normal web page address): it is skipped and the status bar says so. |
+| Server time | Finished file's *Modified* date equals the server's `Last-Modified`. |
+| Mark downloaded files | File Properties shows the "This file came from another computer" Unblock box (NTFS only). |
+| Max urls in batch | Paste more links than the limit: a message says only the first N are added. |
+| Notifications (added / completed / failed) | Minimize to tray, then add, finish and break a download. Each switch controls its own balloon. |
+| Antivirus | Choose *Windows Defender*, tick the automatic scan, finish a download: a Defender scan starts (see `MpCmdRun.exe` in Task Manager). |
+| Launch external application | Path `notepad.exe`, arguments `%path%`: finished text files open in Notepad. |
+| Delete button action | Remove only / Delete files / Always ask behave as named when you press Remove on a finished download. |
+| File exists reaction | Download the same file twice: Rename gives `name (1)`, Overwrite replaces it, Always ask shows a Yes/No box. |
+| Enable logging + Open log folder | A `fastdm-<date>.log` appears under `%LocalAppData%\FastDM\logs` with Start/Completed/Error lines. |
+| Reset | Everything returns to defaults; paired browsers and the download list stay. |
+
+Not in this step: Launch at startup, Language, UI style, Zoom, Low/Medium/High
+traffic presets, browser download interception and BitTorrent.
+
 ## 4. Package the extension
 
 ```powershell

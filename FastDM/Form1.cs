@@ -55,6 +55,76 @@ namespace FastDM
         public int ScheduleEndMin { get; set; } = 360;                 // 06:00
         public bool ScheduleStopOutside { get; set; } = true;          // উইন্ডো শেষে চলমান ডাউনলোড পজ
         public bool ShowDetails { get; set; } = true;
+        // ---- Preferences (FDM-স্টাইল) ----
+        public bool SuggestByType { get; set; } = false;       // ডিফল্ট ফোল্ডারের ভেতরে ফাইলের ধরন অনুযায়ী সাবফোল্ডার (Video, Music…)
+        public bool SuggestByHost { get; set; } = false;       // ...এবং সাইটের নাম অনুযায়ী সাবফোল্ডার
+        public bool CompactView { get; set; } = false;         // ডাউনলোড লিস্টে ছোট সারি
+        public bool AutoRemoveMissing { get; set; } = false;   // ডিস্ক থেকে মুছে ফেলা ফাইল লিস্ট থেকেও সরাও
+        public bool AutoRemoveCompleted { get; set; } = false; // শেষ হলেই লিস্ট থেকে সরাও (ফাইল থাকে)
+        public bool AutoRetry { get; set; } = true;            // ব্যর্থ ডাউনলোড নিজে আবার চেষ্টা
+        public int MaxRetries { get; set; } = 3;
+        public bool SkipWebPages { get; set; } = true;         // লিঙ্কের উত্তর HTML পেজ হলে ডাউনলোড করো না
+        public bool UseServerTime { get; set; } = false;       // ফাইলের তারিখ = সার্ভারের Last-Modified
+        public bool MarkDownloaded { get; set; } = true;       // Mark of the Web (Windows SmartScreen)
+        public int MaxBatchUrls { get; set; } = 100;           // একবারে সর্বোচ্চ কয়টা লিঙ্ক
+        public bool NotifyAdded { get; set; } = false;
+        public bool NotifyCompleted { get; set; } = true;
+        public bool NotifyFailed { get; set; } = true;
+        public string AntivirusPath { get; set; } = "";
+        public string AntivirusArgs { get; set; } = "\"%path%\"";
+        public bool AntivirusAuto { get; set; } = false;
+        public bool RunAppOnComplete { get; set; } = false;
+        public string CompleteAppPath { get; set; } = "";
+        public string CompleteAppArgs { get; set; } = "\"%path%\"";
+        public DeleteAction DeleteAction { get; set; } = DeleteAction.Ask;
+        public FileExistsAction FileExists { get; set; } = FileExistsAction.Rename;
+        public bool EnableLogging { get; set; } = false;
+
+        // "Reset": শুধু Preferences-এর মান ডিফল্টে। পেয়ার করা ব্রাউজার, সাইডবার, yt-dlp তারিখ আর শিডিউলার অক্ষত।
+        public void ResetPreferences()
+        {
+            var d = new AppSettings();
+
+            DefaultFolder = d.DefaultFolder;
+            Connections = d.Connections;
+            MaxSimultaneous = d.MaxSimultaneous;
+            ThemeChoice = d.ThemeChoice;
+            MinimizeToTray = d.MinimizeToTray;
+            CloseToTray = d.CloseToTray;
+            CheckUpdatesOnStart = d.CheckUpdatesOnStart;
+            SpeedLimitKBps = d.SpeedLimitKBps;
+            Proxy = d.Proxy;
+            ProxyType = d.ProxyType;
+            ProxyHost = d.ProxyHost;
+            ProxyPort = d.ProxyPort;
+            ProxyUser = d.ProxyUser;
+            BridgeEnabled = d.BridgeEnabled;
+
+            SuggestByType = d.SuggestByType;
+            SuggestByHost = d.SuggestByHost;
+            CompactView = d.CompactView;
+            AutoRemoveMissing = d.AutoRemoveMissing;
+            AutoRemoveCompleted = d.AutoRemoveCompleted;
+            AutoRetry = d.AutoRetry;
+            MaxRetries = d.MaxRetries;
+            SkipWebPages = d.SkipWebPages;
+            UseServerTime = d.UseServerTime;
+            MarkDownloaded = d.MarkDownloaded;
+            MaxBatchUrls = d.MaxBatchUrls;
+            NotifyAdded = d.NotifyAdded;
+            NotifyCompleted = d.NotifyCompleted;
+            NotifyFailed = d.NotifyFailed;
+            AntivirusPath = d.AntivirusPath;
+            AntivirusArgs = d.AntivirusArgs;
+            AntivirusAuto = d.AntivirusAuto;
+            RunAppOnComplete = d.RunAppOnComplete;
+            CompleteAppPath = d.CompleteAppPath;
+            CompleteAppArgs = d.CompleteAppArgs;
+            DeleteAction = d.DeleteAction;
+            FileExists = d.FileExists;
+            EnableLogging = d.EnableLogging;
+        }
+
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
         public bool SidebarOpen { get; set; } = true;                        // বাম সাইডবার খোলা না বন্ধ
         public bool BridgeEnabled { get; set; } = true;                      // ব্রাউজার এক্সটেনশনের সংযোগ চালু
@@ -69,6 +139,14 @@ namespace FastDM
         public string Folder { get; set; }
         public string Referer { get; set; }             // এক্সটেনশন থেকে এলে: লিঙ্কটা যে পেজে ছিল
         public string UserAgent { get; set; }           // এক্সটেনশন থেকে এলে: ব্রাউজারের User-Agent
+        public string ContentType { get; set; }         // প্রোবে সার্ভারের Content-Type (যেমন text/html)
+        public DateTimeOffset? ServerTime { get; set; } // প্রোবে সার্ভারের Last-Modified
+
+        [JsonIgnore]
+        public int RetryCount { get; set; }             // অটো-রিট্রাই কতবার হলো (সেশনের জন্য)
+
+        [JsonIgnore]
+        public bool AutoRetrying { get; set; }          // এই শুরুটা অটো-রিট্রাইয়ের (ম্যানুয়াল রিজিউমে কাউন্টার শূন্য)
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
@@ -265,6 +343,9 @@ namespace FastDM
 
             CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
+
+            it.ContentType = resp.Content.Headers.ContentType?.MediaType;
+            it.ServerTime = resp.Content.Headers.LastModified;
 
             if (resp.StatusCode == HttpStatusCode.PartialContent &&
                 resp.Content.Headers.ContentRange?.Length != null)
@@ -743,321 +824,6 @@ namespace FastDM
     }
 
     // ====================== Settings ডায়ালগ ======================
-    class SettingsForm : Form
-    {
-        readonly NumericUpDown numConn;
-        readonly NumericUpDown numSim;
-        readonly TextBox txtFolder;
-        readonly ComboBox cmbTheme;
-        readonly CheckBox chkMin;
-        readonly CheckBox chkClose;
-        readonly CheckBox chkNotify;
-        readonly CheckBox chkUpd;
-        readonly CheckBox chkBridge;
-        readonly AppSettings s;
-
-        public SettingsForm(AppSettings settings)
-        {
-            s = settings;
-
-            Text = "Settings";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            ClientSize = new Size(460, 492);
-            Font = new Font("Segoe UI", 9.5f);
-
-            Controls.Add(new Label
-            {
-                Text = "Connections per download (1–16)",
-                Location = new Point(16, 20),
-                AutoSize = true
-            });
-
-            numConn = new NumericUpDown
-            {
-                Location = new Point(320, 17),
-                Width = 120,
-                Minimum = 1,
-                Maximum = 16,
-                Value = Math.Clamp(s.Connections, 1, 16)
-            };
-
-            Controls.Add(numConn);
-
-            Controls.Add(new Label
-            {
-                Text = "Simultaneous downloads (1–10)",
-                Location = new Point(16, 60),
-                AutoSize = true
-            });
-
-            numSim = new NumericUpDown
-            {
-                Location = new Point(320, 57),
-                Width = 120,
-                Minimum = 1,
-                Maximum = 10,
-                Value = Math.Clamp(s.MaxSimultaneous, 1, 10)
-            };
-
-            Controls.Add(numSim);
-
-            Controls.Add(new Label
-            {
-                Text = "Default save folder",
-                Location = new Point(16, 100),
-                AutoSize = true
-            });
-
-            txtFolder = new TextBox
-            {
-                Location = new Point(16, 124),
-                Width = 340,
-                Text = s.DefaultFolder
-            };
-
-            Controls.Add(txtFolder);
-
-            var browse = new Button
-            {
-                Text = "Browse…",
-                Location = new Point(364, 122),
-                Size = new Size(80, 28)
-            };
-
-            browse.Click += (a, b) =>
-            {
-                using var fb = new FolderBrowserDialog
-                {
-                    SelectedPath = txtFolder.Text
-                };
-
-                if (fb.ShowDialog(this) == DialogResult.OK)
-                    txtFolder.Text = fb.SelectedPath;
-            };
-
-            Controls.Add(browse);
-
-            Controls.Add(new Label
-            {
-                Text = "Theme",
-                Location = new Point(16, 178),
-                AutoSize = true
-            });
-
-            cmbTheme = new ComboBox
-            {
-                Location = new Point(300, 174),
-                Width = 140,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-
-            cmbTheme.Items.AddRange(new object[]
-            {
-                "Follow system",
-                "Light",
-                "Dark"
-            });
-
-            cmbTheme.SelectedIndex =
-                Math.Clamp((int)s.ThemeChoice, 0, 2);
-
-            Controls.Add(cmbTheme);
-
-            chkMin = new CheckBox
-            {
-                Text = "Minimize to the system tray",
-                Location = new Point(16, 216),
-                AutoSize = true,
-                Checked = s.MinimizeToTray
-            };
-
-            chkClose = new CheckBox
-            {
-                Text = "Close button keeps running in the tray",
-                Location = new Point(16, 244),
-                AutoSize = true,
-                Checked = s.CloseToTray
-            };
-
-            chkNotify = new CheckBox
-            {
-                Text = "Show notifications",
-                Location = new Point(16, 272),
-                AutoSize = true,
-                Checked = s.ShowNotifications
-            };
-
-            chkUpd = new CheckBox
-            {
-                Text = "Check for updates on startup (portable version)",
-                Location = new Point(16, 300),
-                AutoSize = true,
-                Checked = s.CheckUpdatesOnStart
-            };
-
-            Controls.AddRange(new Control[]
-            {
-                chkMin,
-                chkClose,
-                chkNotify,
-                chkUpd
-            });
-
-            chkBridge = new CheckBox
-            {
-                Text = "Allow the browser extension to connect",
-                Location = new Point(16, 330),
-                AutoSize = true,
-                Checked = s.BridgeEnabled
-            };
-
-            var forget = new Button
-            {
-                Text = "Forget paired browsers",
-                Location = new Point(270, 326),
-                Size = new Size(170, 30)
-            };
-
-            forget.Click += (a, b) =>
-            {
-                lock (s.BridgeTokens)
-                    s.BridgeTokens.Clear();
-
-                MessageBox.Show(
-                    this,
-                    "All paired browsers were forgotten. Each browser extension must connect (pair) again.",
-                    "FastDM");
-            };
-
-            Controls.Add(chkBridge);
-            Controls.Add(forget);
-
-            var ok = new Button
-            {
-                Text = "Save",
-                Location = new Point(250, 440),
-                Size = new Size(90, 34)
-            };
-
-            var cancel = new Button
-            {
-                Text = "Cancel",
-                Location = new Point(350, 440),
-                Size = new Size(90, 34),
-                DialogResult = DialogResult.Cancel
-            };
-
-            ok.Click += (a, b) =>
-            {
-                s.Connections = (int)numConn.Value;
-                s.MaxSimultaneous = (int)numSim.Value;
-
-                if (txtFolder.Text.Trim().Length > 0)
-                    s.DefaultFolder = txtFolder.Text.Trim();
-
-                s.ThemeChoice =
-                    (ThemeMode)Math.Clamp(cmbTheme.SelectedIndex, 0, 2);
-
-                s.MinimizeToTray = chkMin.Checked;
-                s.CloseToTray = chkClose.Checked;
-                s.ShowNotifications = chkNotify.Checked;
-                s.CheckUpdatesOnStart = chkUpd.Checked;
-                s.BridgeEnabled = chkBridge.Checked;
-
-                DialogResult = DialogResult.OK;
-            };
-
-            var net = new Button
-            {
-                Text = "Speed limit && proxy…",
-                Location = new Point(16, 390),
-                Size = new Size(200, 34)
-            };
-
-            net.Click += (a, b) =>
-            {
-                using var nf = new NetworkForm(s);
-                Theme.Apply(nf);
-                nf.ShowDialog(this);
-            };
-
-            Controls.Add(net);
-
-            var sched = new Button
-            {
-                Text = "Scheduler…",
-                Location = new Point(224, 390),
-                Size = new Size(216, 34)
-            };
-
-            sched.Click += (a, b) =>
-            {
-                using var sf = new ScheduleForm(s);
-                Theme.Apply(sf);
-                sf.ShowDialog(this);
-            };
-
-            Controls.Add(sched);
-
-            var yt = new Button
-            {
-                Text = "Update yt-dlp",
-                Location = new Point(16, 440),
-                Size = new Size(200, 34)
-            };
-
-            yt.Click += async (a, b) =>
-            {
-                if (UpdateChecker.IsPackaged)
-                {
-                    MessageBox.Show(
-                        this,
-                        "In the Store version, yt-dlp is updated together with the app.",
-                        "yt-dlp");
-
-                    return;
-                }
-
-                yt.Enabled = false;
-
-                try
-                {
-                    using var cts =
-                        new CancellationTokenSource(
-                            TimeSpan.FromSeconds(120));
-
-                    string msg =
-                        await YtDlpUpdater.UpdateAsync(cts.Token);
-
-                    MessageBox.Show(this, msg, "yt-dlp");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(
-                        this,
-                        ex.Message,
-                        "yt-dlp");
-                }
-                finally
-                {
-                    yt.Enabled = true;
-                }
-            };
-
-            Controls.Add(yt);
-
-            Controls.Add(ok);
-            Controls.Add(cancel);
-
-            AcceptButton = ok;
-            CancelButton = cancel;
-        }
-    }
-
     // ====================== মূল ফর্ম ======================
     public partial class Form1 : Form
     {
@@ -1171,6 +937,9 @@ namespace FastDM
 
             LoadState();
 
+            AppLog.Enabled =
+                settings.EnableLogging;
+
             Theme.SetMode(settings.ThemeChoice);
             NetworkApply.Load(settings);
 
@@ -1216,6 +985,7 @@ namespace FastDM
             StartBridge();
 
             Shown += (s, e) => FitLastColumn();
+            Shown += (s, e) => ApplyCompactView();
 
             Shown += (s, e) =>
             {
@@ -2393,6 +2163,8 @@ namespace FastDM
                 details.Invalidate();
             }
 
+            PeriodicMaintenance();
+
             UpdateSideCounts();
             sidebar.Invalidate();
 
@@ -2414,12 +2186,13 @@ namespace FastDM
                 actNow == 0 &&
                 queNow == 0)
             {
-                Notify(
-                    "Download complete",
-                    sessionCompleted == 1
-                        ? lastCompletedName
-                        : sessionCompleted +
-                          " downloads completed");
+                if (settings.NotifyCompleted)
+                    Notify(
+                        "Download complete",
+                        sessionCompleted == 1
+                            ? lastCompletedName
+                            : sessionCompleted +
+                              " downloads completed");
 
                 sessionCompleted = 0;
 
@@ -2444,6 +2217,16 @@ namespace FastDM
             it.State = DlState.Downloading;
             it.Error = null;
             it.PausedBySchedule = false;
+
+            // ম্যানুয়াল শুরু/রিজিউমে হলে অটো-রিট্রাইয়ের গণনা নতুন করে
+            if (!it.AutoRetrying)
+                it.RetryCount = 0;
+
+            it.AutoRetrying = false;
+
+            AppLog.Write(
+                "Start: " +
+                it.FileName);
 
             it.SpeedHistory.Clear();
             it.LastBytes = it.Downloaded;
@@ -2495,6 +2278,12 @@ namespace FastDM
 
                 it.Error =
                     ex.Message;
+
+                AppLog.Write(
+                    "Error: " +
+                    it.FileName +
+                    " — " +
+                    ex.Message);
             }
             finally
             {
@@ -2511,11 +2300,23 @@ namespace FastDM
                     sessionCompleted++;
                     lastCompletedName =
                         it.FileName;
+
+                    FinishDownload(it);
                 }
                 else if (it.State ==
                          DlState.Error)
                 {
-                    NotifyError(it);
+                    if (settings.AutoRetry &&
+                        it.RetryCount <
+                            Math.Max(1, settings.MaxRetries))
+                    {
+                        it.RetryCount++;
+                        ScheduleRetry(it);
+                    }
+                    else
+                    {
+                        NotifyError(it);
+                    }
                 }
             }
 
@@ -2534,6 +2335,100 @@ namespace FastDM
                     TryDelete(it.SavePath);
                 }
             }
+
+            MarkChanged();
+            SaveState();
+        }
+
+        // ডাউনলোড শেষের কাজ: সার্ভারের সময়, Mark of the Web, অ্যান্টিভাইরাস, বাইরের অ্যাপ, লিস্ট থেকে সরানো
+        void FinishDownload(
+            DownloadItem it)
+        {
+            it.RetryCount = 0;
+
+            AppLog.Write(
+                "Completed: " +
+                it.SavePath);
+
+            var s = settings;
+
+            // ডিস্ক আর বাইরের প্রোগ্রাম UI আটকাবে না
+            Task.Run(
+                () => PostDownload.Apply(
+                    s,
+                    it));
+
+            if (s.AutoRemoveCompleted)
+                items.Remove(it);
+        }
+
+        // ব্যর্থ ডাউনলোড কিছুক্ষণ পর নিজে আবার চেষ্টা (৫, ১০, ১৫… সেকেন্ড, সর্বোচ্চ ৬০)
+        async void ScheduleRetry(
+            DownloadItem it)
+        {
+            AppLog.Write(
+                "Retry " +
+                it.RetryCount +
+                ": " +
+                it.FileName);
+
+            await Task.Delay(
+                TimeSpan.FromSeconds(
+                    Math.Min(
+                        60,
+                        5 * it.RetryCount)));
+
+            if (items.Contains(it) &&
+                it.State ==
+                    DlState.Error &&
+                !it.RemoveRequested)
+            {
+                it.AutoRetrying = true;
+                it.State =
+                    DlState.Queued;
+                it.Error = null;
+
+                MarkChanged();
+            }
+        }
+
+        // ডিস্ক থেকে মুছে ফেলা ফাইল লিস্ট থেকেও সরানো (প্রতি ৩০ সেকেন্ডে একবার)
+        DateTime lastMissingCheck =
+            DateTime.MinValue;
+
+        void PeriodicMaintenance()
+        {
+            if (!settings.AutoRemoveMissing)
+                return;
+
+            if ((DateTime.UtcNow -
+                 lastMissingCheck)
+                    .TotalSeconds < 30)
+                return;
+
+            lastMissingCheck =
+                DateTime.UtcNow;
+
+            var gone =
+                items
+                    .Where(i =>
+                        i.State ==
+                            DlState.Completed &&
+                        !string.IsNullOrEmpty(i.Folder) &&
+                        !string.IsNullOrEmpty(i.FileName) &&
+                        !File.Exists(i.SavePath))
+                    .ToList();
+
+            if (gone.Count == 0)
+                return;
+
+            foreach (var g in gone)
+                items.Remove(g);
+
+            AppLog.Write(
+                "Removed " +
+                gone.Count +
+                " missing file(s) from the list");
 
             MarkChanged();
             SaveState();
@@ -2624,7 +2519,18 @@ namespace FastDM
 
             bool deleteDone = false;
 
-            if (sel.Any(
+            // Preferences → Advanced → Delete button action
+            if (settings.DeleteAction !=
+                DeleteAction.Ask)
+            {
+                deleteDone =
+                    settings.DeleteAction ==
+                        DeleteAction.DeleteFiles &&
+                    sel.Any(
+                        i => i.State ==
+                             DlState.Completed);
+            }
+            else if (sel.Any(
                     i => i.State ==
                          DlState.Completed))
             {
@@ -2895,6 +2801,21 @@ namespace FastDM
             bool startNow,
             RequestContext ctx)
         {
+            // একবারে সর্বোচ্চ কয়টা লিঙ্ক (Preferences → Downloads)
+            int maxBatch = Math.Max(1, settings.MaxBatchUrls);
+
+            if (urls.Length > maxBatch)
+            {
+                MessageBox.Show(
+                    this,
+                    "Only the first " + maxBatch +
+                    " of " + urls.Length +
+                    " links will be added.\n(You can change this limit in Preferences → Downloads.)",
+                    "FastDM");
+
+                urls = urls.Take(maxBatch).ToArray();
+            }
+
             lblActive.Text =
                 "Checking link(s)…";
 
@@ -2971,6 +2892,9 @@ namespace FastDM
             lblActive.Text =
                 "Fetching file info…";
 
+            int addedCount = 0;
+            int skippedPages = 0;
+
             foreach (var u in fileUrls)
             {
                 var it = new DownloadItem
@@ -3023,9 +2947,28 @@ namespace FastDM
                         Engine.NameFromUrl(u);
                 }
 
+                // "Do not download web pages": উত্তর HTML পেজ হলে বাদ (.html লিঙ্ক ছাড়া)
+                if (settings.SkipWebPages &&
+                    string.Equals(
+                        it.ContentType,
+                        "text/html",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !IsHtmlName(
+                        u))
+                {
+                    skippedPages++;
+                    continue;
+                }
+
+                it.Folder =
+                    SmartFolder(
+                        folder,
+                        it.FileName,
+                        u);
+
                 it.FileName =
                     UniqueName(
-                        folder,
+                        it.Folder,
                         it.FileName);
 
                 it.State =
@@ -3034,6 +2977,24 @@ namespace FastDM
                         : DlState.Paused;
 
                 items.Add(it);
+                addedCount++;
+            }
+
+            if (skippedPages > 0)
+            {
+                lblActive.Text =
+                    "Skipped " + skippedPages +
+                    " web page link(s). (Preferences → Downloads → Do not download web pages)";
+            }
+
+            if (addedCount > 0 &&
+                settings.NotifyAdded)
+            {
+                Notify(
+                    "Download added",
+                    addedCount == 1
+                        ? items[items.Count - 1].FileName
+                        : addedCount + " downloads added");
             }
 
             MarkChanged();
@@ -3558,6 +3519,80 @@ namespace FastDM
             }
         }
 
+        static bool IsHtmlName(
+            string url)
+        {
+            try
+            {
+                string ext =
+                    Path.GetExtension(
+                        new Uri(url).AbsolutePath);
+
+                return ext.Equals(
+                           ".html",
+                           StringComparison.OrdinalIgnoreCase) ||
+                       ext.Equals(
+                           ".htm",
+                           StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // "Suggest folders": শুধু ডিফল্ট ফোল্ডারে সেভ করলেই সাবফোল্ডার বসে (ইউজার নিজে ফোল্ডার বাছলে তার পছন্দই চূড়ান্ত)
+        string SmartFolder(
+            string folder,
+            string fileName,
+            string url)
+        {
+            if (!settings.SuggestByType &&
+                !settings.SuggestByHost)
+                return folder;
+
+            try
+            {
+                string a =
+                    Path.GetFullPath(
+                        folder).TrimEnd('\\', '/');
+
+                string b =
+                    Path.GetFullPath(
+                        settings.DefaultFolder).TrimEnd('\\', '/');
+
+                if (!a.Equals(
+                        b,
+                        StringComparison.OrdinalIgnoreCase))
+                    return folder;
+
+                string f = folder;
+
+                if (settings.SuggestByType)
+                    f = Path.Combine(
+                        f,
+                        FileCategories.Of(
+                            fileName));
+
+                if (settings.SuggestByHost &&
+                    Uri.TryCreate(
+                        url,
+                        UriKind.Absolute,
+                        out var u) &&
+                    u.Host.Length > 0)
+                    f = Path.Combine(
+                        f,
+                        Engine.Sanitize(
+                            u.Host));
+
+                return f;
+            }
+            catch
+            {
+                return folder;
+            }
+        }
+
         string UniqueName(
             string folder,
             string name)
@@ -3572,11 +3607,42 @@ namespace FastDM
             string cand = name;
             int n = 1;
 
-            while (
-                File.Exists(
+            // একই নামের ফাইল থাকলে Preferences অনুযায়ী: Rename / Overwrite / Ask
+            bool replaceExisting = false;
+
+            if (File.Exists(
                     Path.Combine(
                         folder,
-                        cand)) ||
+                        name)))
+            {
+                if (settings.FileExists ==
+                    FileExistsAction.Overwrite)
+                {
+                    replaceExisting = true;
+                }
+                else if (settings.FileExists ==
+                         FileExistsAction.Ask)
+                {
+                    replaceExisting =
+                        MessageBox.Show(
+                            this,
+                            "\"" + name + "\" already exists in this folder.\n\n" +
+                            "Yes = replace it\n" +
+                            "No = keep both (the new file gets a different name)",
+                            "File exists",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question) ==
+                        DialogResult.Yes;
+                }
+            }
+
+            while (
+                (File.Exists(
+                    Path.Combine(
+                        folder,
+                        cand)) &&
+                 !(replaceExisting &&
+                   cand == name)) ||
 
                 File.Exists(
                     Path.Combine(
@@ -3756,33 +3822,60 @@ namespace FastDM
         void ShowSettings()
         {
             using var f =
-                new SettingsForm(settings);
+                new PreferencesForm(settings);
 
             Theme.Apply(f);
 
             if (f.ShowDialog(this) ==
                 DialogResult.OK)
             {
-                Theme.SetMode(
-                    settings.ThemeChoice);
-
-                ApplyTheme();
-                RebuildList();
-
-                if (settings.BridgeEnabled &&
-                    bridge == null)
-                {
-                    StartBridge();
-                }
-                else if (
-                    !settings.BridgeEnabled &&
-                    bridge != null)
-                {
-                    StopBridge();
-                }
+                ApplyPreferences();
             }
 
             SaveState();
+        }
+
+        // Preferences সেভ হলে যা যা সঙ্গে সঙ্গে প্রয়োগ হওয়া দরকার
+        void ApplyPreferences()
+        {
+            Theme.SetMode(
+                settings.ThemeChoice);
+
+            ApplyTheme();
+            ApplyCompactView();
+
+            AppLog.Enabled =
+                settings.EnableLogging;
+
+            RebuildList();
+
+            if (settings.BridgeEnabled &&
+                bridge == null)
+            {
+                StartBridge();
+            }
+            else if (
+                !settings.BridgeEnabled &&
+                bridge != null)
+            {
+                StopBridge();
+            }
+        }
+
+        // "Compact view of downloads list": ছোট সারি
+        void ApplyCompactView()
+        {
+            if (lv?.SmallImageList == null)
+                return;
+
+            lv.SmallImageList.ImageSize =
+                new Size(
+                    1,
+                    settings.CompactView
+                        ? 26
+                        : 34);
+
+            lv.Invalidate();
         }
 
         // ---------- স্পিড লিমিট মেনু ----------
@@ -4702,6 +4795,9 @@ namespace FastDM
         void NotifyError(
             DownloadItem it)
         {
+            if (!settings.NotifyFailed)
+                return;
+
             if (
                 (DateTime.UtcNow -
                  lastErrorNotify)
@@ -4845,6 +4941,15 @@ namespace FastDM
                 if (data.Settings != null)
                     settings =
                         data.Settings;
+
+                // পুরোনো "Show notifications" বন্ধ থাকলে নতুন তিনটা সুইচও বন্ধ
+                if (!settings.ShowNotifications)
+                {
+                    settings.NotifyAdded = false;
+                    settings.NotifyCompleted = false;
+                    settings.NotifyFailed = false;
+                    settings.ShowNotifications = true;
+                }
 
                 foreach (var it in
                     data.Items ??
