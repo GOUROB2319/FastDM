@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 
 FastDM/Tools/
+FastDM.Extension/dist/
