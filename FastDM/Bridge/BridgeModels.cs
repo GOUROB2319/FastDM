@@ -4,12 +4,31 @@ using System.Collections.Generic;
 namespace FastDM
 {
     // এক্সটেনশন → অ্যাপ: নতুন ডাউনলোডের অনুরোধ
-    // Phase 1-এ শুধু Url ব্যবহার হয়; বাকি ফিল্ড প্রোটোকলের জন্য রাখা (Phase 2-এ কুকি/Referer প্রয়োগ হবে)
+    // Phase 2: Mode, Referer, UserAgent আর Cookies এখন সত্যিই প্রয়োগ হয়।
     public class BridgeAddRequest
     {
         public string Url { get; set; }
         public string Kind { get; set; } = "auto";      // auto | file | folder | media | page
+        public string Mode { get; set; } = "open";      // open = Add ডায়ালগ (ডিফল্ট) | download = ডায়ালগ ছাড়া শুরু | playlist = ফোল্ডার উইন্ডো প্লেলিস্ট মোডে
         public string Title { get; set; }
+        public string Referer { get; set; }
+        public string UserAgent { get; set; }
+        public List<BridgeCookie> Cookies { get; set; }
+    }
+
+    // ব্রাউজারের কুকি (chrome.cookies.getAll-এর ফল)। শুধু মেমোরিতে রাখা হয়, ডিস্কে সেভ হয় না।
+    public class BridgeCookie
+    {
+        public string Name { get; set; }
+        public string Value { get; set; }
+        public string Domain { get; set; }
+        public string Path { get; set; }
+        public bool Secure { get; set; }
+    }
+
+    // একটা অনুরোধের সাথে আসা অতিরিক্ত তথ্য (Add ডায়ালগ বা সরাসরি ডাউনলোড, দুই পথেই লাগে)
+    public class RequestContext
+    {
         public string Referer { get; set; }
         public string UserAgent { get; set; }
     }
@@ -32,7 +51,7 @@ namespace FastDM
     {
         AppSettings BridgeSettings { get; }
         System.Threading.Tasks.Task<bool> AskPairAsync(string origin);
-        void ExternalAdd(string url, string title);
+        void ExternalAdd(BridgeAddRequest add);       // Mode অনুযায়ী ডায়ালগ খোলে বা সরাসরি ডাউনলোড শুরু করে
         List<BridgeTaskInfo> GetTasks();
         bool TaskAction(string id, string action);       // pause | resume
         void SaveSettings();

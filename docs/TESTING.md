@@ -10,7 +10,7 @@ powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
 
 Expected final message: `Core build and extension tests passed.`
 
-This builds the Windows desktop application and runs the six Node tests for
+This builds the Windows desktop application and runs the Node tests for
 the browser-extension bridge.
 
 ## 2. Test the desktop app
@@ -38,6 +38,90 @@ connect** is checked. Keep FastDM running while testing the extension.
 
 Also test **Open FastDM** in the popup after closing the app. The `fastdm://`
 handler should open FastDM and show the Add dialog after a link is sent.
+
+## 3b. Phase 2 checks (context menu, headers, cookies)
+
+After reloading the extension, right-click a link: there should be one
+**FastDM** entry with a submenu.
+
+| Where you right-click | Submenu items | Expected result |
+| --- | --- | --- |
+| A normal file link | **Download with FastDM** | The download starts at once in the default folder, no dialog. |
+| A normal file link | **Open in FastDM** | The Add dialog opens with the link filled in. |
+| A video or audio element | **Download media…** / **Open media…** | Same two behaviours for the media address. |
+| The page background | **Send page link to FastDM** | The Add dialog opens with the page address. |
+
+Notes for the tester:
+
+- If FastDM is closed, both link items start the app through `fastdm://`
+  and the Add dialog opens (the protocol never starts a download by itself).
+- Folder links, video pages and yt-dlp sites always show their own window
+  (folder tree, quality picker), even with **Download**.
+- **Referer / User-Agent:** download a file from a site that blocks direct
+  links (hotlink protection). It should work from the menu and fail when the
+  same link is pasted into the Add dialog by hand.
+- **Cookies:** open the extension **Settings**, turn on **Login cookies** and
+  accept the browser prompt. Then download a file that needs a signed-in
+  session. Turn it off again and confirm the same file fails. Cookies are kept
+  in memory only; after restarting FastDM a resumed item has no cookies.
+- Negative check: send a request to `http://127.0.0.1:17432/v1/add` from a
+  normal web page (for example from the browser console). It must be refused.
+
+## 3c. Phase 3 checks (playlists for VLC)
+
+Open a folder window (right-click a directory-listing link, or add a folder
+link in the Add dialog). At the bottom you now have two playlist options:
+
+| Option | What it does |
+| --- | --- |
+| **Save stream playlist…** | Writes a `.m3u8` with the server links of the ticked video/audio files. VLC plays them straight from the server, no download. Files are sorted naturally (Ep 2 before Ep 10). |
+| **Also create a local playlist (.m3u8)…** (checkbox) | When you press **Download**, a `<folder name>.m3u8` with relative paths is written into the download folder. It plays offline once the files have arrived. |
+
+Browser extension: right-click a link or page whose address ends with `/`
+(for example `https://server/movies/`). The **FastDM** submenu has
+**Create playlist with FastDM** (link) or **Create playlist from this folder**
+(page). The folder window opens directly with the playlist button as the main action.
+
+Checks:
+
+- Open the saved stream playlist in VLC. Episodes must play in order.
+- For an FTP/SFTP server that needs a login, open the `.m3u8` in Notepad:
+  there must be **no** username or password in any line. VLC asks for them itself.
+- Non-media files (`.srt`, `.nfo`, images) must not be in the playlist; the status
+  line says how many were skipped.
+- Close FastDM, then use the menu again: `fastdm://playlist` opens the app and asks
+  you to confirm before it scans the folder.
+
+## 3d. Preferences page (Step 1a)
+
+Open **Settings** (gear icon or tray menu). The new **Preferences** window has a
+list on the left (General, Downloads, Browser Integration, Network, Antivirus,
+Notifications, Advanced). Clicking a name scrolls to that section; scrolling
+moves the highlight. Resize the window and test at 100%, 125% and 150% screen scaling.
+
+Check each setting does something:
+
+| Setting | How to check |
+| --- | --- |
+| Suggest folders by file type / URL | Add a `.pdf` link with the default folder: it lands in `Documents` (and `<site name>`). Pick another folder by hand: no sub-folder is added. |
+| Compact view | Rows become shorter at once after Save. |
+| Auto-remove deleted files | Delete a finished file in Explorer: the row disappears within ~30 seconds. |
+| Auto-remove completed | A download vanishes from the list when it finishes; the file stays. |
+| Auto-retry | Start a download, turn the network off for a few seconds: status goes to retry (5 s, 10 s, 15 s) instead of failing at once. |
+| Do not download web pages | Add a link that returns an HTML page (a normal web page address): it is skipped and the status bar says so. |
+| Server time | Finished file's *Modified* date equals the server's `Last-Modified`. |
+| Mark downloaded files | File Properties shows the "This file came from another computer" Unblock box (NTFS only). |
+| Max urls in batch | Paste more links than the limit: a message says only the first N are added. |
+| Notifications (added / completed / failed) | Minimize to tray, then add, finish and break a download. Each switch controls its own balloon. |
+| Antivirus | Choose *Windows Defender*, tick the automatic scan, finish a download: a Defender scan starts (see `MpCmdRun.exe` in Task Manager). |
+| Launch external application | Path `notepad.exe`, arguments `%path%`: finished text files open in Notepad. |
+| Delete button action | Remove only / Delete files / Always ask behave as named when you press Remove on a finished download. |
+| File exists reaction | Download the same file twice: Rename gives `name (1)`, Overwrite replaces it, Always ask shows a Yes/No box. |
+| Enable logging + Open log folder | A `fastdm-<date>.log` appears under `%LocalAppData%\FastDM\logs` with Start/Completed/Error lines. |
+| Reset | Everything returns to defaults; paired browsers and the download list stay. |
+
+Not in this step: Launch at startup, Language, UI style, Zoom, Low/Medium/High
+traffic presets, browser download interception and BitTorrent.
 
 ## 4. Package the extension
 

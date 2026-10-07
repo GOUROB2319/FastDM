@@ -5,7 +5,7 @@ using Microsoft.Win32;
 
 namespace FastDM
 {
-    // fastdm:// লিঙ্ক: fastdm://open  বা  fastdm://add?url=<এনকোড করা লিঙ্ক>
+    // fastdm:// লিঙ্ক: fastdm://open  |  fastdm://add?url=<এনকোড করা লিঙ্ক>  |  fastdm://playlist?url=<ফোল্ডারের লিঙ্ক>
     // নিরাপত্তা: এই পথে আসা লিঙ্ক কখনো নিজে থেকে ডাউনলোড শুরু করে না, শুধু Add ডায়ালগ খোলে (ইউজার নিশ্চিত করবে),
     // কারণ যেকোনো ওয়েবপেজ fastdm:// লিঙ্ক ট্রিগার করতে পারে।
     public static class ProtocolHandler
@@ -26,7 +26,7 @@ namespace FastDM
             if (!u.Scheme.Equals("fastdm", StringComparison.OrdinalIgnoreCase)) return null;
 
             var cmd = new Command { Action = (u.Host ?? "").ToLowerInvariant() };
-            if (cmd.Action == "add")
+            if (cmd.Action == "add" || cmd.Action == "playlist")
             {
                 var q = ParseQuery(u.Query);
                 if (q.TryGetValue("url", out var target) && BridgeAuth.IsAllowedUrl(target))

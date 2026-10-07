@@ -110,8 +110,9 @@ export function taskAction(id, action) {
 }
 
 // fastdm:// দিয়ে অ্যাপ চালু করা (অ্যাপ বন্ধ থাকলে)। লিঙ্ক দিলে অ্যাপ Add ডায়ালগ খোলে।
-export async function launchApp(url) {
-  const target = url ? `fastdm://add?url=${encodeURIComponent(url)}` : 'fastdm://open';
+export async function launchApp(url, action = 'add') {
+  const act = action === 'playlist' ? 'playlist' : 'add';     // fastdm://playlist শুধু ফোল্ডার-প্লেলিস্টের জন্য
+  const target = url ? `fastdm://${act}?url=${encodeURIComponent(url)}` : 'fastdm://open';
   const tab = await chrome.tabs.create({ url: target, active: false });
   setTimeout(() => { chrome.tabs.remove(tab.id).catch(() => {}); }, 2000);
   return target;
@@ -130,7 +131,7 @@ export async function sendLink(url, meta = {}) {
     if (!(e instanceof BridgeError)) return { error: String(e && e.message) };
     if (e.code === 'not_running') {
       try {
-        await launchApp(url);
+        await launchApp(url, meta.mode === 'playlist' ? 'playlist' : 'add');
         return { via: 'protocol' };
       } catch (e2) {
         return { error: String(e2 && e2.message) };

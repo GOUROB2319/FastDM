@@ -65,7 +65,6 @@ POST /v1/add        {token}        → { id, status }
 GET  /v1/tasks      {token}        → [{ id, name, state, percent, speed, eta }]   (পপআপ প্রগ্রেসের জন্য)
 POST /v1/tasks/{id}/pause|resume|remove {token}
 ```
-- **Phase 2 ফিল্ড:** `mode` = `"open"` (ডিফল্ট, Add ডায়ালগ খোলে) | `"download"` (ডায়ালগ ছাড়া ডিফল্ট ফোল্ডারে শুরু) | `"playlist"` (ফোল্ডার উইন্ডো প্লেলিস্ট মোডে); `referer`, `userAgent`, `cookies` ঐচ্ছিক। অ্যাপ সব ফিল্ড আবার যাচাই করে (কুকির ডোমেইন লিঙ্কের হোস্টের সাথে না মিললে বাদ, কুকি শুধু মেমোরিতে)। `fastdm://` পথ কখনো `download` mode চালায় না।
 - `kind: "auto"` মানে অ্যাপ নিজেই লিঙ্কের ধরন চিনে নেবে (বর্তমান `ShowAddDialog` পাইপলাইন)।
 - রিকোয়েস্টে `version` ফিল্ড, যাতে পরে প্রোটোকল বদলালে পুরোনো/নতুন এক্সটেনশন-অ্যাপ জুটি ভাঙে না।
 

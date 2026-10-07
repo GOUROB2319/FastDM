@@ -1,6 +1,7 @@
 import { getStatus, pair, forgetPairing } from '../background/bridge.js';
 import { CONN } from '../shared/protocol.js';
 import { applyI18n, t } from '../shared/i18n.js';
+import { hasCookieAccess, enableCookieAccess, disableCookieAccess } from '../background/cookies.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +53,32 @@ $('btnForget').addEventListener('click', async () => {
   refresh();
 });
 
+async function refreshCookies() {
+  const on = await hasCookieAccess();
+  $('cookiePill').className = `pill ${on ? 'ok' : 'warn'}`;
+  $('cookiePillText').textContent = t(on ? 'cookiesOn' : 'cookiesOff');
+  $('btnCookiesEnable').classList.toggle('hidden', on);
+  $('btnCookiesDisable').classList.toggle('hidden', !on);
+}
+
+// permissions.request অবশ্যই এই বাটন-ক্লিক (user gesture) থেকেই ডাকতে হয়
+$('btnCookiesEnable').addEventListener('click', async () => {
+  $('cookieError').classList.add('hidden');
+  let granted = false;
+  try { granted = await enableCookieAccess(); } catch { /* granted = false */ }
+  if (!granted) {
+    $('cookieError').textContent = t('errCookiesDenied');
+    $('cookieError').classList.remove('hidden');
+  }
+  refreshCookies();
+});
+
+$('btnCookiesDisable').addEventListener('click', async () => {
+  try { await disableCookieAccess(); } catch { /* ignore */ }
+  refreshCookies();
+});
+
 $('extVersion').textContent = chrome.runtime.getManifest().version;
 applyI18n();
 refresh();
+refreshCookies();

@@ -27,6 +27,17 @@
     "page": "src/options/options.html",
     "open_in_tab": false
   },
-  "permissions": ["contextMenus", "storage"],
-  "host_permissions": ["http://127.0.0.1/*"]
+  "permissions": [
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "optional_permissions": [
+    "cookies"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ]
 }

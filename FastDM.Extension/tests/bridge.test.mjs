@@ -6,6 +6,9 @@ import http from 'node:http';
 // ---- chrome API-র নকল ----
 const store = {};
 const tabsCreated = [];
+const permState = { granted: false };
+const cookieCalls = [];
+let cookieJar = [];
 globalThis.chrome = {
   storage: {
     local: {
@@ -19,10 +22,18 @@ globalThis.chrome = {
     remove() { return Promise.resolve(); },
   },
   i18n: { getMessage: (k) => k },
+  permissions: {
+    async contains() { return permState.granted; },
+  },
+  cookies: {
+    async getAll({ url }) { cookieCalls.push(url); return cookieJar; },
+  },
 };
 
 const bridge = await import('../src/background/bridge.js');
 const { CONN, PORTS } = await import('../src/shared/protocol.js');
+const menus = await import('../src/background/menus.js');
+const cookies = await import('../src/background/cookies.js');
 
 // ---- নকল অ্যাপ ----
 function fakeApp(port, opts = {}) {
@@ -66,7 +77,13 @@ function fakeApp(port, opts = {}) {
   };
 }
 
-const reset = () => { for (const k of Object.keys(store)) delete store[k]; tabsCreated.length = 0; };
+const reset = () => {
+  for (const k of Object.keys(store)) delete store[k];
+  tabsCreated.length = 0;
+  permState.granted = false;
+  cookieCalls.length = 0;
+  cookieJar = [];
+};
 
 test('অ্যাপ বন্ধ থাকলে NOT_RUNNING', async () => {
   reset();
@@ -137,4 +154,96 @@ test('পেয়ারিং প্রত্যাখ্যান/ব্যস
     await assert.rejects(bridge.pair(), (e) => e.code === 'pairing_busy');
     assert.equal(store.token, undefined);
   } finally { await app.stop(); }
+});
+
+// ---------------- Phase 2 ----------------
+
+test('Phase 2: mode, referer, userAgent, cookies অ্যাপের কাছে পৌঁছায়', async () => {
+  reset();
+  const app = fakeApp(PORTS[0]);
+  await app.start();
+  try {
+    await bridge.pair();
+    const meta = {
+      mode: 'download',
+      referer: 'https://site.example/page',
+      userAgent: 'UA/1.0',
+      cookies: [{ name: 'sid', value: 'abc', domain: '.site.example', path: '/', secure: true }],
+    };
+    assert.deepEqual(await bridge.sendLink('https://cdn.site.example/f.zip', meta), { via: 'bridge' });
+    const body = app.added[0];
+    assert.equal(body.mode, 'download');
+    assert.equal(body.referer, 'https://site.example/page');
+    assert.equal(body.userAgent, 'UA/1.0');
+    assert.equal(body.cookies[0].name, 'sid');
+    assert.equal(body.kind, 'auto');
+  } finally { await app.stop(); }
+});
+
+test('Phase 2: মেনু আইটেম → mode (Download = সরাসরি, Open/Page = ডায়ালগ)', () => {
+  const M = menus.MENU;
+  assert.equal(menus.modeFor(M.DL_LINK), 'download');
+  assert.equal(menus.modeFor(M.DL_MEDIA), 'download');
+  assert.equal(menus.modeFor(M.OPEN_LINK), 'open');
+  assert.equal(menus.modeFor(M.OPEN_MEDIA), 'open');
+  assert.equal(menus.modeFor(M.OPEN_PAGE), 'open');
+  assert.equal(menus.modeFor(M.PARENT), null);
+  assert.equal(menus.modeFor('something-else'), null);
+});
+
+test('Phase 2: targetUrl আর refererFor', () => {
+  const M = menus.MENU;
+  const info = { linkUrl: 'https://a.test/f.zip', pageUrl: 'https://a.test/dl', frameUrl: 'https://a.test/frame', srcUrl: 'blob:xyz' };
+  assert.equal(menus.targetUrl({ ...info, menuItemId: M.DL_LINK }, {}), 'https://a.test/f.zip');
+  assert.equal(menus.targetUrl({ ...info, menuItemId: M.OPEN_LINK }, {}), 'https://a.test/f.zip');
+  // blob: মিডিয়া হলে পেজের লিঙ্কে ফলব্যাক
+  assert.equal(menus.targetUrl({ ...info, menuItemId: M.DL_MEDIA }, {}), 'https://a.test/dl');
+  assert.equal(menus.targetUrl({ ...info, srcUrl: 'https://a.test/v.mp4', menuItemId: M.OPEN_MEDIA }, {}), 'https://a.test/v.mp4');
+  assert.equal(menus.targetUrl({ pageUrl: 'https://a.test/dl', menuItemId: M.OPEN_PAGE }, {}), 'https://a.test/dl');
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.DL_LINK }), 'https://a.test/frame');
+  assert.equal(menus.refererFor({ pageUrl: 'https://a.test/dl', menuItemId: M.DL_LINK }), 'https://a.test/dl');
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.OPEN_PAGE }), undefined);
+});
+
+test('Phase 2: permission না থাকলে কুকি খালি, getAll ডাকাই হয় না', async () => {
+  reset();
+  cookieJar = [{ name: 'sid', value: 'abc', domain: 'a.test', path: '/', secure: true }];
+  assert.deepEqual(await cookies.cookiesFor('https://a.test/f.zip'), []);
+  assert.equal(cookieCalls.length, 0);
+});
+
+test('Phase 2: permission থাকলে কুকি bridge ফরম্যাটে; ftp/অবৈধ URL-এ খালি', async () => {
+  reset();
+  permState.granted = true;
+  cookieJar = [{ name: 'sid', value: 'abc', domain: '.a.test', path: '/x', secure: true, httpOnly: true, storeId: '0' }];
+  assert.deepEqual(await cookies.cookiesFor('https://a.test/f.zip'), [
+    { name: 'sid', value: 'abc', domain: '.a.test', path: '/x', secure: true },
+  ]);
+  assert.deepEqual(await cookies.cookiesFor('ftp://a.test/f.zip'), []);
+  assert.deepEqual(await cookies.cookiesFor(''), []);
+  assert.equal(cookieCalls.length, 1);
+});
+
+// ---------------- Phase 3 ----------------
+
+test('Phase 3: playlist মেনু → mode playlist, লিঙ্ক ও পেজের URL', () => {
+  const M = menus.MENU;
+  assert.equal(menus.modeFor(M.PLAYLIST_LINK), 'playlist');
+  assert.equal(menus.modeFor(M.PLAYLIST_PAGE), 'playlist');
+  const info = { linkUrl: 'https://a.test/movies/', pageUrl: 'https://a.test/', frameUrl: 'https://a.test/' };
+  assert.equal(menus.targetUrl({ ...info, menuItemId: M.PLAYLIST_LINK }, {}), 'https://a.test/movies/');
+  assert.equal(menus.targetUrl({ pageUrl: 'https://a.test/movies/', menuItemId: M.PLAYLIST_PAGE }, {}), 'https://a.test/movies/');
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.PLAYLIST_PAGE }), undefined);
+  assert.equal(menus.refererFor({ ...info, menuItemId: M.PLAYLIST_LINK }), 'https://a.test/');
+});
+
+test('Phase 3: অ্যাপ বন্ধ থাকলে playlist mode fastdm://playlist দিয়ে চালু করে', async () => {
+  reset();
+  // কোনো অ্যাপ চলছে না → bridge পৌঁছায় না → ফলব্যাক
+  const r = await bridge.sendLink('https://a.test/movies/', { mode: 'playlist' });
+  assert.deepEqual(r, { via: 'protocol' });
+  assert.ok(tabsCreated.at(-1).startsWith('fastdm://playlist?url='));
+  const r2 = await bridge.sendLink('https://a.test/f.zip', { mode: 'download' });
+  assert.deepEqual(r2, { via: 'protocol' });
+  assert.ok(tabsCreated.at(-1).startsWith('fastdm://add?url='));
 });

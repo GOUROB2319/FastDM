@@ -13,7 +13,8 @@ namespace FastDM
     // অ্যাপের ভেতরের লোকাল সার্ভার: শুধু 127.0.0.1, শুধু ব্রাউজার এক্সটেনশনের Origin, প্রতি রিকোয়েস্টে টোকেন।
     //   GET  /v1/ping                      → অ্যাপ চলছে কি না (টোকেন ঐচ্ছিক, থাকলে paired: true/false)
     //   POST /v1/pair                      → অ্যাপে অনুমোদন ডায়ালগ, অনুমোদনে নতুন টোকেন
-    //   POST /v1/add        {url,...}      → অ্যাপে Add ডায়ালগ খোলে (ইউজার নিশ্চিত করবে)
+    //   POST /v1/add        {url,mode,...} → mode=open: Add ডায়ালগ (ডিফল্ট) | download: ডায়ালগ ছাড়া শুরু | playlist: ফোল্ডার উইন্ডো প্লেলিস্ট মোডে
+    //                                        referer / userAgent / cookies ঐচ্ছিক (Phase 2)
     //   GET  /v1/tasks                     → সাম্প্রতিক ডাউনলোডের অবস্থা
     //   POST /v1/tasks/{id}/{pause|resume}
     public sealed class BridgeServer : IDisposable
@@ -231,8 +232,14 @@ namespace FastDM
                 return;
             }
 
-            host.ExternalAdd(add.Url.Trim(), add.Title);
-            await Send(res, 200, new { ok = true, status = "opened" });
+            add.Url = add.Url.Trim();
+            add.Mode = BridgeAuth.NormalizeMode(add.Mode);
+            add.Referer = BridgeAuth.CleanReferer(add.Referer);
+            add.UserAgent = BridgeAuth.CleanUserAgent(add.UserAgent);
+            add.Cookies = BridgeAuth.CleanCookies(add.Cookies, add.Url);
+
+            host.ExternalAdd(add);
+            await Send(res, 200, new { ok = true, status = add.Mode == "download" ? "started" : "opened" });
         }
 
         static async Task<string> ReadBody(HttpListenerRequest req)
