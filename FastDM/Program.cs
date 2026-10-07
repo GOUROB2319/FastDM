@@ -1,40 +1,56 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Text;
 
 namespace FastDM
 {
     internal static class Program
     {
-        // fastdm:// দিয়ে অ্যাপ চালু হলে সেই লিঙ্ক এখানে থাকে (Form1 স্টার্টআপের পর সামলায়)
-        internal static string StartupCommand;
+        // fastdm:// launch command is stored here for the first app instance.
+        internal static string StartupCommand = null!;
 
         /// <summary>
-        ///  The main entry point for the application.
+        /// The main entry point for the application.
         /// </summary>
         [STAThread]
         static void Main(string[] args)
         {
-            string cmd = args.FirstOrDefault(a => a.StartsWith("fastdm:", StringComparison.OrdinalIgnoreCase));
+            string? cmd = args.FirstOrDefault(
+                a => a.StartsWith("fastdm:", StringComparison.OrdinalIgnoreCase));
 
-            // একটাই ইনস্ট্যান্স চলবে। দ্বিতীয়বার চালালে প্রথম উইন্ডোটা সামনে আসবে
-            // (ট্রে-তে লুকিয়ে থাকলেও), আর fastdm:// লিঙ্ক থাকলে সেটা প্রথম ইনস্ট্যান্সে পাঠানো হবে।
-            using var mutex = new Mutex(true, @"Local\FastDM.SingleInstance", out bool isFirst);
+            // Only one application instance is allowed.
+            // If another instance starts with a fastdm:// command, forward it
+            // to the first instance through the named pipe.
+            using var mutex = new Mutex(
+                true,
+                @"Local\FastDM.SingleInstance",
+                out bool isFirst);
+
             if (!isFirst)
             {
-                if (cmd != null && TrySendToFirstInstance(cmd)) return;
+                if (cmd != null && TrySendToFirstInstance(cmd))
+                {
+                    return;
+                }
+
                 try
                 {
-                    using var ev = EventWaitHandle.OpenExisting(@"Local\FastDM.Show");
+                    using var ev = EventWaitHandle.OpenExisting(
+                        @"Local\FastDM.Show");
+
                     ev.Set();
                 }
-                catch { }
+                catch
+                {
+                    // Ignore if the first instance is shutting down.
+                }
+
                 return;
             }
 
-            StartupCommand = cmd;
+            // Keep the existing null behavior while satisfying nullable analysis.
+            StartupCommand = cmd!;
 
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
+            // Configure the Windows Forms application.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
         }
@@ -43,13 +59,27 @@ namespace FastDM
         {
             try
             {
-                using var client = new NamedPipeClientStream(".", ProtocolHandler.PipeName(), PipeDirection.Out);
+                using var client = new NamedPipeClientStream(
+                    ".",
+                    ProtocolHandler.PipeName(),
+                    PipeDirection.Out);
+
                 client.Connect(1500);
-                using var w = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = true };
-                w.WriteLine(cmd);
+
+                using var writer = new StreamWriter(
+                    client,
+                    new UTF8Encoding(false))
+                {
+                    AutoFlush = true
+                };
+
+                writer.WriteLine(cmd);
                 return true;
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
         }
     }
 }
