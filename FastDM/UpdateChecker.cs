@@ -19,7 +19,7 @@ namespace FastDM
         public const string StoreId = "9P5ZP43GK911";
 
         // তোমার পাবলিক release রিপো (owner/name)। রিপোর আসল নাম অনুযায়ী মিলিয়ে নিও।
-        public const string ReleasesRepo = "GOURGB2319/FastDM-releases";
+        public const string ReleasesRepo = "GOUROB2319/FastDM";
 
         public class Result
         {
