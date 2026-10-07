@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -158,7 +157,7 @@ namespace FastDM
         }
 
         // Windows Defender-এর MpCmdRun.exe (সবচেয়ে নতুন Platform ভার্সন আগে)
-        public static string FindDefender()
+        public static string? FindDefender()
         {
             try
             {
