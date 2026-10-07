@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,14 +8,14 @@ namespace FastDM
 {
     public class PlaylistEntry
     {
-        public string SortKey;      // রিলেটিভ পাথ (ফোল্ডারসহ), প্রাকৃতিক ক্রমে সাজানোর জন্য
-        public string Title;
-        public string Target;       // সার্ভারের লিঙ্ক অথবা লোকাল রিলেটিভ পাথ
+        public string SortKey = string.Empty;      // রিলেটিভ পাথ (ফোল্ডারসহ), প্রাকৃতিক ক্রমে সাজানোর জন্য
+        public string Title = string.Empty;
+        public string Target = string.Empty;       // সার্ভারের লিঙ্ক অথবা লোকাল রিলেটিভ পাথ
     }
 
     public class PlaylistResult
     {
-        public string Text;
+        public string Text = string.Empty;
         public int Count;           // প্লেলিস্টে যত ফাইল গেছে
         public int Skipped;         // ভিডিও/অডিও নয় বলে বাদ
     }
@@ -114,7 +113,7 @@ namespace FastDM
 
         static bool Digit(char c) => c >= '0' && c <= '9';
 
-        public int Compare(string a, string b)
+        public int Compare(string? a, string? b)
         {
             a ??= ""; b ??= "";
             int i = 0, j = 0;

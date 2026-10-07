@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Diagnostics;
 using System.Net;
@@ -75,7 +74,7 @@ namespace FastDM
             Host = (s.ProxyHost ?? "").Trim();
             Port = s.ProxyPort;
             User = s.ProxyUser ?? "";
-            Pass = SecretStore.Read("proxy", out _, out var p) ? p : "";
+            Pass = SecretStore.Read("proxy", out _, out var p) ? p ?? "" : "";
         }
 
         // ডায়ালগের মান দিয়ে সংযোগ টেস্ট (সেভ করার আগেই)
@@ -116,7 +115,7 @@ namespace FastDM
     {
         public static readonly DynamicProxy Instance = new DynamicProxy();
 
-        public ICredentials Credentials
+        public ICredentials? Credentials
         {
             get
             {
@@ -138,7 +137,7 @@ namespace FastDM
             }
         }
 
-        public Uri GetProxy(Uri destination)
+        public Uri? GetProxy(Uri destination)
         {
             switch (ProxyConfig.Mode)
             {
@@ -252,7 +251,7 @@ namespace FastDM
             finally { Marshal.FreeHGlobal(mem); }
         }
 
-        public static bool Read(string key, out string user, out string pass)
+        public static bool Read(string key, out string? user, out string? pass)
         {
             user = null; pass = null;
             try
