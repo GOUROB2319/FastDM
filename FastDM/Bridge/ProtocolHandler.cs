@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -12,13 +11,13 @@ namespace FastDM
     {
         public class Command
         {
-            public string Action;
-            public string Url;
+            public string Action = string.Empty;
+            public string? Url;
         }
 
         public static string PipeName() => "FastDM.Cmd." + Environment.UserName;
 
-        public static Command Parse(string raw)
+        public static Command? Parse(string? raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return null;
             raw = raw.Trim().Trim('"');
@@ -54,7 +53,7 @@ namespace FastDM
         public static void RegisterForCurrentUser()
         {
             if (UpdateChecker.IsPackaged) return;
-            string exe = Environment.ProcessPath;
+            string? exe = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exe)) return;
 
             using var k = Registry.CurrentUser.CreateSubKey(@"Software\Classes\fastdm");

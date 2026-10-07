@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -35,8 +34,8 @@ namespace FastDM
 
         readonly IBridgeHost host;
         readonly Queue<DateTime> addTimes = new Queue<DateTime>();
-        HttpListener listener;
-        CancellationTokenSource cts;
+        HttpListener? listener;
+        CancellationTokenSource? cts;
         int pairing;                              // একসাথে একটাই পেয়ারিং অনুরোধ
 
         public int Port { get; private set; }
@@ -100,7 +99,7 @@ namespace FastDM
                 }
 
                 // ২) Origin চেক: শুধু ব্রাউজার এক্সটেনশন (ওয়েবপেজ Origin জাল করতে পারে না)
-                string origin = req.Headers["Origin"];
+                string? origin = req.Headers["Origin"];
                 bool originOk = BridgeAuth.IsExtensionOrigin(origin);
                 if (originOk)
                 {
@@ -112,7 +111,7 @@ namespace FastDM
                 }
                 if (req.HttpMethod == "OPTIONS")
                 {
-                    await Send(res, originOk ? 204 : 403, null);
+                    await Send(res, originOk ? 204 : 403, null!);
                     return;
                 }
                 if (!originOk)
@@ -121,8 +120,8 @@ namespace FastDM
                     return;
                 }
 
-                string path = req.Url.AbsolutePath.TrimEnd('/');
-                string token = req.Headers["X-FastDM-Token"];
+                string path = req.Url?.AbsolutePath?.TrimEnd('/') ?? string.Empty;
+                string? token = req.Headers["X-FastDM-Token"];
                 bool paired = BridgeAuth.IsValid(host.BridgeSettings, token);
 
                 // ৩) রাউটিং
@@ -140,6 +139,7 @@ namespace FastDM
 
                 if (req.HttpMethod == "POST" && path == "/v1/pair")
                 {
+                    if (origin == null) { await Send(res, 403, new { error = "bad_origin" }); return; }
                     await HandlePair(res, origin);
                     return;
                 }
@@ -219,12 +219,23 @@ namespace FastDM
                 addTimes.Enqueue(now);
             }
 
-            string body = await ReadBody(req);
+            string? body = await ReadBody(req);
+                if (body == null)
+                {
+                    await Send(res, 413, new { error = "body_too_large" });
+                    return;
+                }
             if (body == null) { await Send(res, 413, new { error = "body_too_large" }); return; }
 
-            BridgeAddRequest add;
+            BridgeAddRequest? add;
             try { add = JsonSerializer.Deserialize<BridgeAddRequest>(body, Json); }
             catch { await Send(res, 400, new { error = "bad_json" }); return; }
+
+            if (add == null)
+            {
+                await Send(res, 400, new { error = "bad_json" });
+                return;
+            }
 
             if (add == null || !BridgeAuth.IsAllowedUrl(add.Url))
             {
@@ -242,7 +253,7 @@ namespace FastDM
             await Send(res, 200, new { ok = true, status = add.Mode == "download" ? "started" : "opened" });
         }
 
-        static async Task<string> ReadBody(HttpListenerRequest req)
+        static async Task<string?> ReadBody(HttpListenerRequest req)
         {
             if (req.ContentLength64 > MaxBody) return null;
             using var sr = new StreamReader(req.InputStream, Encoding.UTF8);
