@@ -1,4 +1,3 @@
-#nullable disable
 using HtmlDocument = HtmlAgilityPack.HtmlDocument;
 using System;
 using System.Collections.Generic;
@@ -25,10 +24,10 @@ namespace FastDM
 
     public class RemoteNode
     {
-        public string Name;
+        public string Name = string.Empty;
         public bool IsDir;
         public long Size;                       // 0 = অজানা
-        public string Url;                      // শুধু ফাইলের জন্য
+        public string Url = string.Empty;                      // শুধু ফাইলের জন্য
         public List<RemoteNode> Children = new List<RemoteNode>();
     }
 
@@ -44,7 +43,7 @@ namespace FastDM
 
         public static bool TryGet(Uri u, out string user, out string pass)
         {
-            user = null; pass = null;
+            user = string.Empty; pass = string.Empty;
 
             // ইউআরএলের ভেতরেই থাকলে (ftp://user:pass@host/)
             if (!string.IsNullOrEmpty(u.UserInfo))
@@ -124,7 +123,7 @@ namespace FastDM
 
         static bool ReadCred(string target, out string user, out string pass)
         {
-            user = null; pass = null;
+            user = string.Empty; pass = string.Empty;
             try
             {
                 if (!CredRead(target, CRED_TYPE_GENERIC, 0, out IntPtr p)) return false;
