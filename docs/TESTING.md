@@ -123,6 +123,32 @@ Check each setting does something:
 Not in this step: Launch at startup, Language, UI style, Zoom, Low/Medium/High
 traffic presets, browser download interception and BitTorrent.
 
+## 3e. Traffic modes and Launch at startup (Step 1b)
+
+**Mode button.** The old *Speed* button in the toolbar is now **Mode: High / Medium / Low**.
+Its menu lists the three modes with their speed and simultaneous downloads, and
+**Edit modes…** opens Preferences → **Traffic Limits**. The status bar shows
+`Mode: Medium · 2 MB/s`.
+
+| Check | How |
+| --- | --- |
+| Speed per mode | Choose **Low** (default 256 KB/s): the total speed of all downloads stays near that. Choose **High**: unlimited. |
+| Simultaneous downloads | Queue 6 files in **Low** (2 at a time) and in **High** (4 at a time): *Active* in the status bar matches. |
+| Total connections | In Preferences set **Medium** to 10 connections, 5 per server, add 3 large files from one site: never more than 5 connections to that site and 10 in total (check with Resource Monitor → Network). |
+| Live change | Switch modes while downloading: the new limits apply at once, running segments finish. |
+| Old settings kept | After upgrading, **High** holds your previous speed limit, connections and simultaneous downloads, and the mode starts as High. |
+| Proxy | Preferences → Network → **Proxy…** opens the smaller Proxy window (no speed field any more). |
+| Pause slow downloads | Turn it on with *0 KB/s for 1 minute*, queue more downloads than the simultaneous limit, then pull the network cable for one download only (or use a stalled link): after about a minute it goes to the back of the queue and a waiting one starts. With an empty queue nothing is paused. |
+
+**Launch at startup (minimized)** — Preferences → General → *Startup*.
+
+| Build | Expected |
+| --- | --- |
+| Portable | Tick it and Save: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has a `FastDM` value ending in `--minimized`. Sign out and in: FastDM starts hidden in the tray. Untick: the value is removed. |
+| Store (MSIX) | Tick it and Save: Task Manager → *Startup apps* shows **FastDM** as *Enabled*. Restart Windows: FastDM starts hidden in the tray. If you switch it off in Task Manager, the Preferences box shows a note and the option cannot be turned back on from the app (Windows rule); enable it in Task Manager first. |
+
+The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* run is "portable".
+
 ## 4. Package the extension
 
 ```powershell

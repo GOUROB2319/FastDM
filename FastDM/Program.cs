@@ -8,6 +8,9 @@ namespace FastDM
         // fastdm:// launch command is stored here for the first app instance.
         internal static string StartupCommand = null!;
 
+        // Windows চালু হওয়ার সময় নিজে থেকে শুরু হলে true (ট্রে-তে লুকিয়ে থাকবে)
+        internal static bool StartMinimized;
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -49,6 +52,12 @@ namespace FastDM
 
             // Keep the existing null behavior while satisfying nullable analysis.
             StartupCommand = cmd!;
+
+            // Portable build: the Run key starts us with --minimized.
+            // Store build: the app was activated by its StartupTask.
+            StartMinimized =
+                args.Any(a => a.Equals(StartupManager.MinimizedArg, StringComparison.OrdinalIgnoreCase)) ||
+                (UpdateChecker.IsPackaged && StartupManager.LaunchedByStartupTask());
 
             // Configure the Windows Forms application.
             ApplicationConfiguration.Initialize();

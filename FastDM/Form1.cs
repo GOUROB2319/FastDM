@@ -79,6 +79,47 @@ namespace FastDM
         public FileExistsAction FileExists { get; set; } = FileExistsAction.Rename;
         public bool EnableLogging { get; set; } = false;
 
+        // ---- Traffic Limits (Low / Medium / High) ----
+        public TrafficMode ActiveMode { get; set; } = TrafficMode.High;
+        public TrafficProfile LowProfile { get; set; } = TrafficProfile.DefaultFor(TrafficMode.Low);
+        public TrafficProfile MediumProfile { get; set; } = TrafficProfile.DefaultFor(TrafficMode.Medium);
+        public TrafficProfile HighProfile { get; set; } = TrafficProfile.DefaultFor(TrafficMode.High);
+        public bool TrafficMigrated { get; set; } = false;     // পুরোনো একক গতি/কানেকশন সেটিং প্রিসেটে সরানো হয়েছে কি না
+        public bool PauseSlow { get; set; } = true;            // ধীর ডাউনলোড সরিয়ে অন্যগুলোকে সুযোগ
+        public int PauseSlowKBps { get; set; } = 0;
+        public int PauseSlowMinutes { get; set; } = 10;
+        public bool LaunchAtStartup { get; set; } = false;
+
+        [JsonIgnore]
+        public TrafficProfile ActiveProfile => ProfileOf(ActiveMode);
+
+        public TrafficProfile ProfileOf(TrafficMode m)
+        {
+            var p = m == TrafficMode.Low ? LowProfile
+                  : m == TrafficMode.Medium ? MediumProfile
+                  : HighProfile;
+
+            return p ?? TrafficProfile.DefaultFor(m);
+        }
+
+        // সক্রিয় মোডের মান বাকি কোডের পুরোনো ফিল্ডে (SpeedLimitKBps, Connections, MaxSimultaneous) বসায়
+        public void ApplyActiveProfile()
+        {
+            LowProfile ??= TrafficProfile.DefaultFor(TrafficMode.Low);
+            MediumProfile ??= TrafficProfile.DefaultFor(TrafficMode.Medium);
+            HighProfile ??= TrafficProfile.DefaultFor(TrafficMode.High);
+
+            LowProfile.Clamp();
+            MediumProfile.Clamp();
+            HighProfile.Clamp();
+
+            var p = ActiveProfile;
+
+            SpeedLimitKBps = p.SpeedKBps;
+            Connections = p.PerServer;
+            MaxSimultaneous = p.Simultaneous;
+        }
+
         // "Reset": শুধু Preferences-এর মান ডিফল্টে। পেয়ার করা ব্রাউজার, সাইডবার, yt-dlp তারিখ আর শিডিউলার অক্ষত।
         public void ResetPreferences()
         {
@@ -122,6 +163,15 @@ namespace FastDM
             DeleteAction = d.DeleteAction;
             FileExists = d.FileExists;
             EnableLogging = d.EnableLogging;
+
+            ActiveMode = d.ActiveMode;
+            LowProfile = d.LowProfile;
+            MediumProfile = d.MediumProfile;
+            HighProfile = d.HighProfile;
+            PauseSlow = d.PauseSlow;
+            PauseSlowKBps = d.PauseSlowKBps;
+            PauseSlowMinutes = d.PauseSlowMinutes;
+            LaunchAtStartup = d.LaunchAtStartup;
         }
 
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
@@ -146,6 +196,12 @@ namespace FastDM
 
         [JsonIgnore]
         public bool AutoRetrying { get; set; }          // এই শুরুটা অটো-রিট্রাইয়ের (ম্যানুয়াল রিজিউমে কাউন্টার শূন্য)
+
+        [JsonIgnore]
+        public DateTime? SlowSince { get; set; }        // কখন থেকে গতি সীমার নিচে (Pause slow downloads)
+
+        [JsonIgnore]
+        public bool RequeueAfterPause { get; set; }     // ধীর বলে সরানো হলো: পজের পর লাইনের শেষে Queued
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
@@ -449,10 +505,16 @@ namespace FastDM
                 {
                     try
                     {
-                        await SegmentAsync(
-                            it,
-                            s,
-                            linked.Token).ConfigureAwait(false);
+                        // মোট ও প্রতি-সার্ভারের কানেকশন সীমা (Traffic Limits)
+                        using (await Traffic.EnterAsync(
+                                   HostOf(it.Url),
+                                   linked.Token).ConfigureAwait(false))
+                        {
+                            await SegmentAsync(
+                                it,
+                                s,
+                                linked.Token).ConfigureAwait(false);
+                        }
                     }
                     catch when (!ct.IsCancellationRequested)
                     {
@@ -487,6 +549,19 @@ namespace FastDM
                 File.Delete(it.SavePath);
 
             File.Move(it.TempPath, it.SavePath);
+        }
+
+        static string HostOf(
+            string url)
+        {
+            try
+            {
+                return new Uri(url).Host;
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         static async Task SegmentAsync(
@@ -884,7 +959,7 @@ namespace FastDM
         ToolStripStatusLabel lblSpeed = null!;
         ToolStripStatusLabel lblLimit = null!;
 
-        ToolStripDropDownButton speedMenu = null!;
+        ToolStripDropDownButton modeMenu = null!;
         ToolStripDropDownButton doneMenu = null!;
 
         System.Windows.Forms.Timer navTimer = null!;
@@ -940,6 +1015,8 @@ namespace FastDM
             AppLog.Enabled =
                 settings.EnableLogging;
 
+            ApplyTrafficMode();
+
             Theme.SetMode(settings.ThemeChoice);
             NetworkApply.Load(settings);
 
@@ -986,6 +1063,13 @@ namespace FastDM
 
             Shown += (s, e) => FitLastColumn();
             Shown += (s, e) => ApplyCompactView();
+
+            // Windows চালু হওয়ার সময় নিজে থেকে শুরু হলে ট্রে-তে চুপচাপ থাকে
+            Shown += (s, e) =>
+            {
+                if (Program.StartMinimized)
+                    HideToTray(false);
+            };
 
             Shown += (s, e) =>
             {
@@ -1254,8 +1338,8 @@ namespace FastDM
             tools.Items.Add(
                 new ToolStripSeparator());
 
-            BuildSpeedMenu();
-            tools.Items.Add(speedMenu);
+            BuildModeMenu();
+            tools.Items.Add(modeMenu);
 
             tools.Items.Add(
                 Btn(
@@ -2133,11 +2217,13 @@ namespace FastDM
                 "/s";
 
             string limText =
-                settings.SpeedLimitKBps > 0
-                    ? "Limit: " +
+                "Mode: " +
+                settings.ActiveMode +
+                (settings.SpeedLimitKBps > 0
+                    ? " · " +
                       SpeedLimiter.Describe(
                           settings.SpeedLimitKBps)
-                    : "Limit: Off";
+                    : "");
 
             if (lblLimit.Text != limText)
                 lblLimit.Text = limText;
@@ -2166,6 +2252,7 @@ namespace FastDM
             }
 
             PeriodicMaintenance();
+            PauseSlowDownloads();
 
             UpdateSideCounts();
             sidebar.Invalidate();
@@ -2225,6 +2312,7 @@ namespace FastDM
                 it.RetryCount = 0;
 
             it.AutoRetrying = false;
+            it.SlowSince = null;
 
             AppLog.Write(
                 "Start: " +
@@ -2292,6 +2380,23 @@ namespace FastDM
                 it.Cts = null;
                 it.StatusNote = "";
                 cts.Dispose();
+            }
+
+            // ধীর বলে সরানো ডাউনলোড: লাইনের শেষে গিয়ে অপেক্ষা করবে, অন্যগুলো আগে চলবে
+            if (it.RequeueAfterPause)
+            {
+                it.RequeueAfterPause = false;
+
+                if (it.State ==
+                        DlState.Paused &&
+                    !it.RemoveRequested)
+                {
+                    it.Added =
+                        DateTime.Now;
+
+                    it.State =
+                        DlState.Queued;
+                }
             }
 
             if (!it.RemoveRequested)
@@ -2391,6 +2496,64 @@ namespace FastDM
                 it.Error = null;
 
                 MarkChanged();
+            }
+        }
+
+        // "Pause slow downloads and let others go first": অন্য ডাউনলোড লাইনে অপেক্ষা করলে
+        // এবং এটা নির্ধারিত সময় ধরে সীমার চেয়ে ধীর হলে সরিয়ে লাইনের শেষে পাঠায়
+        void PauseSlowDownloads()
+        {
+            if (!settings.PauseSlow)
+                return;
+
+            var now =
+                DateTime.UtcNow;
+
+            double limit =
+                settings.PauseSlowKBps *
+                1024.0;
+
+            int waiting =
+                items.Count(
+                    i => i.State ==
+                             DlState.Queued &&
+                         (!scheduleBlocked ||
+                          i.IgnoreSchedule));
+
+            foreach (var it in items
+                .Where(i =>
+                    i.State ==
+                    DlState.Downloading)
+                .ToList())
+            {
+                if (it.Speed > limit)
+                {
+                    it.SlowSince = null;
+                    continue;
+                }
+
+                if (it.SlowSince == null)
+                {
+                    it.SlowSince = now;
+                    continue;
+                }
+
+                if (waiting > 0 &&
+                    it.Cts != null &&
+                    (now - it.SlowSince.Value)
+                        .TotalMinutes >=
+                    Math.Max(1, settings.PauseSlowMinutes))
+                {
+                    AppLog.Write(
+                        "Slow download moved back: " +
+                        it.FileName);
+
+                    it.SlowSince = null;
+                    it.RequeueAfterPause = true;
+                    it.Cts?.Cancel();
+
+                    waiting--;
+                }
             }
         }
 
@@ -3826,10 +3989,13 @@ namespace FastDM
             PowerActions.Run(act);
         }
 
-        void ShowSettings()
+        void ShowSettings(
+            string? section = null)
         {
             using var f =
-                new PreferencesForm(settings);
+                new PreferencesForm(
+                    settings,
+                    section);
 
             Theme.Apply(f);
 
@@ -3854,6 +4020,9 @@ namespace FastDM
             AppLog.Enabled =
                 settings.EnableLogging;
 
+            ApplyTrafficMode();
+            ApplyStartupAsync();
+
             RebuildList();
 
             if (settings.BridgeEnabled &&
@@ -3866,6 +4035,47 @@ namespace FastDM
                 bridge != null)
             {
                 StopBridge();
+            }
+        }
+
+        // Launch at startup: Windows-এর দিকে আসল পরিবর্তন (Store বিল্ডে StartupTask, portable-এ রেজিস্ট্রি)
+        async void ApplyStartupAsync()
+        {
+            try
+            {
+                bool want =
+                    settings.LaunchAtStartup;
+
+                var st =
+                    await StartupManager.SetAsync(
+                        want);
+
+                if (want &&
+                    st != StartupState.On)
+                {
+                    settings.LaunchAtStartup =
+                        false;
+
+                    SaveState();
+
+                    string why =
+                        st == StartupState.DisabledByUser
+                            ? "Windows has FastDM's startup turned off.\n\nOpen Task Manager → Startup apps, enable FastDM, then turn this option on again."
+                            : st == StartupState.DisabledByPolicy
+                                ? "Starting FastDM with Windows is blocked by your organization's policy."
+                                : "Launch at startup is not available in this build.";
+
+                    MessageBox.Show(
+                        this,
+                        why,
+                        "Launch at startup");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write(
+                    "Startup change failed: " +
+                    ex.Message);
             }
         }
 
@@ -3885,17 +4095,17 @@ namespace FastDM
             lv.Invalidate();
         }
 
-        // ---------- স্পিড লিমিট মেনু ----------
-        void BuildSpeedMenu()
+        // ---------- ট্রাফিক মোড (Low / Medium / High) ----------
+        void BuildModeMenu()
         {
             bool icons =
                 Icons.Available;
 
-            speedMenu =
+            modeMenu =
                 new ToolStripDropDownButton(
                     icons
-                        ? "Speed"
-                        : "⚡  Speed")
+                        ? "Mode"
+                        : "⚡  Mode")
                 {
                     DisplayStyle = icons
                         ? ToolStripItemDisplayStyle.ImageAndText
@@ -3914,74 +4124,86 @@ namespace FastDM
                     }
                 };
 
-            foreach (int preset in
-                     new[]
-                     {
-                         0,
-                         100,
-                         500,
-                         1024,
-                         2048,
-                         5120
-                     })
+            modeMenu.DropDownOpening +=
+                (s, e) => RebuildModeItems();
+
+            RebuildModeItems();
+            UpdateModeButton();
+        }
+
+        void RebuildModeItems()
+        {
+            modeMenu.DropDownItems.Clear();
+
+            foreach (TrafficMode m in
+                     Enum.GetValues(
+                         typeof(TrafficMode)))
             {
-                int kb = preset;
+                var mode = m;
 
                 var mi =
                     new ToolStripMenuItem(
-                        SpeedLimiter.Describe(kb))
+                        mode +
+                        "   (" +
+                        settings.ProfileOf(mode).Describe() +
+                        ")")
                     {
-                        Tag = kb
+                        Checked =
+                            mode ==
+                            settings.ActiveMode
                     };
 
                 mi.Click += (s, e) =>
-                    SetSpeedLimit(kb);
+                    SetTrafficMode(mode);
 
-                speedMenu.DropDownItems.Add(mi);
+                modeMenu.DropDownItems.Add(mi);
             }
 
-            speedMenu.DropDownItems.Add(
+            modeMenu.DropDownItems.Add(
                 new ToolStripSeparator());
 
-            speedMenu.DropDownItems.Add(
-                "Custom limit & proxy…",
+            modeMenu.DropDownItems.Add(
+                "Edit modes…",
                 null,
-                (s, e) => ShowNetworkSettings());
-
-            speedMenu.DropDownOpening += (s, e) =>
-            {
-                foreach (var mi in speedMenu.DropDownItems
-                    .OfType<ToolStripMenuItem>())
-                {
-                    if (mi.Tag is int v)
-                    {
-                        mi.Checked =
-                            v ==
-                            settings.SpeedLimitKBps;
-                    }
-                }
-            };
+                (s, e) => ShowSettings(
+                    "Traffic Limits"));
         }
 
-        void SetSpeedLimit(int kbps)
+        void UpdateModeButton()
         {
-            settings.SpeedLimitKBps =
-                kbps;
+            if (modeMenu != null)
+                modeMenu.Text =
+                    "Mode: " +
+                    settings.ActiveMode;
+        }
 
-            SpeedLimiter.SetKBps(kbps);
+        void SetTrafficMode(
+            TrafficMode mode)
+        {
+            settings.ActiveMode =
+                mode;
 
+            ApplyTrafficMode();
             SaveState();
         }
 
-        void ShowNetworkSettings()
+        // সক্রিয় মোডের মান ইঞ্জিনে বসানো: গতি, মোট ও প্রতি-সার্ভারের কানেকশন, একসাথে ডাউনলোড
+        void ApplyTrafficMode()
         {
-            using var f =
-                new NetworkForm(settings);
+            settings.TrafficMigrated = true;
+            settings.ApplyActiveProfile();
 
-            Theme.Apply(f);
-            f.ShowDialog(this);
+            SpeedLimiter.SetKBps(
+                settings.SpeedLimitKBps);
 
-            SaveState();
+            var p =
+                settings.ActiveProfile;
+
+            Traffic.Configure(
+                p.MaxConnections,
+                p.PerServer);
+
+            UpdateModeButton();
         }
 
         // ---------- থিম প্রয়োগ ----------
@@ -4003,7 +4225,7 @@ namespace FastDM
             Theme.StyleStrip(statusBar);
             if (lv.ContextMenuStrip != null) Theme.StyleStrip(lv.ContextMenuStrip);
             Theme.StyleStrip(trayMenu);
-            Theme.StyleStrip(speedMenu.DropDown);
+            Theme.StyleStrip(modeMenu.DropDown);
             Theme.StyleStrip(doneMenu.DropDown);
 
             lblActive.ForeColor =
@@ -4948,6 +5170,23 @@ namespace FastDM
                 if (data.Settings != null)
                     settings =
                         data.Settings;
+
+                // পুরোনো একক গতি/কানেকশন সেটিং → High মোডে (আগের আচরণ হুবহু থাকে)
+                if (!settings.TrafficMigrated)
+                {
+                    settings.HighProfile =
+                        new TrafficProfile(
+                            settings.SpeedLimitKBps,
+                            200,
+                            Math.Clamp(settings.Connections, 1, 16),
+                            Math.Clamp(settings.MaxSimultaneous, 1, 10));
+
+                    settings.ActiveMode =
+                        TrafficMode.High;
+
+                    settings.TrafficMigrated =
+                        true;
+                }
 
                 // পুরোনো "Show notifications" বন্ধ থাকলে নতুন তিনটা সুইচও বন্ধ
                 if (!settings.ShowNotifications)
