@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 FastDM/Tools/
 FastDM.Extension/dist/
+/FastDM-phase2.patch
+/FastDM-phase2.patch
+/.gitignore
