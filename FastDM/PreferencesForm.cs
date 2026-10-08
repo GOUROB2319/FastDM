@@ -8,8 +8,8 @@ using System.Windows.Forms;
 
 namespace FastDM
 {
-    // FDM-à¦¸à§à¦Ÿà¦¾à¦‡à¦² Preferences: à¦¬à¦¾à¦®à§‡ à¦¬à¦¿à¦­à¦¾à¦—à§‡à¦° à¦¤à¦¾à¦²à¦¿à¦•à¦¾, à¦¡à¦¾à¦¨à§‡ à¦¸à§à¦•à§à¦°à¦² à¦•à¦°à¦¾ à¦¸à§‡à¦•à¦¶à¦¨à¥¤
-    // à¦¶à§à¦§à§ à¦¸à§‡à¦‡ à¦¸à§‡à¦Ÿà¦¿à¦‚à¦‡ à¦†à¦›à§‡ à¦¯à¦¾ à¦…à§à¦¯à¦¾à¦ªà§‡ à¦¸à¦¤à§à¦¯à¦¿à¦‡ à¦•à¦¾à¦œ à¦•à¦°à§‡ (à¦•à§‹à¦¨à§‹ à¦«à¦¾à¦à¦•à¦¾ à¦•à¦¨à§à¦Ÿà§à¦°à§‹à¦² à¦¨à§‡à¦‡)à¥¤
+    // FDM-স্টাইল Preferences: বামে বিভাগের তালিকা, ডানে স্ক্রল করা সেকশন।
+    // শুধু সেই সেটিংই আছে যা অ্যাপে সত্যিই কাজ করে (কোনো ফাঁকা কন্ট্রোল নেই)।
     class PreferencesForm : Form
     {
         readonly AppSettings s;
@@ -27,7 +27,7 @@ namespace FastDM
 
         const int RowWidth = 640;
 
-        // à¦«à¦¿à¦²à§à¦¡ à¦­à§à¦¯à¦¾à¦²à¦¿à¦¡à§‡à¦¶à¦¨à§‡à¦° à¦œà¦¨à§à¦¯
+        // ফিল্ড ভ্যালিডেশনের জন্য
         // Assigned by the Build* methods called from the constructor before events can run.
         TextBox txtFolder = null!;
         CheckBox chkAvAuto = null!, chkRunApp = null!;
@@ -48,8 +48,8 @@ namespace FastDM
             ClientSize = new Size(900, 640);
             MinimumSize = new Size(780, 520);
 
-            // ---- à¦¨à¦¿à¦šà§‡à¦° à¦¬à¦¾à¦Ÿà¦¨ à¦¬à¦¾à¦° ----
-            // à¦¡à¦¾à¦¨ à¦¦à¦¿à¦• à¦¥à§‡à¦•à§‡ à¦¸à¦¾à¦œà¦¾à¦¨à§‹: à¦ªà§à¦°à¦¥à¦® à¦¯à§‹à¦— à¦•à¦°à¦¾ (Cancel) à¦¸à¦¬à¦šà§‡à¦¯à¦¼à§‡ à¦¡à¦¾à¦¨à§‡, à¦°à¦¿à¦¸à¦¾à¦‡à¦œà§‡à¦“ à¦œà¦¾à¦¯à¦¼à¦—à¦¾ à¦ à¦¿à¦• à¦¥à¦¾à¦•à§‡
+            // ---- নিচের বাটন বার ----
+            // ডান দিক থেকে সাজানো: প্রথম যোগ করা (Cancel) সবচেয়ে ডানে, রিসাইজেও জায়গা ঠিক থাকে
             var bar = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
@@ -69,7 +69,7 @@ namespace FastDM
             AcceptButton = btnSave;
             CancelButton = btnCancel;
 
-            // ---- à¦¬à¦¾à¦® à¦¨à§‡à¦­à¦¿à¦—à§‡à¦¶à¦¨ ----
+            // ---- বাম নেভিগেশন ----
             nav = new ListBox
             {
                 Dock = DockStyle.Left,
@@ -83,7 +83,7 @@ namespace FastDM
             nav.DrawItem += DrawNavItem;
             nav.SelectedIndexChanged += OnNavChanged;
 
-            // ---- à¦¡à¦¾à¦¨ à¦•à¦¨à¦Ÿà§‡à¦¨à§à¦Ÿ ----
+            // ---- ডান কনটেন্ট ----
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(28, 0, 0, 24) };
 
             flow = new FlowLayoutPanel
@@ -123,7 +123,7 @@ namespace FastDM
             };
         }
 
-        // Theme.Apply à¦¸à¦¬ à¦²à§‡à¦¬à§‡à¦²à§‡à¦° à¦°à¦‚ à¦à¦• à¦•à¦°à§‡ à¦¦à§‡à¦¯à¦¼, à¦¤à¦¾à¦‡ à¦¹à¦¾à¦²à¦•à¦¾ à¦²à§‡à¦–à¦¾ à¦†à¦° à¦¦à¦¾à¦—à§‡à¦° à¦°à¦‚ à¦à¦–à¦¾à¦¨à§‡ à¦†à¦¬à¦¾à¦° à¦¬à¦¸à¦¾à¦‡
+        // Theme.Apply সব লেবেলের রং এক করে দেয়, তাই হালকা লেখা আর দাগের রং এখানে আবার বসাই
         void Restyle()
         {
             foreach (var l in muted) l.ForeColor = Theme.P.SubText;
@@ -133,7 +133,7 @@ namespace FastDM
             nav.Invalidate();
         }
 
-        // ================= à¦¨à§‡à¦­à¦¿à¦—à§‡à¦¶à¦¨ =================
+        // ================= নেভিগেশন =================
         void DrawNavItem(object? sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
@@ -183,7 +183,7 @@ namespace FastDM
                 if (pt.Y <= 60) idx = i;
             }
 
-            // à¦¸à§à¦•à§à¦°à¦² à¦à¦•à¦¦à¦® à¦¨à¦¿à¦šà§‡ à¦ªà§Œà¦à¦›à¦¾à¦²à§‡ à¦¶à§‡à¦· à¦¬à¦¿à¦­à¦¾à¦—
+            // স্ক্রল একদম নিচে পৌঁছালে শেষ বিভাগ
             if (content.VerticalScroll.Value + content.VerticalScroll.LargeChange >= content.VerticalScroll.Maximum)
                 idx = sectionHeaders.Count - 1;
 
@@ -195,7 +195,7 @@ namespace FastDM
             }
         }
 
-        // ================= à¦¨à¦¿à¦°à§à¦®à¦¾à¦£-à¦¸à¦¹à¦¾à¦¯à¦¼à¦• =================
+        // ================= নির্মাণ-সহায়ক =================
         Label Header(string title)
         {
             var l = new Label
@@ -279,7 +279,7 @@ namespace FastDM
             return n;
         }
 
-        // à¦°à§‡à¦¡à¦¿à¦“ à¦—à§à¦°à§à¦ª: à¦¨à¦¿à¦œà¦¸à§à¦¬ à¦ªà§à¦¯à¦¾à¦¨à§‡à¦²à§‡, à¦¯à¦¾à¦¤à§‡ à¦†à¦²à¦¾à¦¦à¦¾ à¦—à§à¦°à§à¦ª à¦®à¦¿à¦¶à§‡ à¦¨à¦¾ à¦¯à¦¾à¦¯à¦¼
+        // রেডিও গ্রুপ: নিজস্ব প্যানেলে, যাতে আলাদা গ্রুপ মিশে না যায়
         void Radios(string[] labels, int selected, Action<int> set)
         {
             var box = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 0, 4) };
@@ -296,12 +296,12 @@ namespace FastDM
             flow.Controls.Add(box);
         }
 
-        // à¦ªà¦¾à¦¥ à¦¬à¦¾à¦›à¦¾à¦‡à¦¯à¦¼à§‡à¦° à¦¸à¦¾à¦°à¦¿: [à¦Ÿà§‡à¦•à§à¦¸à¦Ÿà¦¬à¦•à§à¦¸][...]
+        // পাথ বাছাইয়ের সারি: [টেক্সটবক্স][...]
         TextBox PathRow(string value, bool folder, string? filter)
         {
             var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 2, 0, 4) };
             var txt = new TextBox { Width = 500, Text = value ?? "" };
-            var btn = new Button { Text = "Browseâ€¦", Width = 100, Height = 28 };
+            var btn = new Button { Text = "Browse…", Width = 100, Height = 28 };
 
             btn.Click += (a, b) =>
             {
@@ -342,7 +342,7 @@ namespace FastDM
             return b;
         }
 
-        // ================= à§§) General =================
+        // ================= ১) General =================
         void BuildGeneral()
         {
             Header("General");
@@ -358,7 +358,7 @@ namespace FastDM
             Sub("Default download folder");
             txtFolder = PathRow(s.DefaultFolder, true, null);
 
-            Check("Suggest folders based on file type (Video, Music, Documentsâ€¦)", s.SuggestByType, v => s.SuggestByType = v);
+            Check("Suggest folders based on file type (Video, Music, Documents…)", s.SuggestByType, v => s.SuggestByType = v);
             Check("Suggest folders based on download URL (site name)", s.SuggestByHost, v => s.SuggestByHost = v);
             Hint("Sub-folders are added only when you save into the default folder above. A folder you pick yourself is never changed.");
 
@@ -370,7 +370,7 @@ namespace FastDM
             Check("Check for updates on startup (portable version)", s.CheckUpdatesOnStart, v => s.CheckUpdatesOnStart = v);
         }
 
-        // ================= à§¨) Downloads =================
+        // ================= ২) Downloads =================
         void BuildDownloads()
         {
             Header("Downloads");
@@ -391,13 +391,13 @@ namespace FastDM
             Num("Maximum urls count in batch download", 1, 1000, s.MaxBatchUrls, v => s.MaxBatchUrls = v);
         }
 
-        // ================= à§©) Browser Integration =================
+        // ================= ৩) Browser Integration =================
         void BuildBrowser()
         {
             Header("Browser Integration");
 
             Hint("Install the FastDM extension in Chrome or Edge, open its Settings and press Connect. " +
-                 "Then right-click any link: FastDM â†’ Download / Open / Create playlist.");
+                 "Then right-click any link: FastDM → Download / Open / Create playlist.");
 
             Check("Allow the browser extension to connect", s.BridgeEnabled, v => s.BridgeEnabled = v);
 
@@ -413,14 +413,14 @@ namespace FastDM
             });
         }
 
-        // ================= à§ª) Network =================
+        // ================= ৪) Network =================
         void BuildNetwork()
         {
             Header("Network");
 
             lblNet = Hint(NetSummary());
 
-            ActionButton("Proxy and speed limitâ€¦", 240, (a, b) =>
+            ActionButton("Proxy and speed limit…", 240, (a, b) =>
             {
                 using var nf = new NetworkForm(s);
                 Theme.Apply(nf);
@@ -428,7 +428,7 @@ namespace FastDM
                 lblNet.Text = NetSummary();
             });
 
-            ActionButton("Schedulerâ€¦", 240, (a, b) =>
+            ActionButton("Scheduler…", 240, (a, b) =>
             {
                 using var sf = new ScheduleForm(s);
                 Theme.Apply(sf);
@@ -436,8 +436,8 @@ namespace FastDM
             });
 
             Sub("Traffic");
-            Num("Connections per download (1â€“16)", 1, 16, s.Connections, v => s.Connections = v);
-            Num("Simultaneous downloads (1â€“10)", 1, 10, s.MaxSimultaneous, v => s.MaxSimultaneous = v);
+            Num("Connections per download (1–16)", 1, 16, s.Connections, v => s.Connections = v);
+            Num("Simultaneous downloads (1–10)", 1, 10, s.MaxSimultaneous, v => s.MaxSimultaneous = v);
         }
 
         string NetSummary()
@@ -452,7 +452,7 @@ namespace FastDM
             return "Proxy: " + proxy + "      Speed limit: " + limit;
         }
 
-        // ================= à§«) Antivirus =================
+        // ================= ৫) Antivirus =================
         void BuildAntivirus()
         {
             Header("Antivirus");
@@ -460,7 +460,7 @@ namespace FastDM
             Sub("Select antivirus");
 
             cmbAv = new ComboBox { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, 0, 0, 6) };
-            cmbAv.Items.AddRange(new object[] { "Windows Defender", "Configure manuallyâ€¦" });
+            cmbAv.Items.AddRange(new object[] { "Windows Defender", "Configure manually…" });
             flow.Controls.Add(cmbAv);
 
             Sub("Path");
@@ -511,7 +511,7 @@ namespace FastDM
             });
         }
 
-        // ================= à§¬) Notifications =================
+        // ================= ৬) Notifications =================
         void BuildNotifications()
         {
             Header("Notifications");
@@ -522,7 +522,7 @@ namespace FastDM
             Hint("Notifications appear only while FastDM is minimized or in the tray.");
         }
 
-        // ================= à§­) Advanced =================
+        // ================= ৭) Advanced =================
         void BuildAdvanced()
         {
             Header("Advanced");
@@ -618,7 +618,7 @@ namespace FastDM
             });
         }
 
-        // ================= à¦¸à§‡à¦­ =================
+        // ================= সেভ =================
         bool ToolOk(bool enabled, TextBox path, TextBox args, string what, int navIndex)
         {
             if (!enabled) return true;

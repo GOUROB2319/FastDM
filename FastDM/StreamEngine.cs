@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace FastDM
 {
-    // HLS / DASH à¦¸à§à¦Ÿà§à¦°à¦¿à¦® à¦¡à¦¾à¦‰à¦¨à¦²à§‹à¦¡: à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦†à¦²à¦¾à¦¦à¦¾ à¦†à¦²à¦¾à¦¦à¦¾ à¦«à¦¾à¦‡à¦²à§‡ à¦¨à¦¾à¦®à¦¿à¦¯à¦¼à§‡ (resume à¦•à¦°à¦¾ à¦¯à¦¾à¦¯à¦¼), à¦¶à§‡à¦·à§‡ ffmpeg à¦¦à¦¿à¦¯à¦¼à§‡ à¦œà§‹à¦¡à¦¼à¦¾ à¦²à¦¾à¦—à¦¾à¦¯à¦¼
+    // HLS / DASH স্ট্রিম ডাউনলোড: সেগমেন্ট আলাদা আলাদা ফাইলে নামিয়ে (resume করা যায়), শেষে ffmpeg দিয়ে জোড়া লাগায়
     public static class StreamEngine
     {
         class PartSeg
@@ -30,7 +30,7 @@ namespace FastDM
             public List<PartSeg> Segs = new List<PartSeg>();
         }
 
-        // ---------- à¦®à§‚à¦² à¦à¦¨à§à¦Ÿà§à¦°à¦¿ ----------
+        // ---------- মূল এন্ট্রি ----------
         public static async Task RunAsync(DownloadItem it, int connections, CancellationToken ct)
         {
             var spec = it.Stream ?? throw new InvalidOperationException("The stream specification is missing.");
@@ -38,7 +38,7 @@ namespace FastDM
             string partsDir = it.PartsDir;
             Directory.CreateDirectory(partsDir);
 
-            it.StatusNote = "Reading streamâ€¦";
+            it.StatusNote = "Reading stream…";
             var tracks = await ResolveAsync(spec, ct);
             if (tracks.Count == 0) throw new InvalidOperationException("Nothing to download for the selected options.");
 
@@ -53,7 +53,7 @@ namespace FastDM
             var all = tracks.SelectMany(t => t.Segs).ToList();
             it.StreamTotal = all.Count;
 
-            // à¦†à¦—à§‡à¦° à¦°à¦¾à¦¨ à¦¥à§‡à¦•à§‡ à¦¯à§‡à¦—à§à¦²à§‹ à¦¶à§‡à¦· à¦¹à¦¯à¦¼à§‡ à¦†à¦›à§‡
+            // আগের রান থেকে যেগুলো শেষ হয়ে আছে
             int done = 0;
             long bytes = 0;
             foreach (var s in all)
@@ -81,7 +81,7 @@ namespace FastDM
                     UpdateEstimate(it);
                 });
 
-            it.StatusNote = "Mergingâ€¦";
+            it.StatusNote = "Merging…";
             string final = await MergeAsync(it, tracks, spec, ct);
 
             try { Directory.Delete(partsDir, true); } catch { }
@@ -98,7 +98,7 @@ namespace FastDM
                 it.TotalBytes = (long)(it.Downloaded * (double)it.StreamTotal / it.StreamDone);
         }
 
-        // ---------- à¦®à§à¦¯à¦¾à¦¨à¦¿à¦«à§‡à¦¸à§à¦Ÿ à¦¥à§‡à¦•à§‡ à¦Ÿà§à¦°à§à¦¯à¦¾à¦• à¦¬à¦¾à¦¨à¦¾à¦¨à§‹ ----------
+        // ---------- ম্যানিফেস্ট থেকে ট্র্যাক বানানো ----------
         static async Task<List<Track>> ResolveAsync(StreamSpec spec, CancellationToken ct)
         {
             var tracks = new List<Track>();
@@ -169,7 +169,7 @@ namespace FastDM
             return tr;
         }
 
-        // ---------- à¦à¦•à¦Ÿà¦¾ à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦¨à¦¾à¦®à¦¾à¦¨à§‹ (+ à¦¦à¦°à¦•à¦¾à¦° à¦¹à¦²à§‡ AES-128 à¦¡à¦¿à¦•à§à¦°à¦¿à¦ªà§à¦Ÿ) ----------
+        // ---------- একটা সেগমেন্ট নামানো (+ দরকার হলে AES-128 ডিক্রিপ্ট) ----------
         static async Task DownloadSegmentAsync(DownloadItem it, PartSeg s, string? referer,
                                                ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
         {
@@ -217,7 +217,7 @@ namespace FastDM
                 catch (AuthRequiredException) { throw; }
                 catch when (++attempt < 5)
                 {
-                    it.AddDownloaded(-counted);            // à¦†à¦¬à¦¾à¦° à¦šà§‡à¦·à§à¦Ÿà¦¾à¦° à¦†à¦—à§‡ à¦—à§‹à¦¨à¦¾ à¦¬à¦¾à¦‡à¦Ÿ à¦«à§‡à¦°à¦¤
+                    it.AddDownloaded(-counted);            // আবার চেষ্টার আগে গোনা বাইট ফেরত
                     await Task.Delay(1000 * attempt, ct);
                 }
             }
@@ -252,7 +252,7 @@ namespace FastDM
             }
             else
             {
-                long seq = s.Seq;                       // IV à¦¨à¦¾ à¦¥à¦¾à¦•à¦²à§‡ à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦¸à¦¿à¦•à§‹à¦¯à¦¼à§‡à¦¨à§à¦¸ à¦¨à¦®à§à¦¬à¦° (big-endian)
+                long seq = s.Seq;                       // IV না থাকলে সেগমেন্ট সিকোয়েন্স নম্বর (big-endian)
                 for (int i = 15; i >= 8; i--) { iv[i] = (byte)(seq & 0xFF); seq >>= 8; }
             }
 
@@ -261,12 +261,12 @@ namespace FastDM
             return aes.DecryptCbc(data, iv, PaddingMode.PKCS7);
         }
 
-        // ---------- à¦œà§‹à¦¡à¦¼à¦¾ à¦²à¦¾à¦—à¦¾à¦¨à§‹ ----------
+        // ---------- জোড়া লাগানো ----------
         static async Task<string> MergeAsync(DownloadItem it, List<Track> tracks, StreamSpec spec, CancellationToken ct)
         {
             string partsDir = it.PartsDir;
 
-            // à§§) à¦ªà§à¦°à¦¤à¦¿ à¦Ÿà§à¦°à§à¦¯à¦¾à¦•à§‡à¦° à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿà¦—à§à¦²à§‹ à¦•à§à¦°à¦®à§‡ à¦œà§à¦¡à¦¼à§‡ à¦à¦•à¦Ÿà¦¾ à¦«à¦¾à¦‡à¦²
+            // ১) প্রতি ট্র্যাকের সেগমেন্টগুলো ক্রমে জুড়ে একটা ফাইল
             var files = new List<KeyValuePair<Track, string>>();
             foreach (var tr in tracks)
             {
@@ -288,7 +288,7 @@ namespace FastDM
             string? ff = FfmpegLocator.Find();
             string? note = null;
 
-            // à§¨) ffmpeg à¦†à¦›à§‡: à¦¸à§à¦Ÿà§à¦°à¦¿à¦® à¦•à¦ªà¦¿ à¦•à¦°à§‡ à¦à¦•à¦Ÿà¦¾à¦‡ MP4/M4A
+            // ২) ffmpeg আছে: স্ট্রিম কপি করে একটাই MP4/M4A
             if (ff != null)
             {
                 string outPath = baseName + "." + finalExt;
@@ -313,7 +313,7 @@ namespace FastDM
             }
             else note = "Saved without merging (ffmpeg not found).";
 
-            // à§©) ffmpeg à¦¨à§‡à¦‡/à¦¬à§à¦¯à¦°à§à¦¥: à¦•à¦¾à¦à¦šà¦¾ à¦«à¦¾à¦‡à¦² à¦¹à¦¿à¦¸à§‡à¦¬à§‡ à¦°à¦¾à¦–à¦¾ (à¦à¦•à¦Ÿà¦¾ à¦Ÿà§à¦°à§à¦¯à¦¾à¦• à¦¹à¦²à§‡ à¦¸à§‡à¦Ÿà¦¾à¦‡, à¦¦à§à¦Ÿà§‹ à¦¹à¦²à§‡ à¦†à¦²à¦¾à¦¦à¦¾)
+            // ৩) ffmpeg নেই/ব্যর্থ: কাঁচা ফাইল হিসেবে রাখা (একটা ট্র্যাক হলে সেটাই, দুটো হলে আলাদা)
             string? primary = null;
             foreach (var f in files)
             {
@@ -345,7 +345,7 @@ namespace FastDM
         {
             if (string.IsNullOrWhiteSpace(s)) return "unknown error";
             s = s.Trim().Replace("\r", " ").Replace("\n", " ");
-            return s.Length > 120 ? s.Substring(0, 120) + "â€¦" : s;
+            return s.Length > 120 ? s.Substring(0, 120) + "…" : s;
         }
 
         static async Task<KeyValuePair<int, string>> RunFfmpegAsync(string exe, IEnumerable<string> args, CancellationToken ct)
