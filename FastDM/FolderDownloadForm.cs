@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,8 +11,8 @@ namespace FastDM
 {
     public class PickedFile
     {
-        public string Url;
-        public string Name;
+        public string Url = string.Empty;
+        public string Name = string.Empty;
         public long Size;
         public string RelDir = "";      // নির্বাচিত ফোল্ডারের ভেতরের রিলেটিভ পাথ
     }
@@ -92,10 +91,10 @@ namespace FastDM
         readonly Label lblStatus;
         readonly Button btnOk, btnStream;
         readonly CheckBox chkLocalPlaylist;
-        CancellationTokenSource cts;
+        CancellationTokenSource? cts;
         bool suppress;
 
-        public string TargetFolder { get; private set; }
+        public string TargetFolder { get; private set; } = string.Empty;
         public int Simultaneous => (int)numSim.Value;
         public List<PickedFile> Files { get; private set; } = new List<PickedFile>();
 
@@ -298,12 +297,14 @@ namespace FastDM
         }
 
         // ---------- চেক লজিক ----------
-        void OnAfterCheck(object sender, TreeViewEventArgs e)
+        void OnAfterCheck(object? sender, TreeViewEventArgs e)
         {
             if (suppress || e.Action == TreeViewAction.Unknown) return;
             suppress = true;
-            SetChildren(e.Node, e.Node.Checked);
-            for (var p = e.Node.Parent; p != null; p = p.Parent)
+            var node = e.Node;
+            if (node == null) return;
+            SetChildren(node, node.Checked);
+            for (var p = node.Parent; p != null; p = p.Parent)
                 p.Checked = p.Nodes.Cast<TreeNode>().Any(x => x.Checked);
             suppress = false;
             UpdateSummary();
@@ -338,7 +339,7 @@ namespace FastDM
 
         static bool ApplyFilterNode(TreeNode n, HashSet<string> exts)
         {
-            var rn = (RemoteNode)n.Tag;
+            if (n.Tag is not RemoteNode rn) return false;
             if (!rn.IsDir)
             {
                 bool on = exts.Count == 0 || exts.Contains(Path.GetExtension(rn.Name).ToLowerInvariant());
@@ -368,7 +369,7 @@ namespace FastDM
             foreach (TreeNode n in col)
             {
                 if (!n.Checked) continue;
-                var rn = (RemoteNode)n.Tag;
+                if (n.Tag is not RemoteNode rn) continue;
                 if (rn.IsDir) Sum(n.Nodes, ref files, ref size, ref unknown);
                 else
                 {
@@ -379,7 +380,7 @@ namespace FastDM
         }
 
         // ---------- OK ----------
-        void OnOk(object sender, EventArgs e)
+        void OnOk(object? sender, EventArgs e)
         {
             string loc = txtLocation.Text.Trim();
             if (loc.Length == 0)
@@ -403,7 +404,7 @@ namespace FastDM
         }
 
         // ---------- স্ট্রিম প্লেলিস্ট (সার্ভারের লিঙ্ক, ডাউনলোড ছাড়াই VLC-তে চলে) ----------
-        void OnSaveStreamPlaylist(object sender, EventArgs e)
+        void OnSaveStreamPlaylist(object? sender, EventArgs e)
         {
             var list = new List<PickedFile>();
             Collect(tree.Nodes, "", list);
@@ -445,7 +446,7 @@ namespace FastDM
             foreach (TreeNode n in col)
             {
                 if (!n.Checked) continue;
-                var rn = (RemoteNode)n.Tag;
+                if (n.Tag is not RemoteNode rn) continue;
                 if (rn.IsDir) Collect(n.Nodes, Path.Combine(rel, SafeSeg(rn.Name)), list);
                 else list.Add(new PickedFile { Url = rn.Url, Name = rn.Name, Size = rn.Size, RelDir = rel });
             }

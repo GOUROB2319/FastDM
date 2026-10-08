@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,31 +13,32 @@ using System.Threading.Tasks;
 
 namespace FastDM
 {
-    // HLS / DASH স্ট্রিম ডাউনলোড: সেগমেন্ট আলাদা আলাদা ফাইলে নামিয়ে (resume করা যায়), শেষে ffmpeg দিয়ে জোড়া লাগায়
+    // HLS / DASH à¦¸à§à¦Ÿà§à¦°à¦¿à¦® à¦¡à¦¾à¦‰à¦¨à¦²à§‹à¦¡: à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦†à¦²à¦¾à¦¦à¦¾ à¦†à¦²à¦¾à¦¦à¦¾ à¦«à¦¾à¦‡à¦²à§‡ à¦¨à¦¾à¦®à¦¿à¦¯à¦¼à§‡ (resume à¦•à¦°à¦¾ à¦¯à¦¾à¦¯à¦¼), à¦¶à§‡à¦·à§‡ ffmpeg à¦¦à¦¿à¦¯à¦¼à§‡ à¦œà§‹à¦¡à¦¼à¦¾ à¦²à¦¾à¦—à¦¾à¦¯à¦¼
     public static class StreamEngine
     {
         class PartSeg
         {
-            public string Url, KeyUrl, IvHex, File;
+            public string Url = "", File = "";
+            public string? KeyUrl, IvHex;
             public long Start = -1, Len, Seq;
         }
 
         class Track
         {
-            public string Name, Ext;
+            public string Name = "", Ext = "";
             public bool Fmp4;
             public List<PartSeg> Segs = new List<PartSeg>();
         }
 
-        // ---------- মূল এন্ট্রি ----------
+        // ---------- à¦®à§‚à¦² à¦à¦¨à§à¦Ÿà§à¦°à¦¿ ----------
         public static async Task RunAsync(DownloadItem it, int connections, CancellationToken ct)
         {
-            var spec = it.Stream;
+            var spec = it.Stream ?? throw new InvalidOperationException("The stream specification is missing.");
             Directory.CreateDirectory(it.Folder);
             string partsDir = it.PartsDir;
             Directory.CreateDirectory(partsDir);
 
-            it.StatusNote = "Reading stream…";
+            it.StatusNote = "Reading streamâ€¦";
             var tracks = await ResolveAsync(spec, ct);
             if (tracks.Count == 0) throw new InvalidOperationException("Nothing to download for the selected options.");
 
@@ -53,7 +53,7 @@ namespace FastDM
             var all = tracks.SelectMany(t => t.Segs).ToList();
             it.StreamTotal = all.Count;
 
-            // আগের রান থেকে যেগুলো শেষ হয়ে আছে
+            // à¦†à¦—à§‡à¦° à¦°à¦¾à¦¨ à¦¥à§‡à¦•à§‡ à¦¯à§‡à¦—à§à¦²à§‹ à¦¶à§‡à¦· à¦¹à¦¯à¦¼à§‡ à¦†à¦›à§‡
             int done = 0;
             long bytes = 0;
             foreach (var s in all)
@@ -81,7 +81,7 @@ namespace FastDM
                     UpdateEstimate(it);
                 });
 
-            it.StatusNote = "Merging…";
+            it.StatusNote = "Mergingâ€¦";
             string final = await MergeAsync(it, tracks, spec, ct);
 
             try { Directory.Delete(partsDir, true); } catch { }
@@ -98,7 +98,7 @@ namespace FastDM
                 it.TotalBytes = (long)(it.Downloaded * (double)it.StreamTotal / it.StreamDone);
         }
 
-        // ---------- ম্যানিফেস্ট থেকে ট্র্যাক বানানো ----------
+        // ---------- à¦®à§à¦¯à¦¾à¦¨à¦¿à¦«à§‡à¦¸à§à¦Ÿ à¦¥à§‡à¦•à§‡ à¦Ÿà§à¦°à§à¦¯à¦¾à¦• à¦¬à¦¾à¦¨à¦¾à¦¨à§‹ ----------
         static async Task<List<Track>> ResolveAsync(StreamSpec spec, CancellationToken ct)
         {
             var tracks = new List<Track>();
@@ -106,16 +106,17 @@ namespace FastDM
             if (spec.Kind == "hls")
             {
                 bool separateAudio = !string.IsNullOrEmpty(spec.AudioUrl);
-                if (!(spec.AudioOnly && separateAudio) && !string.IsNullOrEmpty(spec.VideoUrl))
-                    tracks.Add(await HlsTrackAsync("video", spec.VideoUrl, spec.Referer, ct));
-                if (separateAudio)
-                    tracks.Add(await HlsTrackAsync("audio", spec.AudioUrl, spec.Referer, ct));
+                if (!(spec.AudioOnly && separateAudio) && spec.VideoUrl is { Length: > 0 } videoUrl)
+                    tracks.Add(await HlsTrackAsync("video", videoUrl, spec.Referer, ct));
+                if (spec.AudioUrl is { Length: > 0 } audioUrl)
+                    tracks.Add(await HlsTrackAsync("audio", audioUrl, spec.Referer, ct));
                 return tracks;
             }
 
             // DASH
-            string text = await MediaNet.GetTextAsync(spec.ManifestUrl, spec.Referer, ct);
-            var mpd = Dash.Parse(text, new Uri(spec.ManifestUrl));
+            string manifestUrl = spec.ManifestUrl ?? throw new InvalidOperationException("The DASH manifest URL is missing.");
+            string text = await MediaNet.GetTextAsync(manifestUrl, spec.Referer, ct);
+            var mpd = Dash.Parse(text, new Uri(manifestUrl));
             if (mpd.Unsupported != null) throw new NotSupportedException(mpd.Unsupported);
 
             if (!spec.AudioOnly && !string.IsNullOrEmpty(spec.VideoRepId))
@@ -133,7 +134,7 @@ namespace FastDM
             return tracks;
         }
 
-        static async Task<Track> HlsTrackAsync(string name, string url, string referer, CancellationToken ct)
+        static async Task<Track> HlsTrackAsync(string name, string url, string? referer, CancellationToken ct)
         {
             string text = await MediaNet.GetTextAsync(url, referer, ct);
             var pl = Hls.ParseMedia(text, new Uri(url));
@@ -168,8 +169,8 @@ namespace FastDM
             return tr;
         }
 
-        // ---------- একটা সেগমেন্ট নামানো (+ দরকার হলে AES-128 ডিক্রিপ্ট) ----------
-        static async Task DownloadSegmentAsync(DownloadItem it, PartSeg s, string referer,
+        // ---------- à¦à¦•à¦Ÿà¦¾ à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦¨à¦¾à¦®à¦¾à¦¨à§‹ (+ à¦¦à¦°à¦•à¦¾à¦° à¦¹à¦²à§‡ AES-128 à¦¡à¦¿à¦•à§à¦°à¦¿à¦ªà§à¦Ÿ) ----------
+        static async Task DownloadSegmentAsync(DownloadItem it, PartSeg s, string? referer,
                                                ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
         {
             int attempt = 0;
@@ -216,18 +217,19 @@ namespace FastDM
                 catch (AuthRequiredException) { throw; }
                 catch when (++attempt < 5)
                 {
-                    it.AddDownloaded(-counted);            // আবার চেষ্টার আগে গোনা বাইট ফেরত
+                    it.AddDownloaded(-counted);            // à¦†à¦¬à¦¾à¦° à¦šà§‡à¦·à§à¦Ÿà¦¾à¦° à¦†à¦—à§‡ à¦—à§‹à¦¨à¦¾ à¦¬à¦¾à¦‡à¦Ÿ à¦«à§‡à¦°à¦¤
                     await Task.Delay(1000 * attempt, ct);
                 }
             }
         }
 
-        static async Task<byte[]> DecryptAsync(byte[] data, PartSeg s, string referer,
+        static async Task<byte[]> DecryptAsync(byte[] data, PartSeg s, string? referer,
                                                ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
         {
-            if (!keys.TryGetValue(s.KeyUrl, out var key))
+            string keyUrl = s.KeyUrl ?? throw new InvalidOperationException("The encryption key URL is missing.");
+            if (!keys.TryGetValue(keyUrl, out var key))
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, s.KeyUrl);
+                using var req = new HttpRequestMessage(HttpMethod.Get, keyUrl);
                 if (!string.IsNullOrEmpty(referer))
                 {
                     try { req.Headers.Referrer = new Uri(referer); } catch { }
@@ -238,7 +240,7 @@ namespace FastDM
                 resp.EnsureSuccessStatusCode();
                 key = await resp.Content.ReadAsByteArrayAsync(ct);
                 if (key.Length != 16) throw new InvalidDataException("Unsupported encryption key.");
-                keys[s.KeyUrl] = key;
+                keys[keyUrl] = key;
             }
 
             byte[] iv = new byte[16];
@@ -250,7 +252,7 @@ namespace FastDM
             }
             else
             {
-                long seq = s.Seq;                       // IV না থাকলে সেগমেন্ট সিকোয়েন্স নম্বর (big-endian)
+                long seq = s.Seq;                       // IV à¦¨à¦¾ à¦¥à¦¾à¦•à¦²à§‡ à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿ à¦¸à¦¿à¦•à§‹à¦¯à¦¼à§‡à¦¨à§à¦¸ à¦¨à¦®à§à¦¬à¦° (big-endian)
                 for (int i = 15; i >= 8; i--) { iv[i] = (byte)(seq & 0xFF); seq >>= 8; }
             }
 
@@ -259,12 +261,12 @@ namespace FastDM
             return aes.DecryptCbc(data, iv, PaddingMode.PKCS7);
         }
 
-        // ---------- জোড়া লাগানো ----------
+        // ---------- à¦œà§‹à¦¡à¦¼à¦¾ à¦²à¦¾à¦—à¦¾à¦¨à§‹ ----------
         static async Task<string> MergeAsync(DownloadItem it, List<Track> tracks, StreamSpec spec, CancellationToken ct)
         {
             string partsDir = it.PartsDir;
 
-            // ১) প্রতি ট্র্যাকের সেগমেন্টগুলো ক্রমে জুড়ে একটা ফাইল
+            // à§§) à¦ªà§à¦°à¦¤à¦¿ à¦Ÿà§à¦°à§à¦¯à¦¾à¦•à§‡à¦° à¦¸à§‡à¦—à¦®à§‡à¦¨à§à¦Ÿà¦—à§à¦²à§‹ à¦•à§à¦°à¦®à§‡ à¦œà§à¦¡à¦¼à§‡ à¦à¦•à¦Ÿà¦¾ à¦«à¦¾à¦‡à¦²
             var files = new List<KeyValuePair<Track, string>>();
             foreach (var tr in tracks)
             {
@@ -283,10 +285,10 @@ namespace FastDM
 
             string baseName = Path.Combine(it.Folder, Path.GetFileNameWithoutExtension(it.FileName));
             string finalExt = spec.AudioOnly ? "m4a" : "mp4";
-            string ff = FfmpegLocator.Find();
-            string note = null;
+            string? ff = FfmpegLocator.Find();
+            string? note = null;
 
-            // ২) ffmpeg আছে: স্ট্রিম কপি করে একটাই MP4/M4A
+            // à§¨) ffmpeg à¦†à¦›à§‡: à¦¸à§à¦Ÿà§à¦°à¦¿à¦® à¦•à¦ªà¦¿ à¦•à¦°à§‡ à¦à¦•à¦Ÿà¦¾à¦‡ MP4/M4A
             if (ff != null)
             {
                 string outPath = baseName + "." + finalExt;
@@ -311,8 +313,8 @@ namespace FastDM
             }
             else note = "Saved without merging (ffmpeg not found).";
 
-            // ৩) ffmpeg নেই/ব্যর্থ: কাঁচা ফাইল হিসেবে রাখা (একটা ট্র্যাক হলে সেটাই, দুটো হলে আলাদা)
-            string primary = null;
+            // à§©) ffmpeg à¦¨à§‡à¦‡/à¦¬à§à¦¯à¦°à§à¦¥: à¦•à¦¾à¦à¦šà¦¾ à¦«à¦¾à¦‡à¦² à¦¹à¦¿à¦¸à§‡à¦¬à§‡ à¦°à¦¾à¦–à¦¾ (à¦à¦•à¦Ÿà¦¾ à¦Ÿà§à¦°à§à¦¯à¦¾à¦• à¦¹à¦²à§‡ à¦¸à§‡à¦Ÿà¦¾à¦‡, à¦¦à§à¦Ÿà§‹ à¦¹à¦²à§‡ à¦†à¦²à¦¾à¦¦à¦¾)
+            string? primary = null;
             foreach (var f in files)
             {
                 string suffix = files.Count == 2 ? "." + f.Key.Name : "";
@@ -320,6 +322,7 @@ namespace FastDM
                 File.Move(f.Value, dest);
                 if (primary == null) primary = dest;
             }
+            if (primary == null) throw new InvalidOperationException("No stream files were produced.");
             it.FileName = Path.GetFileName(primary);
             it.Error = note;
             return primary;
@@ -328,12 +331,12 @@ namespace FastDM
         static string Unique(string path)
         {
             if (!File.Exists(path)) return path;
-            string dir = Path.GetDirectoryName(path);
+            string? dir = Path.GetDirectoryName(path);
             string stem = Path.GetFileNameWithoutExtension(path);
             string ext = Path.GetExtension(path);
             for (int i = 1; ; i++)
             {
-                string cand = Path.Combine(dir, stem + " (" + i + ")" + ext);
+                string cand = Path.Combine(dir ?? throw new ArgumentException("The path must include a directory.", nameof(path)), stem + " (" + i + ")" + ext);
                 if (!File.Exists(cand)) return cand;
             }
         }
@@ -342,7 +345,7 @@ namespace FastDM
         {
             if (string.IsNullOrWhiteSpace(s)) return "unknown error";
             s = s.Trim().Replace("\r", " ").Replace("\n", " ");
-            return s.Length > 120 ? s.Substring(0, 120) + "…" : s;
+            return s.Length > 120 ? s.Substring(0, 120) + "â€¦" : s;
         }
 
         static async Task<KeyValuePair<int, string>> RunFfmpegAsync(string exe, IEnumerable<string> args, CancellationToken ct)

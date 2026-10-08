@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Drawing;
 using System.Threading;
@@ -18,7 +17,7 @@ namespace FastDM
         readonly TextBox txtHost, txtUser, txtPass;
         readonly Label lblTest;
         readonly Button btnTest;
-        CancellationTokenSource testCts;
+        CancellationTokenSource? testCts;
 
         public NetworkForm(AppSettings settings)
         {
@@ -173,7 +172,7 @@ namespace FastDM
             }
         }
 
-        void OnOk(object sender, EventArgs e)
+        void OnOk(object? sender, EventArgs e)
         {
             if (CurrentMode == ProxyMode.Manual && txtHost.Text.Trim().Length == 0)
             {

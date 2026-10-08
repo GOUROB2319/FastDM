@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Drawing;
 using System.Drawing.Text;
@@ -18,7 +17,7 @@ namespace FastDM
                      SideBg, SideSel, SideText, SideCount;
     }
 
-    // ====================== থিম ম্যানেজার ======================
+    // ====================== Theme Manager ======================
     public static class Theme
     {
         public static readonly Palette Light = new Palette
@@ -76,7 +75,7 @@ namespace FastDM
             P = IsDark ? Dark : Light;
         }
 
-        // Windows-এর অ্যাপ থিম ডার্ক কি না (রেজিস্ট্রি থেকে)
+        // Detect whether Windows is using a dark application theme.
         public static bool SystemIsDark()
         {
             try
@@ -88,7 +87,7 @@ namespace FastDM
             catch { return false; }
         }
 
-        // ---------- ডার্ক টাইটেল বার ----------
+        // ---------- Dark title bar ----------
         [DllImport("dwmapi.dll")]
         static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
@@ -108,9 +107,9 @@ namespace FastDM
             if (f.IsHandleCreated) apply(); else f.HandleCreated += (s, e) => apply();
         }
 
-        // ---------- স্ক্রলবার (ডার্ক মোডে ডার্ক স্ক্রলবার) ----------
+        // ---------- Scrollbars ----------
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-        static extern int SetWindowTheme(IntPtr hwnd, string appName, string idList);
+        static extern int SetWindowTheme(IntPtr hwnd, string? appName, string? idList);
 
         public static void StyleScroll(Control c)
         {
@@ -131,7 +130,7 @@ namespace FastDM
             ts.ForeColor = P.Text;
         }
 
-        // ---------- ডায়ালগ/ফর্মের সব কন্ট্রোলে থিম বসানো ----------
+        // ---------- Apply theme to all controls in the form/dialog ----------
         public static void Apply(Form f)
         {
             f.BackColor = P.Window;
@@ -186,7 +185,7 @@ namespace FastDM
         }
     }
 
-    // ====================== ToolStrip-এর কালার টেবিল ======================
+    // ====================== ToolStrip Color Table ======================
     public class ThemeColorTable : ProfessionalColorTable
     {
         static Palette p => Theme.P;
@@ -246,13 +245,13 @@ namespace FastDM
         public override Color GripLight => p.Border;
     }
 
-    // ====================== আইকন (Segoe Fluent Icons / MDL2 গ্লিফ) ======================
-    // ফন্ট উইন্ডোজেই আছে, তাই অ্যাপের সাইজ বাড়ে না
+    // ====================== Icons (Segoe Fluent Icons / MDL2 glyphs) ======================
+    // The font is already included with Windows, so it does not increase the application size.
     public static class Icons
     {
-        static readonly string Family = PickFamily();
+        static readonly string? Family = PickFamily();
 
-        static string PickFamily()
+        static string? PickFamily()
         {
             try
             {
@@ -266,7 +265,7 @@ namespace FastDM
 
         public static bool Available => Family != null;
 
-        public static Bitmap Make(string glyph, Color color, int size = 20)
+        public static Bitmap? Make(string glyph, Color color, int size = 20)
         {
             if (Family == null) return null;
             var bmp = new Bitmap(size, size);

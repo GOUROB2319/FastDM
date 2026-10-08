@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -199,7 +198,7 @@ namespace FastDM
             return c;
         }
 
-        void OnOk(object sender, EventArgs e)
+        void OnOk(object? sender, EventArgs e)
         {
             int mask = 0;
             for (int i = 0; i < 7; i++) if (days[i].Checked) mask |= 1 << i;

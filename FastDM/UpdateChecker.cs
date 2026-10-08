@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Diagnostics;
 using System.Net.Http;
@@ -19,16 +18,16 @@ namespace FastDM
         public const string StoreId = "9P5ZP43GK911";
 
         // তোমার পাবলিক release রিপো (owner/name)। রিপোর আসল নাম অনুযায়ী মিলিয়ে নিও।
-        public const string ReleasesRepo = "GOURGB2319/FastDM-releases";
+        public const string ReleasesRepo = "GOUROB2319/FastDM";
 
         public class Result
         {
             public bool Ok;
             public bool UpdateAvailable;
-            public string LatestVersion;
-            public string Url;
-            public string Notes;
-            public string Error;
+            public string LatestVersion = string.Empty;
+            public string? Url;
+            public string? Notes;
+            public string? Error;
         }
 
         static readonly HttpClient Http = CreateClient();
@@ -47,7 +46,7 @@ namespace FastDM
 
         // ---------- MSIX প্যাকেজড কি না ----------
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        static extern int GetCurrentPackageFullName(ref int length, StringBuilder name);
+        static extern int GetCurrentPackageFullName(ref int length, StringBuilder? name);
 
         const int APPMODEL_ERROR_NO_PACKAGE = 15700;
 
@@ -123,7 +122,7 @@ namespace FastDM
 
         static bool TryParseVersion(string s, out Version v)
         {
-            v = null;
+            v = new Version();
             if (string.IsNullOrWhiteSpace(s)) return false;
             // "1.2" বা "1.2.3-beta" এর মতো ফরম্যাট সামলানো
             int dash = s.IndexOfAny(new[] { '-', '+' });

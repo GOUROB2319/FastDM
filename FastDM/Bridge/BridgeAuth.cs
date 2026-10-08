@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
@@ -32,7 +31,7 @@ namespace FastDM
             }
         }
 
-        public static bool IsValid(AppSettings s, string token)
+        public static bool IsValid(AppSettings s, string? token)
         {
             if (string.IsNullOrEmpty(token) || token.Length > 200) return false;
             byte[] given = SHA256.HashData(Encoding.UTF8.GetBytes(token));
@@ -53,7 +52,7 @@ namespace FastDM
             return ok;
         }
 
-        public static bool IsExtensionOrigin(string origin)
+        public static bool IsExtensionOrigin(string? origin)
         {
             if (string.IsNullOrEmpty(origin)) return false;
             return origin.StartsWith("chrome-extension://", StringComparison.OrdinalIgnoreCase)
@@ -78,14 +77,14 @@ namespace FastDM
             return false;
         }
 
-        public static string CleanReferer(string referer)
+        public static string? CleanReferer(string? referer)
         {
             if (string.IsNullOrWhiteSpace(referer) || referer.Length > 2048 || HasControlChars(referer)) return null;
             if (!Uri.TryCreate(referer.Trim(), UriKind.Absolute, out var u)) return null;
             return u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps ? u.AbsoluteUri : null;
         }
 
-        public static string CleanUserAgent(string ua)
+        public static string? CleanUserAgent(string? ua)
         {
             if (string.IsNullOrWhiteSpace(ua) || ua.Length > 512 || HasControlChars(ua)) return null;
             return ua.Trim();
@@ -93,7 +92,7 @@ namespace FastDM
 
         // কুকির ডোমেইন অবশ্যই ডাউনলোড-লিঙ্কের হোস্টের সাথে মিলতে হবে; না মিললে বাদ।
         // শুধু http/https লিঙ্কে কুকি চলে (ftp/sftp-এ অর্থহীন)।
-        public static List<BridgeCookie> CleanCookies(List<BridgeCookie> cookies, string url)
+        public static List<BridgeCookie>? CleanCookies(List<BridgeCookie>? cookies, string url)
         {
             if (cookies == null || cookies.Count == 0) return null;
             if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
