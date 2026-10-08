@@ -26,7 +26,7 @@ namespace FastDM
             bold = new Font("Segoe UI", 10.5f, FontStyle.Bold);
         }
 
-        public void SetItem(DownloadItem it)
+        public void SetItem(DownloadItem? it)
         {
             item = it;
             Invalidate();
