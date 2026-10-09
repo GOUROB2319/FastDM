@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace FastDM
 {
     // টোকেন তৈরি ও যাচাই। অ্যাপে শুধু টোকেনের SHA-256 হ্যাশ থাকে, আসল টোকেন থাকে শুধু এক্সটেনশনের কাছে।
+    public enum BridgeTokenState { None, Valid, WrongOrigin }
+
     public static class BridgeAuth
     {
         public const int MaxPairedClients = 10;
@@ -22,42 +26,108 @@ namespace FastDM
             return Convert.ToHexString(h);
         }
 
-        public static void AddToken(AppSettings s, string token)
+        // Each token is bound to the extension origin (chrome-extension://<id>) the user approved when pairing.
+        // The origin list lives in s.BridgeTokenOrigins (token hash -> origin), guarded by the same lock as BridgeTokens.
+        public static void AddToken(AppSettings s, string token, string? origin = null)
         {
+            string o = NormalizeOrigin(origin);
             lock (s.BridgeTokens)
             {
-                s.BridgeTokens.Add(Hash(token));
-                while (s.BridgeTokens.Count > MaxPairedClients) s.BridgeTokens.RemoveAt(0);
+                s.BridgeTokenOrigins ??= new Dictionary<string, string>();
+
+                // A browser that pairs again replaces its own old token instead of piling up.
+                if (o.Length > 0)
+                {
+                    foreach (var old in s.BridgeTokenOrigins.Where(kv => kv.Value == o).Select(kv => kv.Key).ToList())
+                    {
+                        s.BridgeTokenOrigins.Remove(old);
+                        s.BridgeTokens.Remove(old);
+                    }
+                }
+
+                string h = Hash(token);
+                s.BridgeTokens.Add(h);
+                if (o.Length > 0) s.BridgeTokenOrigins[h] = o;
+
+                while (s.BridgeTokens.Count > MaxPairedClients)
+                {
+                    s.BridgeTokenOrigins.Remove(s.BridgeTokens[0]);
+                    s.BridgeTokens.RemoveAt(0);
+                }
             }
         }
 
-        public static bool IsValid(AppSettings s, string? token)
+        // "Forget paired browsers": drops every token and every remembered extension origin.
+        public static void ForgetAll(AppSettings s)
         {
+            lock (s.BridgeTokens)
+            {
+                s.BridgeTokens.Clear();
+                s.BridgeTokenOrigins?.Clear();
+            }
+        }
+
+        static bool TryMatch(AppSettings s, string? token, out string? matchedHash)
+        {
+            matchedHash = null;
             if (string.IsNullOrEmpty(token) || token.Length > 200) return false;
             byte[] given = SHA256.HashData(Encoding.UTF8.GetBytes(token));
 
             string[] stored;
             lock (s.BridgeTokens) stored = s.BridgeTokens.ToArray();
 
-            bool ok = false;
             foreach (var hex in stored)
             {
                 try
                 {
                     byte[] b = Convert.FromHexString(hex);
-                    if (CryptographicOperations.FixedTimeEquals(b, given)) ok = true;   // সব কটা দেখি (টাইমিং ফাঁস এড়াতে)
+                    if (CryptographicOperations.FixedTimeEquals(b, given)) matchedHash = hex;   // সব কটা দেখি (টাইমিং ফাঁস এড়াতে)
                 }
                 catch { }
             }
-            return ok;
+            return matchedHash != null;
         }
 
-        public static bool IsExtensionOrigin(string? origin)
+        public static bool IsValid(AppSettings s, string? token) => TryMatch(s, token, out _);
+
+        // Token check plus origin binding.
+        //   Valid       token is known and was paired from this same extension origin
+        //   WrongOrigin token is known but belongs to a different extension
+        //   None        no/unknown token
+        // A token paired before origins were remembered (older app version) is accepted once and
+        // then bound to the origin it was first used from; `learned` tells the caller to save settings.
+        public static BridgeTokenState Evaluate(AppSettings s, string? token, string? origin, out bool learned)
         {
-            if (string.IsNullOrEmpty(origin)) return false;
-            return origin.StartsWith("chrome-extension://", StringComparison.OrdinalIgnoreCase)
-                || origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase);
+            learned = false;
+            if (!TryMatch(s, token, out string? hash) || hash == null) return BridgeTokenState.None;
+
+            string o = NormalizeOrigin(origin);
+            if (o.Length == 0) return BridgeTokenState.WrongOrigin;
+
+            lock (s.BridgeTokens)
+            {
+                s.BridgeTokenOrigins ??= new Dictionary<string, string>();
+
+                if (!s.BridgeTokenOrigins.TryGetValue(hash, out var bound) || string.IsNullOrEmpty(bound))
+                {
+                    s.BridgeTokenOrigins[hash] = o;
+                    learned = true;
+                    return BridgeTokenState.Valid;
+                }
+                return string.Equals(bound, o, StringComparison.Ordinal) ? BridgeTokenState.Valid : BridgeTokenState.WrongOrigin;
+            }
         }
+
+        // Browser extension origins only: chrome-extension://<id> (Chrome and Edge) or moz-extension://<uuid>.
+        // Anything with a path, port, space or newline is rejected.
+        static readonly Regex ExtensionOriginRx = new Regex(
+            @"^(chrome|moz)-extension://[a-z0-9-]{8,64}\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        public static bool IsExtensionOrigin(string? origin) =>
+            !string.IsNullOrEmpty(origin) && ExtensionOriginRx.IsMatch(origin);
+
+        public static string NormalizeOrigin(string? origin) => (origin ?? "").Trim().ToLowerInvariant();
 
         // ---------- Phase 2: অনুরোধের অতিরিক্ত ফিল্ড যাচাই (পেয়ার করা এক্সটেনশনকেও অন্ধভাবে বিশ্বাস করি না) ----------
         public const int MaxCookies = 100;

@@ -161,6 +161,17 @@ The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* r
 | Same, Firefox selected | The quality picker opens when you are logged in to YouTube in Firefox. |
 | Hand-edit `state.json`: `"YtCookieBrowser": "--exec calc"` | The value is ignored (treated as None); nothing extra is passed to yt-dlp. |
 
+## 3g. Extension origin binding
+
+| Check | Expected |
+| --- | --- |
+| Pair Edge, then add a link | Works as before. |
+| Update from a build that was already paired (before this change) | The browser keeps working with no re-pair, and it is bound to its extension ID on first use. |
+| Install the extension a second time from another folder (a different extension ID) and press Connect | FastDM asks for approval and shows the new ID. Choose No: pressing Connect again within a minute shows "denied" with no new dialog. |
+| After saying No, wait about a minute and press Connect again | The dialog appears again. |
+| Link from the second extension without pairing it | Rejected (401). Only the paired ID can send links. |
+| Preferences → Browser Integration → Forget paired browsers | Every browser needs to Connect again. |
+
 ## 4. Package the extension
 
 ```powershell

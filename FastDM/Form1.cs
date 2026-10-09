@@ -179,6 +179,7 @@ namespace FastDM
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
         public bool SidebarOpen { get; set; } = true;                        // বাম সাইডবার খোলা না বন্ধ
         public bool BridgeEnabled { get; set; } = true;                      // ব্রাউজার এক্সটেনশনের সংযোগ চালু
+        public Dictionary<string, string> BridgeTokenOrigins { get; set; } = new Dictionary<string, string>(); // token-hash -> extension origin it was paired with
         public List<string> BridgeTokens { get; set; } = new List<string>(); // পেয়ার করা এক্সটেনশনের টোকেন-হ্যাশ
     }
 

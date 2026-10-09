@@ -454,8 +454,7 @@ namespace FastDM
 
             ActionButton("Forget paired browsers", 200, (a, b) =>
             {
-                lock (s.BridgeTokens)
-                    s.BridgeTokens.Clear();
+                BridgeAuth.ForgetAll(s);
 
                 MessageBox.Show(
                     this,
