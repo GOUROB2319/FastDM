@@ -8,7 +8,15 @@ Run these commands from the repository root in PowerShell.
 powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
 ```
 
-Expected final message: `Core build and extension tests passed.`
+Expected final message: `Core build, bridge tests and extension tests passed.`
+
+What it runs:
+
+- `dotnet build` of the desktop app.
+- `FastDM.Tests`: about 100 checks on the extension bridge (pairing, token and extension-ID binding, cookie isolation, allowed link types, the `fastdm://` protocol) against a real local server. Close other copies of FastDM first if the test says the server cannot start (it needs one free port from 17432 to 17436).
+- `npm test` in `FastDM.Extension`: bridge client tests plus a check that the English and Bangla texts, the manifest and the HTML use the same keys.
+
+The same checks run on GitHub for every push and pull request to `master` and `test` (Actions tab, workflow **CI**).
 
 This builds the Windows desktop application and runs the Node tests for
 the browser-extension bridge.

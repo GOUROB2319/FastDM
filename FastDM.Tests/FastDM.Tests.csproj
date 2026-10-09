@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Dependency-free test runner (no NuGet packages), so it runs anywhere the .NET SDK is installed.
+		From the repository root run: dotnet run (the project folder FastDM.Tests, configuration Release).
+		It exits with code 1 if any check fails.
+
+		It compiles the REAL bridge source files below (linked, not copied), together with the small
+		stand-ins in TestStubs.cs for the few WinForms-side types they touch. If someone renames a member
+		that these files use, this project stops compiling, which is the signal to update the stub.
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>FastDM.Tests</RootNamespace>
+		<IsPackable>false</IsPackable>
+		<NoWarn>$(NoWarn);CA1416</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="..\FastDM\Bridge\BridgeAuth.cs" Link="Linked\BridgeAuth.cs" />
+		<Compile Include="..\FastDM\Bridge\BridgeServer.cs" Link="Linked\BridgeServer.cs" />
+		<Compile Include="..\FastDM\Bridge\BridgeModels.cs" Link="Linked\BridgeModels.cs" />
+		<Compile Include="..\FastDM\Bridge\ProtocolHandler.cs" Link="Linked\ProtocolHandler.cs" />
+	</ItemGroup>
+
+</Project>

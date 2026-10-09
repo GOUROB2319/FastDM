@@ -13,6 +13,8 @@ after the user approves a pairing request.
 | `FastDM/assets/` | Desktop app icon assets |
 | `FastDM.Package/` | Optional MSIX/Windows package project and its image assets |
 | `FastDM.Extension/` | Chrome/Edge Manifest V3 extension |
+| `FastDM.Tests/` | Dependency-free test runner for the bridge (links the real source files) |
+| `.github/workflows/` | GitHub Actions: CI build and tests |
 | `FastDM.Extension/src/` | Extension source code: background, popup, options, shared code |
 | `FastDM.Extension/tests/` | Node automated tests |
 | `FastDM.Extension/tools/` | Extension packaging script |
