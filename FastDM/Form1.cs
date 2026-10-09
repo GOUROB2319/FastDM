@@ -914,7 +914,7 @@ namespace FastDM
         ToolStrip tools = null!;
         StatusStrip statusBar = null!;
 
-        NotifyIcon tray = null!;
+        NotifyIcon? tray;
         ContextMenuStrip trayMenu = null!;
 
         bool exiting;
@@ -1550,8 +1550,10 @@ namespace FastDM
             object? sender,
             DrawListViewSubItemEventArgs e)
         {
+            if (e.Item?.Tag is not DownloadItem it)
+                return;
+
             var p = Theme.P;
-            var it = (DownloadItem)e.Item.Tag;
             var g = e.Graphics;
 
             var r = new Rectangle(
@@ -2761,7 +2763,7 @@ namespace FastDM
 
         async Task ShowAddDialogCore(
             string url,
-            RequestContext ctx)
+            RequestContext? ctx)
         {
             using var dlg =
                 new AddUrlForm(
@@ -2801,7 +2803,7 @@ namespace FastDM
             string nameText,
             string folder,
             bool startNow,
-            RequestContext ctx)
+            RequestContext? ctx = null)
         {
             // ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â€žÂ¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ (Preferences ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Downloads)
             int maxBatch = Math.Max(1, settings.MaxBatchUrls);
@@ -4824,18 +4826,19 @@ namespace FastDM
 
         // ---------- ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬â€-ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Âª + ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¡ ----------
         void OnDragEnter(
-            object? s
+            object? s,
             DragEventArgs e)
         {
             e.Effect =
-                e.Data.GetDataPresent(
-                    DataFormats.Text)
+                (e.Data != null &&
+                 e.Data.GetDataPresent(
+                     DataFormats.Text))
                     ? DragDropEffects.Copy
                     : DragDropEffects.None;
         }
 
         void OnDragDrop(
-            object? s
+            object? s,
             DragEventArgs e)
         {
             if (e.Data?.GetData(
