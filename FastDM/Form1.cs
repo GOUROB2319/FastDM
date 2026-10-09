@@ -730,19 +730,43 @@ namespace FastDM
         ContextMenuStrip BuildContextMenu()
         {
             var m = new ContextMenuStrip();
-            m.Items.Add("Resume", null, (s, e) => ResumeSelected());
-            m.Items.Add("Pause", null, (s, e) => PauseSelected());
-            m.Items.Add("Start now (ignore schedule)", null, (s, e) => StartNowSelected());
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("Open File", null, (s, e) => OpenSelected(false));
-            m.Items.Add("Open Folder", null, (s, e) => OpenSelected(true));
-            m.Items.Add("Copy URL", null, (s, e) =>
+            var itemResume = new ToolStripMenuItem("Resume", null, (s, e) => ResumeSelected());
+            var itemPause = new ToolStripMenuItem("Pause", null, (s, e) => PauseSelected());
+            var itemStartNow = new ToolStripMenuItem("Start now (ignore schedule)", null, (s, e) => StartNowSelected());
+            var itemOpenFile = new ToolStripMenuItem("Open File", null, (s, e) => OpenSelected(false));
+            var itemOpenFolder = new ToolStripMenuItem("Open Folder", null, (s, e) => OpenSelected(true));
+            var itemCopyUrl = new ToolStripMenuItem("Copy URL", null, (s, e) =>
             {
                 var sel = Sel();
                 if (sel.Count > 0) Clipboard.SetText(string.Join(Environment.NewLine, sel.Select(i => i.Url)));
             });
-            m.Items.Add(new ToolStripSeparator());
-            m.Items.Add("Remove", null, (s, e) => RemoveSelected());
+            var itemRemove = new ToolStripMenuItem("Remove", null, (s, e) => RemoveSelected());
+
+            m.Items.AddRange(new ToolStripItem[] {
+                itemResume,
+                itemPause,
+                itemStartNow,
+                new ToolStripSeparator(),
+                itemOpenFile,
+                itemOpenFolder,
+                itemCopyUrl,
+                new ToolStripSeparator(),
+                itemRemove
+            });
+
+            m.Opening += (s, e) =>
+            {
+                var sel = Sel();
+                bool hasSel = sel.Count > 0;
+                itemResume.Enabled = hasSel && sel.Any(i => i.State == DlState.Paused || i.State == DlState.Error);
+                itemPause.Enabled = hasSel && sel.Any(i => i.State == DlState.Downloading || i.State == DlState.Queued);
+                itemStartNow.Enabled = hasSel && sel.Any(i => i.State == DlState.Paused || i.State == DlState.Error || i.State == DlState.Queued);
+                itemOpenFile.Enabled = hasSel && sel.Any(i => i.State == DlState.Completed);
+                itemOpenFolder.Enabled = hasSel;
+                itemCopyUrl.Enabled = hasSel && sel.Any(i => !string.IsNullOrEmpty(i.Url));
+                itemRemove.Enabled = hasSel;
+            };
+
             return m;
         }
 
