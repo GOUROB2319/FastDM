@@ -54,6 +54,44 @@ namespace FastDM
         }
     }
 
+    // Which browser yt-dlp reads login cookies from (Preferences -> Advanced -> Video sites).
+    // Only values from the fixed list below are ever passed to yt-dlp, so a hand-edited
+    // state.json cannot inject extra command-line options.
+    public static class YtDlpCookies
+    {
+        public static readonly string[] Browsers = { "", "edge", "chrome", "firefox", "brave" };
+        public static readonly string[] Labels = { "None", "Microsoft Edge", "Google Chrome", "Mozilla Firefox", "Brave" };
+
+        static volatile string browser = "";
+
+        public static string Browser => browser;
+
+        public static string Normalize(string? value)
+        {
+            string v = (value ?? "").Trim().ToLowerInvariant();
+            return Array.IndexOf(Browsers, v) >= 0 ? v : "";
+        }
+
+        public static void Apply(AppSettings s) => browser = Normalize(s.YtCookieBrowser);
+
+        // Returns a short "what to do next" text when the error looks like a sign-in/cookie problem, else null.
+        public static string? HintFor(string? message)
+        {
+            string m = (message ?? "").ToLowerInvariant();
+            bool signIn = m.Contains("not a bot") || m.Contains("sign in to confirm");
+            bool cookie = m.Contains("cookie");
+            if (!signIn && !cookie) return null;
+
+            if (browser.Length == 0)
+                return "\n\nThis site wants you to be signed in. Log in to it in your browser, then choose that browser in " +
+                       "Preferences → Advanced → Video sites → Use cookies from browser, and try again.";
+
+            return "\n\nCookies from the selected browser did not work. Make sure you are logged in there and that the browser " +
+                   "is fully closed (check the system tray too). Newer Chrome/Edge versions can block cookie access; " +
+                   "Firefox is the most reliable choice.";
+        }
+    }
+
     // ====================== yt-dlp কোন কোন সাইটের জন্য ব্যবহার হবে ======================
     public static class YtDlpSites
     {
@@ -126,6 +164,11 @@ namespace FastDM
             {
                 a.Add("--proxy"); a.Add("");       // খালি = সরাসরি কানেকশন
             }
+
+            // Login cookies for sites that ask "Sign in to confirm you're not a bot".
+            // yt-dlp reads them itself, on this PC only; FastDM never stores them.
+            string cookieBrowser = YtDlpCookies.Browser;
+            if (cookieBrowser.Length > 0) { a.Add("--cookies-from-browser"); a.Add(cookieBrowser); }
             return a;
         }
 

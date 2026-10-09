@@ -172,8 +172,10 @@ namespace FastDM
             PauseSlowKBps = d.PauseSlowKBps;
             PauseSlowMinutes = d.PauseSlowMinutes;
             LaunchAtStartup = d.LaunchAtStartup;
+            YtCookieBrowser = d.YtCookieBrowser;
         }
 
+        public string YtCookieBrowser { get; set; } = "";                     // yt-dlp login cookies: "" | edge | chrome | firefox | brave
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
         public bool SidebarOpen { get; set; } = true;                        // বাম সাইডবার খোলা না বন্ধ
         public bool BridgeEnabled { get; set; } = true;                      // ব্রাউজার এক্সটেনশনের সংযোগ চালু
@@ -1019,6 +1021,7 @@ namespace FastDM
 
             Theme.SetMode(settings.ThemeChoice);
             NetworkApply.Load(settings);
+            YtDlpCookies.Apply(settings);
 
             BuildUI();
             BuildTray();
@@ -3391,9 +3394,10 @@ namespace FastDM
             catch (Exception ex)
             {
                 string hint =
-                    UpdateChecker.IsPackaged
+                    YtDlpCookies.HintFor(ex.GetBaseException().Message) ??
+                    (UpdateChecker.IsPackaged
                         ? "\n\nIf this keeps happening, a newer app version (with an updated yt-dlp) may fix it."
-                        : "\n\nTry Settings → Update yt-dlp.";
+                        : "\n\nTry Settings → Update yt-dlp.");
 
                 MessageBox.Show(
                     this,
@@ -4011,6 +4015,8 @@ namespace FastDM
         // Preferences সেভ হলে যা যা সঙ্গে সঙ্গে প্রয়োগ হওয়া দরকার
         void ApplyPreferences()
         {
+            YtDlpCookies.Apply(settings);
+
             Theme.SetMode(
                 settings.ThemeChoice);
 

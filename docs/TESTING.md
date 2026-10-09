@@ -149,6 +149,18 @@ Its menu lists the three modes with their speed and simultaneous downloads, and
 
 The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* run is "portable".
 
+## 3f. YouTube cookies (yt-dlp) and text encoding
+
+| Check | Expected |
+| --- | --- |
+| Text encoding | Toolbar, Add dialog and status bar show `…`, `—`, `→` and the toolbar icons correctly, with no garbled characters. |
+| Preferences → Advanced → Video sites | A "Use cookies from browser" box with None / Microsoft Edge / Google Chrome / Mozilla Firefox / Brave. Default is None. |
+| Save, close, reopen Preferences | The chosen browser is still selected. Reset puts it back to None. |
+| YouTube link, cookies None | If YouTube asks you to sign in, the error box explains to choose a browser in Preferences. |
+| YouTube link, Edge selected, Edge fully closed | The quality picker opens (no sign-in error). If Edge blocks cookie access, the error box suggests Firefox. |
+| Same, Firefox selected | The quality picker opens when you are logged in to YouTube in Firefox. |
+| Hand-edit `state.json`: `"YtCookieBrowser": "--exec calc"` | The value is ignored (treated as None); nothing extra is passed to yt-dlp. |
+
 ## 4. Package the extension
 
 ```powershell

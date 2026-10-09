@@ -734,6 +734,19 @@ namespace FastDM
                 }
             });
 
+            Sub("Video sites (yt-dlp)");
+            Hint("Use cookies from browser. Needed when YouTube says \"Sign in to confirm you're not a bot\". " +
+                 "Pick the browser where you are logged in to YouTube; yt-dlp reads its cookies on this PC only and FastDM does not save them.");
+
+            var cookieBox = new ComboBox { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, 0, 0, 4) };
+            cookieBox.Items.AddRange(YtDlpCookies.Labels);
+            cookieBox.SelectedIndex = Math.Max(0, Array.IndexOf(YtDlpCookies.Browsers, YtDlpCookies.Normalize(s.YtCookieBrowser)));
+            commit.Add(() => s.YtCookieBrowser = YtDlpCookies.Browsers[Math.Max(0, cookieBox.SelectedIndex)]);
+            flow.Controls.Add(cookieBox);
+
+            Hint("Close the browser completely before downloading. Newer Chrome and Edge versions can block cookie access; " +
+                 "if that happens, choose Firefox.");
+
             Sub("Tools");
             var yt = ActionButton("Update yt-dlp", 160, null);
 
