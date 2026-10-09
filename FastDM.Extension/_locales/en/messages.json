@@ -1,0 +1,143 @@
+{
+  "extName": {
+    "message": "FastDM — Download Manager"
+  },
+  "extDescription": {
+    "message": "Send links, videos and files from your browser to the FastDM desktop app."
+  },
+  "menuDownloadLink": {
+    "message": "Download with FastDM"
+  },
+  "menuDownloadMedia": {
+    "message": "Download media with FastDM"
+  },
+  "menuSendPage": {
+    "message": "Send page link to FastDM"
+  },
+  "statusChecking": {
+    "message": "Checking…"
+  },
+  "statusConnected": {
+    "message": "Connected"
+  },
+  "statusNotRunning": {
+    "message": "FastDM is not running"
+  },
+  "statusNotPaired": {
+    "message": "Not connected yet"
+  },
+  "notRunningHint": {
+    "message": "Start the FastDM app, then try again."
+  },
+  "notPairedHint": {
+    "message": "Connect this browser to FastDM. You will be asked to approve it in the FastDM window."
+  },
+  "btnConnect": {
+    "message": "Connect"
+  },
+  "btnOpenApp": {
+    "message": "Open FastDM"
+  },
+  "btnOptions": {
+    "message": "Settings"
+  },
+  "btnPause": {
+    "message": "Pause"
+  },
+  "btnResume": {
+    "message": "Resume"
+  },
+  "btnForget": {
+    "message": "Disconnect this browser"
+  },
+  "btnReconnect": {
+    "message": "Connect again"
+  },
+  "waitingApproval": {
+    "message": "Waiting for approval in the FastDM window…"
+  },
+  "errPairingDenied": {
+    "message": "The connection was denied in FastDM."
+  },
+  "errPairingTimeout": {
+    "message": "No answer from FastDM. Please try again."
+  },
+  "errPairingBusy": {
+    "message": "Another connection request is already waiting in FastDM."
+  },
+  "errGeneric": {
+    "message": "Something went wrong. Please try again."
+  },
+  "recentTitle": {
+    "message": "Recent downloads"
+  },
+  "emptyTitle": {
+    "message": "No downloads yet"
+  },
+  "emptyHint": {
+    "message": "Right-click a link and choose “Download with FastDM”."
+  },
+  "stateQueued": {
+    "message": "Queued"
+  },
+  "stateDownloading": {
+    "message": "Downloading"
+  },
+  "statePaused": {
+    "message": "Paused"
+  },
+  "stateComplete": {
+    "message": "Complete"
+  },
+  "stateError": {
+    "message": "Error"
+  },
+  "optionsTitle": {
+    "message": "FastDM settings"
+  },
+  "optionsConnection": {
+    "message": "Connection"
+  },
+  "optionsVersion": {
+    "message": "Extension version"
+  },
+  "optionsApp": {
+    "message": "FastDM app"
+  },
+  "optionsPrivacy": {
+    "message": "This extension only talks to the FastDM app on your own computer (127.0.0.1). It does not send data to any server."
+  },
+  "menuOpenLink": {
+    "message": "Open in FastDM"
+  },
+  "menuOpenMedia": {
+    "message": "Open media in FastDM"
+  },
+  "optionsCookies": {
+    "message": "Login cookies"
+  },
+  "cookiesHint": {
+    "message": "Some sites only allow downloads when you are signed in. If you turn this on, the extension sends your browser cookies for the download link to the FastDM app on this computer. Cookies are kept in memory only and are never saved to disk."
+  },
+  "cookiesOn": {
+    "message": "Sending cookies is on"
+  },
+  "cookiesOff": {
+    "message": "Sending cookies is off"
+  },
+  "btnCookiesEnable": {
+    "message": "Turn on"
+  },
+  "btnCookiesDisable": {
+    "message": "Turn off"
+  },
+  "errCookiesDenied": {
+    "message": "Permission was not granted, so cookies stay off."
+  },
+  "menuPlaylistLink": {
+    "message": "Create playlist with FastDM"
+  },
+  "menuPlaylistPage": {
+    "message": "Create playlist from this folder"
+  }
+}

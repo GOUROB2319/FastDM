@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -12,10 +11,10 @@ namespace FastDM
     {
         public const int HistoryLength = 120;     // ০.৫ সেকেন্ড x ১২০ = ৬০ সেকেন্ড
 
-        DownloadItem item;
+        DownloadItem? item;
         readonly Font bold;
 
-        public DownloadItem Item => item;
+        public DownloadItem? Item => item;
 
         public DetailsPanel()
         {
@@ -27,7 +26,7 @@ namespace FastDM
             bold = new Font("Segoe UI", 10.5f, FontStyle.Bold);
         }
 
-        public void SetItem(DownloadItem it)
+        public void SetItem(DownloadItem? it)
         {
             item = it;
             Invalidate();

@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,7 +14,7 @@ using HtmlAgilityPack;
 
 namespace FastDM
 {
-    // Engine-এর private HttpClient অন্য ফাইল থেকে ব্যবহারের জন্য (প্রক্সি/অথ সব একই থাকে)
+    // Engine-ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â° private HttpClient ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ (ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¿/ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¥ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¬ ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡)
     public static partial class Engine
     {
         public static HttpClient SharedClient => Http;
@@ -23,63 +22,63 @@ namespace FastDM
 
     public enum MediaKind { None, Direct, Hls, Dash, Page }
 
-    // ====================== মডেল ======================
-    // ডাউনলোড আইটেমে সেভ হয় (state.json-এ)। সেগমেন্ট লিস্ট সেভ হয় না, প্রতিবার ম্যানিফেস্ট থেকে আবার পড়া হয়।
+    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² ======================
+    // ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â­ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ (state.json-ÃƒÂ Ã‚Â¦Ã‚Â)ÃƒÂ Ã‚Â¥Ã‚Â¤ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬â€ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â­ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾, ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¥Ã‚Â¤
     public class StreamSpec
     {
         public string Kind { get; set; } = "hls";      // "hls" | "dash"
-        public string ManifestUrl { get; set; }         // DASH: .mpd লিঙ্ক
-        public string VideoUrl { get; set; }            // HLS: বাছাই করা মিডিয়া প্লেলিস্ট
-        public string AudioUrl { get; set; }            // HLS: আলাদা অডিও প্লেলিস্ট (থাকলে)
-        public string VideoRepId { get; set; }          // DASH
-        public string AudioRepId { get; set; }          // DASH
+        public string? ManifestUrl { get; set; }         // DASH: .mpd ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â€žÂ¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢
+        public string? VideoUrl { get; set; }            // HLS: ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸
+        public string? AudioUrl { get; set; }            // HLS: ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¦ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ (ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡)
+        public string? VideoRepId { get; set; }          // DASH
+        public string? AudioRepId { get; set; }          // DASH
         public bool AudioOnly { get; set; }
-        public string Referer { get; set; }
+        public string? Referer { get; set; }
     }
 
     public class VideoOpt
     {
-        public string Label, Url, RepId, AudioGroup;
+        public string Label = ""; public string? Url, RepId, AudioGroup;
         public int Height;
         public long Bandwidth;
     }
 
     public class AudioOpt
     {
-        public string Label, Url, RepId, Group;
+        public string Label = ""; public string? Url, RepId, Group;
         public long Bandwidth;
     }
 
     public class MediaOptions
     {
-        public string Kind;                 // "hls" | "dash"
-        public string ManifestUrl;
-        public string Referer;
-        public string Title;
+        public string Kind = "hls";                 // "hls" | "dash"
+        public string ManifestUrl = "";
+        public string? Referer;
+        public string? Title;
         public List<VideoOpt> Videos = new List<VideoOpt>();
         public List<AudioOpt> Audios = new List<AudioOpt>();
     }
 
     public class MediaCandidate
     {
-        public string Url;
+        public string Url = "";
         public MediaKind Kind;
-        public string Label;
+        public string Label = "";
         public override string ToString() => Label;
     }
 
     public class MediaProbeResult
     {
         public MediaKind Kind;
-        public string Url;
-        public string Title;
+        public string Url = "";
+        public string? Title;
         public List<MediaCandidate> Candidates = new List<MediaCandidate>();
     }
 
-    // ====================== ffmpeg খুঁজে বের করা ======================
+    // ====================== ffmpeg ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ ======================
     public static class FfmpegLocator
     {
-        public static string Find()
+        public static string? Find()
         {
             string[] local =
             {
@@ -102,10 +101,10 @@ namespace FastDM
         }
     }
 
-    // ====================== নেটওয়ার্ক হেল্পার ======================
+    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ======================
     public static class MediaNet
     {
-        public static async Task<string> GetTextAsync(string url, string referer, CancellationToken ct, int maxBytes = 4_000_000)
+        public static async Task<string> GetTextAsync(string url, string? referer, CancellationToken ct, int maxBytes = 4_000_000)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(referer))
@@ -131,25 +130,25 @@ namespace FastDM
         }
     }
 
-    // ====================== HLS পার্সার ======================
+    // ====================== HLS ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ======================
     public static class Hls
     {
-        public class Variant { public string Url, Codecs, AudioGroup; public long Bandwidth; public int W, H; }
-        public class AudioTrack { public string Group, Name, Lang, Url; public bool Default; }
+        public class Variant { public string Url = ""; public string? Codecs, AudioGroup; public long Bandwidth; public int W, H; }
+        public class AudioTrack { public string Url = ""; public string? Group, Name, Lang; public bool Default; }
         public class Master { public List<Variant> Variants = new List<Variant>(); public List<AudioTrack> Audios = new List<AudioTrack>(); }
 
         public class Seg
         {
-            public string Url, KeyUrl, IvHex;
+            public string Url = ""; public string? KeyUrl, IvHex;
             public long RangeStart = -1, RangeLen, Seq;
         }
 
         public class MediaPlaylist
         {
             public List<Seg> Segs = new List<Seg>();
-            public Seg Init;
+            public Seg? Init;
             public bool Ended, Fmp4;
-            public string Unsupported;
+            public string? Unsupported;
         }
 
         public static bool IsMaster(string text) => text.Contains("#EXT-X-STREAM-INF");
@@ -162,7 +161,7 @@ namespace FastDM
             return d;
         }
 
-        // "length@offset" বা "length"
+        // "length@offset" ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ "length"
         static void ParseRange(string s, out long len, out long off)
         {
             len = -1; off = -1;
@@ -203,7 +202,7 @@ namespace FastDM
                     if (a.TryGetValue("TYPE", out var type) && type.Equals("AUDIO", StringComparison.OrdinalIgnoreCase))
                     {
                         a.TryGetValue("URI", out var uri);
-                        if (string.IsNullOrEmpty(uri)) continue;     // ভিডিওর ভেতরেই অডিও আছে
+                        if (string.IsNullOrEmpty(uri)) continue;     // ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â§Ã¢â‚¬Â¡
                         var t = new AudioTrack { Url = new Uri(baseUri, uri).AbsoluteUri };
                         a.TryGetValue("GROUP-ID", out t.Group);
                         a.TryGetValue("NAME", out t.Name);
@@ -220,7 +219,7 @@ namespace FastDM
         {
             var pl = new MediaPlaylist();
             long seq = 0, lastEnd = 0, pendLen = -1, pendOff = -1;
-            string keyUrl = null, keyIv = null;
+            string? keyUrl = null, keyIv = null;
 
             foreach (var raw in text.Split('\n'))
             {
@@ -293,12 +292,12 @@ namespace FastDM
         }
     }
 
-    // ====================== DASH পার্সার ======================
+    // ====================== DASH ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ======================
     public static class Dash
     {
         public class Rep
         {
-            public string Id, Kind, Mime, Codecs, Lang, InitUrl;
+            public string Id = "", Kind = "", Mime = "", InitUrl = ""; public string? Codecs, Lang;
             public long Bandwidth;
             public int W, H;
             public List<string> SegUrls = new List<string>();
@@ -307,21 +306,21 @@ namespace FastDM
         public class Mpd
         {
             public List<Rep> Reps = new List<Rep>();
-            public string Unsupported;
+            public string? Unsupported;
         }
 
         static IEnumerable<XElement> Els(XElement e, string name) =>
             e == null ? Enumerable.Empty<XElement>() : e.Elements().Where(x => x.Name.LocalName == name);
-        static XElement El(XElement e, string name) => Els(e, name).FirstOrDefault();
-        static string At(XElement e, string a) => e?.Attribute(a)?.Value;
+        static XElement? El(XElement e, string name) => Els(e, name).FirstOrDefault();
+        static string? At(XElement? e, string a) => e?.Attribute(a)?.Value;
 
         static Uri Base(Uri cur, XElement e)
         {
-            string b = El(e, "BaseURL")?.Value?.Trim();
+            string? b = El(e, "BaseURL")?.Value?.Trim();
             return string.IsNullOrEmpty(b) ? cur : new Uri(cur, b);
         }
 
-        static double ParseDur(string s)
+        static double ParseDur(string? s)
         {
             if (string.IsNullOrWhiteSpace(s)) return 0;
             try { return XmlConvert.ToTimeSpan(s).TotalSeconds; } catch { return 0; }
@@ -331,6 +330,7 @@ namespace FastDM
         {
             var res = new Mpd();
             var root = XDocument.Parse(xml).Root;
+            if (root == null) throw new InvalidDataException("The MPD has no root element.");
 
             if (At(root, "type") == "dynamic") { res.Unsupported = "Live DASH streams are not supported yet."; return res; }
             if (root.Descendants().Any(x => x.Name.LocalName == "ContentProtection"))
@@ -351,20 +351,20 @@ namespace FastDM
             foreach (var asEl in Els(period, "AdaptationSet"))
             {
                 var asBase = Base(pBase, asEl);
-                string asMime = At(asEl, "mimeType"), asCodecs = At(asEl, "codecs"), asLang = At(asEl, "lang");
+                string? asMime = At(asEl, "mimeType"), asCodecs = At(asEl, "codecs"), asLang = At(asEl, "lang");
                 var asTpl = El(asEl, "SegmentTemplate");
 
                 foreach (var rEl in Els(asEl, "Representation"))
                 {
                     string mime = At(rEl, "mimeType") ?? asMime ?? "";
-                    string kind = At(asEl, "contentType");
+                    string? kind = At(asEl, "contentType");
                     if (string.IsNullOrEmpty(kind))
                         kind = mime.StartsWith("video") ? "video" : mime.StartsWith("audio") ? "audio" : "";
                     if (kind != "video" && kind != "audio") continue;
 
                     var rep = new Rep
                     {
-                        Id = At(rEl, "id"),
+                        Id = At(rEl, "id") ?? "",
                         Kind = kind,
                         Mime = mime,
                         Codecs = At(rEl, "codecs") ?? asCodecs,
@@ -380,7 +380,7 @@ namespace FastDM
 
                     if (rTpl != null || asTpl != null) BuildFromTemplate(rep, rTpl, asTpl, rBase, pDur);
                     else if (list != null) BuildFromList(rep, list, rBase);
-                    else if (rBase != mpdUri) rep.SegUrls.Add(rBase.AbsoluteUri);      // একটাই ফাইল (BaseURL)
+                    else if (rBase != mpdUri) rep.SegUrls.Add(rBase.AbsoluteUri);      // ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² (BaseURL)
 
                     if (rep.SegUrls.Count > 0) res.Reps.Add(rep);
                 }
@@ -390,16 +390,16 @@ namespace FastDM
             return res;
         }
 
-        static void BuildFromTemplate(Rep rep, XElement rT, XElement aT, Uri baseUri, double periodSec)
+        static void BuildFromTemplate(Rep rep, XElement? rT, XElement? aT, Uri baseUri, double periodSec)
         {
-            string TA(string a) => At(rT, a) ?? At(aT, a);
+            string? TA(string a) => At(rT, a) ?? At(aT, a);
 
-            string init = TA("initialization");
-            string media = TA("media");
+            string? init = TA("initialization");
+            string? media = TA("media");
             double timescale = double.TryParse(TA("timescale"), NumberStyles.Float, CultureInfo.InvariantCulture, out var ts) && ts > 0 ? ts : 1;
             long startNumber = long.TryParse(TA("startNumber"), out var sn) ? sn : 1;
 
-            XElement tl = rT != null ? El(rT, "SegmentTimeline") : null;
+            XElement? tl = rT != null ? El(rT, "SegmentTimeline") : null;
             if (tl == null && aT != null) tl = El(aT, "SegmentTimeline");
 
             if (!string.IsNullOrEmpty(init))
@@ -435,11 +435,11 @@ namespace FastDM
 
         static void BuildFromList(Rep rep, XElement list, Uri baseUri)
         {
-            string initSrc = At(El(list, "Initialization"), "sourceURL");
+            string? initSrc = At(El(list, "Initialization"), "sourceURL");
             if (!string.IsNullOrEmpty(initSrc)) rep.InitUrl = new Uri(baseUri, initSrc).AbsoluteUri;
             foreach (var su in Els(list, "SegmentURL"))
             {
-                string m = At(su, "media");
+                string? m = At(su, "media");
                 if (!string.IsNullOrEmpty(m)) rep.SegUrls.Add(new Uri(baseUri, m).AbsoluteUri);
             }
         }
@@ -461,13 +461,13 @@ namespace FastDM
         }
     }
 
-    // ====================== লিঙ্ক ধরন চেনা + ওয়েবপেজ থেকে ভিডিও খোঁজা ======================
+    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â€žÂ¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ ÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ + ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…â€œ ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¾ ======================
     public static class MediaDetector
     {
         static readonly HashSet<string> DirectExt = new HashSet<string>
         { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".flv", ".wmv", ".m4v", ".ts" };
 
-        // এগুলোতে নেটওয়ার্ক চেক ছাড়াই সাধারণ ফাইল ধরা হবে (ডাউনলোড যাতে ধীর না হয়)
+        // ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬â€ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â£ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² ÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ (ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â§Ã¢â€šÂ¬ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼)
         static readonly HashSet<string> SkipExt = new HashSet<string>
         {
             ".zip", ".rar", ".7z", ".iso", ".exe", ".msi", ".apk", ".dmg", ".pdf", ".doc", ".docx", ".xls", ".xlsx",
@@ -495,7 +495,7 @@ namespace FastDM
 
             var byExt = KindFromUrl(uri.AbsoluteUri);
             if (byExt == MediaKind.Hls || byExt == MediaKind.Dash) { result.Kind = byExt; return result; }
-            if (byExt == MediaKind.Direct) return result;                        // সাধারণ ফাইল ইঞ্জিন সামলাবে
+            if (byExt == MediaKind.Direct) return result;                        // ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â£ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¾ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡
 
             string ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
             if (SkipExt.Contains(ext)) return result;
@@ -510,7 +510,7 @@ namespace FastDM
             if (ctype.Contains("dash+xml")) { result.Kind = MediaKind.Dash; return result; }
             if (!(ctype.Contains("html"))) return result;
 
-            // HTML পেজ: ২ MB পর্যন্ত পড়ে ভিডিও লিঙ্ক খোঁজা
+            // HTML ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…â€œ: ÃƒÂ Ã‚Â§Ã‚Â¨ MB ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¤ ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â€žÂ¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¾
             string html;
             using (var st = await resp.Content.ReadAsStreamAsync(ct))
             using (var ms = new MemoryStream())
@@ -552,17 +552,17 @@ namespace FastDM
                 {
                     Url = u.AbsoluteUri,
                     Kind = kind,
-                    Label = tag + "  •  " + (name.Length > 0 ? name : u.Host)
+                    Label = tag + "  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢  " + (name.Length > 0 ? name : u.Host)
                 });
             }
 
-            // ১) স্ট্রাকচার্ড ট্যাগ
+            // ÃƒÂ Ã‚Â§Ã‚Â§) ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¡ ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬â€
             try
             {
                 var doc = new HtmlAgilityPack.HtmlDocument();
                 doc.LoadHtml(html);
 
-                string title = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")?.GetAttributeValue("content", null);
+                string? title = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")?.GetAttributeValue("content", null);
                 if (string.IsNullOrWhiteSpace(title))
                     title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText;
                 if (!string.IsNullOrWhiteSpace(title))
@@ -578,35 +578,35 @@ namespace FastDM
             }
             catch { }
 
-            // ২) পেজের লেখার ভেতরে (স্ক্রিপ্ট/JSON) থাকা লিঙ্ক
+            // ÃƒÂ Ã‚Â§Ã‚Â¨) ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ (ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸/JSON) ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â€žÂ¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢
             string flat = html.Replace("\\/", "/").Replace("\\u0026", "&").Replace("\\u002F", "/");
             foreach (Match m in UrlRx.Matches(flat)) Add(m.Value);
         }
     }
 
-    // ====================== ম্যানিফেস্ট পড়ে অপশন বানানো ======================
+    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ ======================
     public static class MediaParser
     {
-        static string Label(int h, int w, long bw, string codecs)
+        static string Label(int h, int w, long bw, string? codecs)
         {
             var parts = new List<string>();
             parts.Add(h > 0 ? h + "p" : "Auto");
             if (bw > 0) parts.Add((bw / 1_000_000.0).ToString("0.0", CultureInfo.InvariantCulture) + " Mbps");
             if (!string.IsNullOrEmpty(codecs)) parts.Add(codecs.Split(',')[0].Trim());
-            return string.Join("  •  ", parts);
+            return string.Join("  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢  ", parts);
         }
 
-        static string AudioLabel(string name, string lang, long bw, string codecs)
+        static string AudioLabel(string? name, string? lang, long bw, string? codecs)
         {
             var parts = new List<string>();
             string n = !string.IsNullOrEmpty(name) ? name : (!string.IsNullOrEmpty(lang) ? lang : "Audio");
             parts.Add(n);
             if (bw > 0) parts.Add((bw / 1000) + " kbps");
             if (!string.IsNullOrEmpty(codecs)) parts.Add(codecs);
-            return string.Join("  •  ", parts);
+            return string.Join("  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢  ", parts);
         }
 
-        public static async Task<MediaOptions> LoadAsync(string url, MediaKind kind, string referer, string title, CancellationToken ct)
+        public static async Task<MediaOptions> LoadAsync(string url, MediaKind kind, string? referer, string? title, CancellationToken ct)
         {
             var uri = new Uri(url);
             string text = await MediaNet.GetTextAsync(url, referer, ct);

@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,8 +11,8 @@ namespace FastDM
 {
     public class PickedFile
     {
-        public string Url;
-        public string Name;
+        public string Url = string.Empty;
+        public string Name = string.Empty;
         public long Size;
         public string RelDir = "";      // নির্বাচিত ফোল্ডারের ভেতরের রিলেটিভ পাথ
     }
@@ -90,23 +89,28 @@ namespace FastDM
         readonly NumericUpDown numSim;
         readonly TreeView tree;
         readonly Label lblStatus;
-        readonly Button btnOk;
-        CancellationTokenSource cts;
+        readonly Button btnOk, btnStream;
+        readonly CheckBox chkLocalPlaylist;
+        CancellationTokenSource? cts;
         bool suppress;
 
-        public string TargetFolder { get; private set; }
+        public string TargetFolder { get; private set; } = string.Empty;
         public int Simultaneous => (int)numSim.Value;
         public List<PickedFile> Files { get; private set; } = new List<PickedFile>();
 
-        public FolderDownloadForm(Uri folderUri, string defaultLocation, int simultaneous)
+        // ডাউনলোডের সাথে ফোল্ডারে লোকাল .m3u8 বানাতে হবে কি না
+        public bool SaveLocalPlaylist => chkLocalPlaylist.Checked;
+
+        // playlistMode = এক্সটেনশনের "Create playlist" থেকে খোলা: প্লেলিস্ট বাটনই মূল (Enter চাপলে সেটাই চলে)
+        public FolderDownloadForm(Uri folderUri, string defaultLocation, int simultaneous, bool playlistMode = false)
         {
             uri = folderUri;
 
-            Text = "Download Folder";
+            Text = playlistMode ? "Create Playlist" : "Download Folder";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(660, 632);
+            ClientSize = new Size(660, 676);
             Font = new Font("Segoe UI", 9.5f);
 
             // লিঙ্ক
@@ -184,11 +188,32 @@ namespace FastDM
             };
             Controls.Add(lblStatus);
 
-            btnOk = new Button { Text = "Download", Location = new Point(444, 584), Size = new Size(110, 34), Enabled = false };
-            var cancel = new Button { Text = "Cancel", Location = new Point(560, 584), Size = new Size(84, 34), DialogResult = DialogResult.Cancel };
+            // প্লেলিস্ট (VLC)
+            chkLocalPlaylist = new CheckBox
+            {
+                Text = "Also create a local playlist (.m3u8) in the download folder",
+                Location = new Point(16, 578),
+                Size = new Size(628, 24),
+                Checked = false
+            };
+            Controls.Add(chkLocalPlaylist);
+
+            btnStream = new Button
+            {
+                Text = "Save stream playlist…",
+                Location = new Point(16, 628),
+                Size = new Size(190, 34),
+                Enabled = false
+            };
+            btnStream.Click += OnSaveStreamPlaylist;
+            Controls.Add(btnStream);
+
+            btnOk = new Button { Text = "Download", Location = new Point(444, 628), Size = new Size(110, 34), Enabled = false };
+            var cancel = new Button { Text = "Cancel", Location = new Point(560, 628), Size = new Size(84, 34), DialogResult = DialogResult.Cancel };
             btnOk.Click += OnOk;
             Controls.Add(btnOk); Controls.Add(cancel);
-            AcceptButton = btnOk; CancelButton = cancel;
+            AcceptButton = playlistMode ? btnStream : btnOk;
+            CancelButton = cancel;
 
             Shown += async (s, e) => await ScanAsync();
             FormClosing += (s, e) => cts?.Cancel();
@@ -213,6 +238,7 @@ namespace FastDM
         {
             cts = new CancellationTokenSource();
             btnOk.Enabled = false;
+            btnStream.Enabled = false;
 
             while (true)
             {
@@ -271,12 +297,14 @@ namespace FastDM
         }
 
         // ---------- চেক লজিক ----------
-        void OnAfterCheck(object sender, TreeViewEventArgs e)
+        void OnAfterCheck(object? sender, TreeViewEventArgs e)
         {
             if (suppress || e.Action == TreeViewAction.Unknown) return;
             suppress = true;
-            SetChildren(e.Node, e.Node.Checked);
-            for (var p = e.Node.Parent; p != null; p = p.Parent)
+            var node = e.Node;
+            if (node == null) return;
+            SetChildren(node, node.Checked);
+            for (var p = node.Parent; p != null; p = p.Parent)
                 p.Checked = p.Nodes.Cast<TreeNode>().Any(x => x.Checked);
             suppress = false;
             UpdateSummary();
@@ -311,7 +339,7 @@ namespace FastDM
 
         static bool ApplyFilterNode(TreeNode n, HashSet<string> exts)
         {
-            var rn = (RemoteNode)n.Tag;
+            if (n.Tag is not RemoteNode rn) return false;
             if (!rn.IsDir)
             {
                 bool on = exts.Count == 0 || exts.Contains(Path.GetExtension(rn.Name).ToLowerInvariant());
@@ -333,6 +361,7 @@ namespace FastDM
             if (size > 0) t += " — " + Fmt(size) + (unknown ? "+" : "");
             lblStatus.Text = t;
             btnOk.Enabled = files > 0;
+            btnStream.Enabled = files > 0;
         }
 
         static void Sum(TreeNodeCollection col, ref int files, ref long size, ref bool unknown)
@@ -340,7 +369,7 @@ namespace FastDM
             foreach (TreeNode n in col)
             {
                 if (!n.Checked) continue;
-                var rn = (RemoteNode)n.Tag;
+                if (n.Tag is not RemoteNode rn) continue;
                 if (rn.IsDir) Sum(n.Nodes, ref files, ref size, ref unknown);
                 else
                 {
@@ -351,7 +380,7 @@ namespace FastDM
         }
 
         // ---------- OK ----------
-        void OnOk(object sender, EventArgs e)
+        void OnOk(object? sender, EventArgs e)
         {
             string loc = txtLocation.Text.Trim();
             if (loc.Length == 0)
@@ -374,12 +403,50 @@ namespace FastDM
             DialogResult = DialogResult.OK;
         }
 
+        // ---------- স্ট্রিম প্লেলিস্ট (সার্ভারের লিঙ্ক, ডাউনলোড ছাড়াই VLC-তে চলে) ----------
+        void OnSaveStreamPlaylist(object? sender, EventArgs e)
+        {
+            var list = new List<PickedFile>();
+            Collect(tree.Nodes, "", list);
+
+            var result = PlaylistBuilder.BuildStream(list);
+            if (result.Count == 0)
+            {
+                MessageBox.Show(this, "No video or audio files are selected, so there is nothing to put in a playlist.");
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Title = "Save playlist",
+                Filter = "M3U8 playlist (*.m3u8)|*.m3u8",
+                DefaultExt = "m3u8",
+                FileName = SafeSeg(txtName.Text.Trim().Length > 0 ? txtName.Text.Trim() : DefaultName()) + ".m3u8"
+            };
+
+            string dir = txtLocation.Text.Trim();
+            if (dir.Length > 0 && Directory.Exists(dir)) sfd.InitialDirectory = dir;
+
+            if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                PlaylistBuilder.Save(sfd.FileName, result.Text);
+                lblStatus.Text = "Playlist saved: " + result.Count + " file(s)" +
+                                 (result.Skipped > 0 ? ", " + result.Skipped + " skipped (not video/audio)" : "");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not save the playlist.\n\n" + ex.Message, "Playlist", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         static void Collect(TreeNodeCollection col, string rel, List<PickedFile> list)
         {
             foreach (TreeNode n in col)
             {
                 if (!n.Checked) continue;
-                var rn = (RemoteNode)n.Tag;
+                if (n.Tag is not RemoteNode rn) continue;
                 if (rn.IsDir) Collect(n.Nodes, Path.Combine(rel, SafeSeg(rn.Name)), list);
                 else list.Add(new PickedFile { Url = rn.Url, Name = rn.Name, Size = rn.Size, RelDir = rel });
             }

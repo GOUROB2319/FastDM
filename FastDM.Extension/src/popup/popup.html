@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 128 128" aria-hidden="true">
+        <rect width="128" height="128" rx="28" fill="currentColor"/>
+        <rect x="56" y="26" width="16" height="46" fill="#fff"/>
+        <polygon points="36,62 92,62 64,95" fill="#fff"/>
+        <rect x="31" y="100" width="66" height="14" rx="7" fill="#fff"/>
+      </svg>
+      <span class="name">FastDM</span>
+    </div>
+    <span id="pill" class="pill"><span class="dot"></span><span id="pillText" data-i18n="statusChecking">Checking…</span></span>
+  </header>
+
+  <main>
+    <!-- সংযোগ না থাকলে -->
+    <section id="panelProblem" class="card hidden">
+      <p id="problemText" class="muted"></p>
+      <p id="problemError" class="error hidden"></p>
+      <div class="actions">
+        <button id="btnConnect" class="primary hidden" data-i18n="btnConnect">Connect</button>
+        <button id="btnOpenApp" class="hidden" data-i18n="btnOpenApp">Open FastDM</button>
+      </div>
+    </section>
+
+    <!-- সংযুক্ত থাকলে -->
+    <section id="panelTasks" class="hidden">
+      <h2 data-i18n="recentTitle">Recent downloads</h2>
+      <ul id="taskList"></ul>
+      <div id="empty" class="empty hidden">
+        <div class="empty-title" data-i18n="emptyTitle">No downloads yet</div>
+        <div class="muted" data-i18n="emptyHint">Right-click a link and choose “Download with FastDM”.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <button id="btnOpen" data-i18n="btnOpenApp">Open FastDM</button>
+    <button id="btnOptions" data-i18n="btnOptions">Settings</button>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

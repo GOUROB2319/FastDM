@@ -1,0 +1,143 @@
+{
+  "extName": {
+    "message": "FastDM — ডাউনলোড ম্যানেজার"
+  },
+  "extDescription": {
+    "message": "ব্রাউজার থেকে লিঙ্ক, ভিডিও আর ফাইল FastDM ডেস্কটপ অ্যাপে পাঠান।"
+  },
+  "menuDownloadLink": {
+    "message": "FastDM দিয়ে ডাউনলোড"
+  },
+  "menuDownloadMedia": {
+    "message": "FastDM দিয়ে মিডিয়া ডাউনলোড"
+  },
+  "menuSendPage": {
+    "message": "পেজের লিঙ্ক FastDM-এ পাঠান"
+  },
+  "statusChecking": {
+    "message": "যাচাই হচ্ছে…"
+  },
+  "statusConnected": {
+    "message": "সংযুক্ত"
+  },
+  "statusNotRunning": {
+    "message": "FastDM চালু নেই"
+  },
+  "statusNotPaired": {
+    "message": "এখনো সংযুক্ত নয়"
+  },
+  "notRunningHint": {
+    "message": "FastDM অ্যাপ চালু করে আবার চেষ্টা করুন।"
+  },
+  "notPairedHint": {
+    "message": "এই ব্রাউজারকে FastDM-এর সাথে যুক্ত করুন। FastDM উইন্ডোতে আপনাকে অনুমতি দিতে হবে।"
+  },
+  "btnConnect": {
+    "message": "সংযুক্ত করুন"
+  },
+  "btnOpenApp": {
+    "message": "FastDM খুলুন"
+  },
+  "btnOptions": {
+    "message": "সেটিংস"
+  },
+  "btnPause": {
+    "message": "পজ"
+  },
+  "btnResume": {
+    "message": "চালু"
+  },
+  "btnForget": {
+    "message": "এই ব্রাউজারের সংযোগ বিচ্ছিন্ন করুন"
+  },
+  "btnReconnect": {
+    "message": "আবার সংযুক্ত করুন"
+  },
+  "waitingApproval": {
+    "message": "FastDM উইন্ডোতে অনুমতির অপেক্ষা…"
+  },
+  "errPairingDenied": {
+    "message": "FastDM-এ সংযোগের অনুমতি দেওয়া হয়নি।"
+  },
+  "errPairingTimeout": {
+    "message": "FastDM থেকে সাড়া মেলেনি। আবার চেষ্টা করুন।"
+  },
+  "errPairingBusy": {
+    "message": "FastDM-এ আরেকটা সংযোগের অনুরোধ অপেক্ষায় আছে।"
+  },
+  "errGeneric": {
+    "message": "কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।"
+  },
+  "recentTitle": {
+    "message": "সাম্প্রতিক ডাউনলোড"
+  },
+  "emptyTitle": {
+    "message": "এখনো কোনো ডাউনলোড নেই"
+  },
+  "emptyHint": {
+    "message": "কোনো লিঙ্কে রাইট-ক্লিক করে “FastDM দিয়ে ডাউনলোড” বেছে নিন।"
+  },
+  "stateQueued": {
+    "message": "অপেক্ষায়"
+  },
+  "stateDownloading": {
+    "message": "ডাউনলোড হচ্ছে"
+  },
+  "statePaused": {
+    "message": "পজ করা"
+  },
+  "stateComplete": {
+    "message": "সম্পূর্ণ"
+  },
+  "stateError": {
+    "message": "ত্রুটি"
+  },
+  "optionsTitle": {
+    "message": "FastDM সেটিংস"
+  },
+  "optionsConnection": {
+    "message": "সংযোগ"
+  },
+  "optionsVersion": {
+    "message": "এক্সটেনশনের ভার্সন"
+  },
+  "optionsApp": {
+    "message": "FastDM অ্যাপ"
+  },
+  "optionsPrivacy": {
+    "message": "এই এক্সটেনশন শুধু আপনার নিজের কম্পিউটারে থাকা FastDM অ্যাপের সাথে (127.0.0.1) কথা বলে। কোনো সার্ভারে ডেটা পাঠায় না।"
+  },
+  "menuOpenLink": {
+    "message": "FastDM-এ খুলুন"
+  },
+  "menuOpenMedia": {
+    "message": "FastDM-এ মিডিয়া খুলুন"
+  },
+  "optionsCookies": {
+    "message": "লগইন কুকি"
+  },
+  "cookiesHint": {
+    "message": "কিছু সাইট লগইন করা অবস্থায় ছাড়া ডাউনলোড করতে দেয় না। এটা চালু করলে ডাউনলোড লিঙ্কের জন্য ব্রাউজারের কুকি এই কম্পিউটারের FastDM অ্যাপে পাঠানো হবে। কুকি শুধু মেমোরিতে থাকে, ডিস্কে সেভ হয় না।"
+  },
+  "cookiesOn": {
+    "message": "কুকি পাঠানো চালু"
+  },
+  "cookiesOff": {
+    "message": "কুকি পাঠানো বন্ধ"
+  },
+  "btnCookiesEnable": {
+    "message": "চালু করুন"
+  },
+  "btnCookiesDisable": {
+    "message": "বন্ধ করুন"
+  },
+  "errCookiesDenied": {
+    "message": "অনুমতি দেওয়া হয়নি, তাই কুকি বন্ধই থাকছে।"
+  },
+  "menuPlaylistLink": {
+    "message": "FastDM দিয়ে প্লেলিস্ট বানান"
+  },
+  "menuPlaylistPage": {
+    "message": "এই ফোল্ডার থেকে প্লেলিস্ট বানান"
+  }
+}

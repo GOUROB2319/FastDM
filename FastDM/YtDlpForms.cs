@@ -1,4 +1,3 @@
-#nullable disable
 using System;
 using System.Drawing;
 using System.IO;
@@ -10,8 +9,8 @@ namespace FastDM
     {
         class OptItem
         {
-            public string Text;
-            public object Tag;
+            public string Text = string.Empty;
+            public object? Tag;
             public override string ToString() => Text;
         }
 
@@ -22,7 +21,7 @@ namespace FastDM
         readonly Label lblSize;
         readonly TextBox txtName, txtFolder;
 
-        public YtDlpSpec Spec { get; private set; }
+        public YtDlpSpec Spec { get; private set; } = null!;
         public string SaveFolder => txtFolder.Text.Trim();
 
         public YtPickerForm(YtInfo videoInfo, string videoUrl, string defaultFolder)
@@ -147,7 +146,7 @@ namespace FastDM
             lblSize.Text = v != null && v.EstBytes > 0 ? "Estimated size: ≈ " + YtDlpInfo.Fmt(v.EstBytes) : "";
         }
 
-        void OnOk(object sender, EventArgs e)
+        void OnOk(object? sender, EventArgs e)
         {
             string name = Engine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
             if (name.Length == 0) { MessageBox.Show(this, "Please enter a file name."); return; }
