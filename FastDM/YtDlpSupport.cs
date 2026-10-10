@@ -92,27 +92,6 @@ namespace FastDM
         }
     }
 
-    // ====================== yt-dlp কোন কোন সাইটের জন্য ব্যবহার হবে ======================
-    public static class YtDlpSites
-    {
-        static readonly string[] Hosts =
-        {
-            "youtube.com", "youtu.be", "youtube-nocookie.com", "tiktok.com", "facebook.com", "fb.watch",
-            "instagram.com", "twitter.com", "x.com", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com",
-            "twitch.tv", "soundcloud.com", "bilibili.com", "b23.tv", "streamable.com", "rumble.com",
-            "odysee.com", "ok.ru", "vk.com", "mixcloud.com", "bandcamp.com", "pinterest.com", "tumblr.com"
-        };
-
-        public static bool IsSupported(string url)
-        {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return false;
-            if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return false;
-            string host = u.Host.ToLowerInvariant();
-            foreach (var h in Hosts)
-                if (host == h || host.EndsWith("." + h)) return true;
-            return false;
-        }
-    }
 
     // ====================== প্রসেস চালানো ======================
     public static class YtDlpRunner
@@ -237,9 +216,15 @@ namespace FastDM
 
             var json = new StringBuilder();
             var err = new StringBuilder();
+            var watch = Stopwatch.StartNew();
             int code = await YtDlpRunner.RunAsync(exe, args,
                 l => { lock (json) json.AppendLine(l); },
                 l => { lock (err) if (err.Length < 8000) err.AppendLine(l); }, ct);
+            watch.Stop();
+
+            string runtime = YtDlpLocator.FindQuickJs() != null ? "quickjs" : YtDlpLocator.FindDeno() != null ? "deno" : "none";
+            AppLog.Write("yt-dlp info: " + watch.Elapsed.TotalSeconds.ToString("0.0") + " s, exit " + code +
+                         ", js runtime " + runtime + ", cookies " + (YtDlpCookies.Browser.Length > 0 ? YtDlpCookies.Browser : "off"));
 
             if (code != 0 || json.Length == 0)
                 throw new InvalidOperationException(YtDlpRunner.ExtractError(err.ToString()));

@@ -194,6 +194,16 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Put `"SchemaVersion": 99,` as the first line inside the `{ }` of `state.json`, start FastDM | A warning says the settings come from a newer version; `state.json.from-v99` is created once; FastDM still works. |
 | Add a download, wait more than 15 minutes with FastDM open | `state.json.bak` becomes newer and the previous one becomes `state.json.bak2`. |
 
+## 3i. Video links, selection and details panel
+
+| Check | Expected |
+| --- | --- |
+| Drop a YouTube link into FastDM | While it reads the video, the bottom bar counts seconds ("Reading video info… 12 s"), then the quality picker opens. |
+| Preferences → Advanced → turn on **Enable logging**, add a YouTube link, then **Open log folder** | The newest log has a line like `yt-dlp info: 14.2 s, exit 0, js runtime quickjs, cookies off`. Send me this line if the wait is long. |
+| Drop a Facebook reel link that ends with `/` | The video picker opens (not the "Download Folder" window). If it fails, the message shows the real yt-dlp error: send me that text. |
+| Drop an Instagram reel link that ends with `/` | Same as above. |
+| Drop a plain folder link such as `https://server/movies/` | Still opens the "Download Folder" window. |
+
 ## 4. Package the extension
 
 ```powershell

@@ -3004,6 +3004,14 @@ namespace FastDM
 
             foreach (var u in urls)
             {
+                // Sites handled by yt-dlp go first. A Facebook or Instagram reel link ends with "/" and used to be
+                // taken for a folder, and the folder check also wasted a web request on every YouTube link.
+                if (YtDlpSites.IsSupported(u))
+                {
+                    ytItems.Add(u);
+                    continue;
+                }
+
                 try
                 {
                     using var cts =
@@ -3022,12 +3030,6 @@ namespace FastDM
                     }
                 }
                 catch { }
-
-                if (YtDlpSites.IsSupported(u))
-                {
-                    ytItems.Add(u);
-                    continue;
-                }
 
                 if (Engine.IsHttp(u))
                 {
@@ -3370,6 +3372,19 @@ namespace FastDM
 
             UseWaitCursor = true;
 
+            var readWatch = Stopwatch.StartNew();
+
+            using var readTick =
+                new System.Windows.Forms.Timer { Interval = 1000 };
+
+            readTick.Tick += (s, e) =>
+                lblActive.Text =
+                    "Reading video info\u2026 " +
+                    (int)readWatch.Elapsed.TotalSeconds +
+                    " s";
+
+            readTick.Start();
+
             YtInfo info;
 
             try
@@ -3415,6 +3430,7 @@ namespace FastDM
             }
             finally
             {
+                readTick.Stop();
                 UseWaitCursor = false;
             }
 
