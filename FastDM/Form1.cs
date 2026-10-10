@@ -1160,7 +1160,15 @@ namespace FastDM
             lv.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Delete)
+                {
                     RemoveSelected();
+                }
+                else if (e.Control && e.KeyCode == Keys.A)
+                {
+                    SelectAllRows();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
             };
 
             lv.DragEnter += OnDragEnter;
@@ -1869,6 +1877,9 @@ namespace FastDM
             }
         }
 
+        // Id of the download that was just added: the next list rebuild selects it, so the details panel shows it.
+        string? selectNewId;
+
         void RebuildList()
         {
             var selected =
@@ -1912,6 +1923,27 @@ namespace FastDM
             }
 
             lv.EndUpdate();
+
+            if (selectNewId != null)
+            {
+                string id = selectNewId;
+                selectNewId = null;
+
+                var target =
+                    lv.Items
+                      .Cast<ListViewItem>()
+                      .FirstOrDefault(l => l.Tag is DownloadItem d && d.Id == id);
+
+                if (target != null)
+                {
+                    foreach (ListViewItem l in lv.SelectedItems.Cast<ListViewItem>().ToList())
+                        l.Selected = false;
+
+                    target.Selected = true;
+                    target.Focused = true;
+                    target.EnsureVisible();
+                }
+            }
 
             UpdateSideCounts();
             sidebar.Invalidate();
@@ -2047,6 +2079,21 @@ namespace FastDM
                        "s";
 
             return t.Seconds + "s";
+        }
+
+        void SelectAllRows()
+        {
+            lv.BeginUpdate();
+
+            try
+            {
+                foreach (ListViewItem l in lv.Items)
+                    l.Selected = true;
+            }
+            finally
+            {
+                lv.EndUpdate();
+            }
         }
 
         List<DownloadItem> Sel() =>
@@ -3150,6 +3197,7 @@ namespace FastDM
                         : DlState.Paused;
 
                 items.Add(it);
+                selectNewId = it.Id;
                 addedCount++;
             }
 
@@ -3328,6 +3376,7 @@ namespace FastDM
             };
 
             items.Add(it);
+            selectNewId = it.Id;
             MarkChanged();
             SaveState();
         }
@@ -3473,6 +3522,7 @@ namespace FastDM
             };
 
             items.Add(it);
+            selectNewId = it.Id;
 
             MarkChanged();
             SaveState();
@@ -3520,6 +3570,7 @@ namespace FastDM
                     : DlState.Paused;
 
             items.Add(it);
+            selectNewId = it.Id;
 
             MarkChanged();
             SaveState();
@@ -3577,6 +3628,7 @@ namespace FastDM
                 };
 
                 items.Add(it);
+                selectNewId = it.Id;
 
                 localPaths.Add(
                     Path.Combine(

@@ -204,6 +204,8 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Drop an Instagram reel link that ends with `/` | Same as above. |
 | Drop a plain folder link such as `https://server/movies/` | Still opens the "Download Folder" window. |
 | Switch to the **Light** theme, open Settings and click each item in the left menu (Traffic Limits and the others) | The selected item's text stays white and readable (it used to turn dark on the dark menu). |
+| Click in the download list and press **Ctrl+A** | Every row becomes selected. **Delete** then offers to remove all of them. |
+| Add a new download (link, folder or video) | The new download is selected and the bottom panel shows its details, without clicking. |
 
 ## 4. Package the extension
 
