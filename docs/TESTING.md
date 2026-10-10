@@ -203,6 +203,7 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Drop a Facebook reel link that ends with `/` | The video picker opens (not the "Download Folder" window). If it fails, the message shows the real yt-dlp error: send me that text. |
 | Drop an Instagram reel link that ends with `/` | Same as above. |
 | Drop a plain folder link such as `https://server/movies/` | Still opens the "Download Folder" window. |
+| Switch to the **Light** theme, open Settings and click each item in the left menu (Traffic Limits and the others) | The selected item's text stays white and readable (it used to turn dark on the dark menu). |
 
 ## 4. Package the extension
 

@@ -171,7 +171,7 @@ namespace FastDM
                 nav.Items[e.Index].ToString(),
                 f,
                 new Rectangle(e.Bounds.X + 18, e.Bounds.Y, e.Bounds.Width - 18, e.Bounds.Height),
-                sel ? Theme.P.Text : Theme.P.SideText,
+                Theme.P.SideText,                      // the menu column is dark in both themes, so its text is always light
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
 
             if (sel)
