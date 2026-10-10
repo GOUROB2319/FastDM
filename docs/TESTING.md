@@ -206,6 +206,11 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Switch to the **Light** theme, open Settings and click each item in the left menu (Traffic Limits and the others) | The selected item's text stays white and readable (it used to turn dark on the dark menu). |
 | Click in the download list and press **Ctrl+A** | Every row becomes selected. **Delete** then offers to remove all of them. |
 | Add a new download (link, folder or video) | The new download is selected and the bottom panel shows its details, without clicking. |
+| Select a download and hover over **Save to** in the bottom panel | The path turns accent-coloured, is underlined and the cursor becomes a hand. |
+| Click **Save to** (finished download) | Explorer opens with the file selected. |
+| Click **Save to** (download still running) | Explorer opens the folder. If the folder does not exist yet, a message says so. |
+| Click **Link** (an https link) | The page opens in the default browser, for example the YouTube video. |
+| Select an FTP or SFTP download | **Link** stays plain text (not clickable). |
 
 ## 4. Package the extension
 

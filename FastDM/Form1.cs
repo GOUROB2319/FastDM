@@ -1186,6 +1186,9 @@ namespace FastDM
                 Visible = settings.ShowDetails
             };
 
+            details.OpenFolderRequested += OpenFolderFromDetails;
+            details.OpenLinkRequested += OpenLinkFromDetails;
+
             // Sidebar
             sidebar = new BufferedListBox
             {
@@ -2845,31 +2848,7 @@ namespace FastDM
             {
                 if (folder)
                 {
-                    string? target =
-                        File.Exists(it.SavePath)
-                            ? it.SavePath
-                            : File.Exists(it.TempPath)
-                                ? it.TempPath
-                                : null;
-
-                    if (target != null)
-                    {
-                        Process.Start(
-                            "explorer.exe",
-                            "/select,\"" +
-                            target +
-                            "\"");
-                    }
-                    else if (
-                        Directory.Exists(
-                            it.Folder))
-                    {
-                        Process.Start(
-                            "explorer.exe",
-                            "\"" +
-                            it.Folder +
-                            "\"");
-                    }
+                    RevealInExplorer(it);
                 }
                 else
                 {
@@ -2898,6 +2877,83 @@ namespace FastDM
                 MessageBox.Show(
                     this,
                     ex.Message);
+            }
+        }
+
+        // Opens Explorer on the downloaded file (or on its folder when the file is not there yet).
+        // Returns false when there is nothing to open.
+        static bool RevealInExplorer(DownloadItem it)
+        {
+            string? target =
+                File.Exists(it.SavePath)
+                    ? it.SavePath
+                    : File.Exists(it.TempPath)
+                        ? it.TempPath
+                        : null;
+
+            if (target != null)
+            {
+                Process.Start(
+                    "explorer.exe",
+                    "/select,\"" + target + "\"");
+
+                return true;
+            }
+
+            if (!string.IsNullOrEmpty(it.Folder) && Directory.Exists(it.Folder))
+            {
+                Process.Start(
+                    "explorer.exe",
+                    "\"" + it.Folder + "\"");
+
+                return true;
+            }
+
+            return false;
+        }
+
+        // Click on "Save to" in the details panel
+        void OpenFolderFromDetails(DownloadItem it)
+        {
+            try
+            {
+                if (!RevealInExplorer(it))
+                {
+                    MessageBox.Show(
+                        this,
+                        "This folder does not exist (yet):\n" + it.Folder,
+                        "FastDM");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message);
+            }
+        }
+
+        // Click on "Link" in the details panel: open the page in the default browser (web links only)
+        void OpenLinkFromDetails(DownloadItem it)
+        {
+            string url =
+                PlaylistBuilder.StripCredentials(
+                    it.YtDlp?.Url ?? it.Url ?? "");
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var u) ||
+                (u.Scheme != Uri.UriSchemeHttp &&
+                 u.Scheme != Uri.UriSchemeHttps))
+                return;
+
+            try
+            {
+                Process.Start(
+                    new ProcessStartInfo(u.AbsoluteUri)
+                    {
+                        UseShellExecute = true
+                    });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message);
             }
         }
 
