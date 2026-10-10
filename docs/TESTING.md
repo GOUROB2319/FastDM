@@ -180,6 +180,20 @@ The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* r
 | Link from the second extension without pairing it | Rejected (401). Only the paired ID can send links. |
 | Preferences → Browser Integration → Forget paired browsers | Every browser needs to Connect again. |
 
+## 3h. Saved list recovery (state.json)
+
+Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type that, Enter). Close FastDM before editing files there.
+
+| Check | Expected |
+| --- | --- |
+| Normal restart | The list and settings are unchanged. No warning. After FastDM has saved once (add a download, or close the app) you see `state.json` and `state.json.bak`. |
+| Open `state.json` in Notepad, type junk at the end, save, start FastDM | A warning says the list was **restored from the latest automatic backup**. The list is back. A file `state.json.damaged-<time>` exists and still contains your junk. |
+| Delete `state.json.bak` and `state.json.bak2`, damage `state.json` again, start FastDM | A warning says it **started with an empty list**. `state.json.damaged-<time>` still holds the old list, so nothing is lost (you can copy it back). |
+| Make `state.json` empty (0 bytes), start FastDM | Same warning as above. |
+| Damage `state.json` several more times | Only the 5 newest `state.json.damaged-*` files are kept. |
+| Put `"SchemaVersion": 99,` as the first line inside the `{ }` of `state.json`, start FastDM | A warning says the settings come from a newer version; `state.json.from-v99` is created once; FastDM still works. |
+| Add a download, wait more than 15 minutes with FastDM open | `state.json.bak` becomes newer and the previous one becomes `state.json.bak2`. |
+
 ## 4. Package the extension
 
 ```powershell

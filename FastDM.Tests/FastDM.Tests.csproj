@@ -24,6 +24,7 @@
 		<Compile Include="..\FastDM\Bridge\BridgeServer.cs" Link="Linked\BridgeServer.cs" />
 		<Compile Include="..\FastDM\Bridge\BridgeModels.cs" Link="Linked\BridgeModels.cs" />
 		<Compile Include="..\FastDM\Bridge\ProtocolHandler.cs" Link="Linked\ProtocolHandler.cs" />
+		<Compile Include="..\FastDM\StateStore.cs" Link="Linked\StateStore.cs" />
 	</ItemGroup>
 
 </Project>

@@ -276,6 +276,7 @@ namespace FastDM
 
     public class AppData
     {
+        public int SchemaVersion { get; set; }          // 0 = saved before versions existed; see StateStore.CurrentSchema
         public AppSettings Settings { get; set; } = new AppSettings();
         public List<DownloadItem> Items { get; set; } = new List<DownloadItem>();
     }
@@ -1074,6 +1075,7 @@ namespace FastDM
                 if (Program.StartMinimized)
                     HideToTray(false);
             };
+            Shown += (s, e) => ShowStartupNotice();
 
             Shown += (s, e) =>
             {
@@ -5120,10 +5122,35 @@ namespace FastDM
         }
 
         // ---------- সেভ / লোড ----------
+        // Set by LoadState when state.json was damaged or newer: shown once after the window opens.
+        string? startupNotice;
+
+        // True when a damaged state.json could not be set aside: saving would destroy it, so we do not save.
+        bool stateWriteBlocked;
+
+        void ShowStartupNotice()
+        {
+            if (string.IsNullOrEmpty(startupNotice))
+                return;
+
+            string text = startupNotice;
+            startupNotice = null;
+
+            MessageBox.Show(
+                this,
+                text,
+                "FastDM",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
         void SaveState()
         {
             lastSave =
                 DateTime.UtcNow;
+
+            if (stateWriteBlocked)
+                return;
 
             try
             {
@@ -5134,6 +5161,8 @@ namespace FastDM
                     JsonSerializer.Serialize(
                         new AppData
                         {
+                            SchemaVersion =
+                                StateStore.CurrentSchema,
                             Settings =
                                 settings,
                             Items =
@@ -5144,35 +5173,63 @@ namespace FastDM
                             WriteIndented = true
                         });
 
-                string tmp =
-                    DataFile + ".tmp";
-
-                File.WriteAllText(
-                    tmp,
-                    json);
-
-                File.Move(
-                    tmp,
+                StateStore.Write(
                     DataFile,
-                    true);
+                    json);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLog.Write(
+                    "Could not save state: " +
+                    ex.Message);
+            }
         }
 
         void LoadState()
         {
+            AppData? data = null;
+
             try
             {
-                if (!File.Exists(DataFile))
-                    return;
+                var read =
+                    StateStore.Read<AppData>(
+                        DataFile,
+                        text => JsonSerializer.Deserialize<AppData>(text));
 
-                var data =
-                    JsonSerializer.Deserialize<AppData>(
-                        File.ReadAllText(
-                            DataFile));
+                data = read.Data;
 
-                if (data == null)
-                    return;
+                if (read.Notice != null)
+                    startupNotice = read.Notice;
+
+                if (read.KeepBlocked)
+                    stateWriteBlocked = true;
+            }
+            catch { }
+
+            if (data == null)
+                return;
+
+            try
+            {
+                // Saved by a newer FastDM: keep an untouched copy, this version may drop settings it does not know.
+                if (data.SchemaVersion > StateStore.CurrentSchema)
+                {
+                    string? kept =
+                        StateStore.KeepNewerCopy(
+                            DataFile,
+                            data.SchemaVersion);
+
+                    startupNotice =
+                        (startupNotice == null ? "" : startupNotice + "\n\n") +
+                        "Your saved settings come from a newer version of FastDM. This version may not know all of them. " +
+                        "Please update FastDM." +
+                        (kept == null ? "" : "\n\nAn untouched copy was kept here:\n" + kept);
+                }
+
+                // Layout changes between versions go here, one step at a time.
+                // v0 (no SchemaVersion) -> v1: same layout, nothing to convert.
+                if (data.SchemaVersion < StateStore.CurrentSchema)
+                    data.SchemaVersion = StateStore.CurrentSchema;
 
                 if (data.Settings != null)
                     settings =
