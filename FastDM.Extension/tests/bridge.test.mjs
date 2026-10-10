@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 
 // ---- chrome API-র নকল ----
 const store = {};
@@ -32,6 +33,20 @@ globalThis.chrome = {
 
 const bridge = await import('../src/background/bridge.js');
 const { CONN, PORTS } = await import('../src/shared/protocol.js');
+// Windows (Hyper-V, WSL, Docker) can reserve some ports; binding them fails with EACCES.
+// So the fake app only uses ports of PORTS that this PC really lets us listen on.
+const canBind = (port) => new Promise((resolve) => {
+  const s = net.createServer();
+  s.once('error', () => resolve(false));
+  s.listen(port, '127.0.0.1', () => s.close(() => resolve(true)));
+});
+const freePorts = [];
+for (const p of PORTS) if (await canBind(p)) freePorts.push(p);
+assert.ok(freePorts.length > 0,
+  `None of ports ${PORTS.join(', ')} can be used on this PC. Close FastDM, or check reserved ports with: netsh interface ipv4 show excludedportrange protocol=tcp`);
+const firstPort = freePorts[0];
+const lastPort = freePorts[freePorts.length - 1];     // differs from firstPort when 2+ ports are free: exercises the port search
+
 const menus = await import('../src/background/menus.js');
 const cookies = await import('../src/background/cookies.js');
 
@@ -92,13 +107,13 @@ test('অ্যাপ বন্ধ থাকলে NOT_RUNNING', async () => {
 
 test('পেয়ারের আগে NOT_PAIRED, পেয়ারের পর CONNECTED, লিঙ্ক অ্যাপে পৌঁছায়', async () => {
   reset();
-  const app = fakeApp(PORTS[2]);          // মাঝের একটা পোর্টে চালু: ডিসকভারি পরীক্ষা
+  const app = fakeApp(lastPort);           // শেষের খালি পোর্টে চালু: ডিসকভারি পরীক্ষা
   await app.start();
   try {
     assert.equal((await bridge.getStatus()).state, CONN.NOT_PAIRED);
     assert.equal(await bridge.pair(), true);
     assert.ok(store.token, 'টোকেন সেভ হওয়া উচিত');
-    assert.equal(store.port, PORTS[2]);
+    assert.equal(store.port, lastPort);
     assert.equal((await bridge.getStatus()).state, CONN.CONNECTED);
 
     const r = await bridge.sendLink('https://example.com/a.zip', { title: 'T' });
@@ -114,7 +129,7 @@ test('পেয়ারের আগে NOT_PAIRED, পেয়ারের �
 
 test('পেয়ারিং ছাড়া sendLink needsPairing দেয়', async () => {
   reset();
-  const app = fakeApp(PORTS[0]);
+  const app = fakeApp(firstPort);
   await app.start();
   try {
     assert.deepEqual(await bridge.sendLink('https://example.com/x'), { needsPairing: true });
@@ -133,7 +148,7 @@ test('অ্যাপ বন্ধ থাকলে fastdm:// ফলব্যা�
 
 test('অ্যাপ টোকেন বাতিল করলে টোকেন মুছে যায়, needsPairing', async () => {
   reset();
-  const app = fakeApp(PORTS[0]);
+  const app = fakeApp(firstPort);
   await app.start();
   try {
     await bridge.pair();
@@ -145,7 +160,7 @@ test('অ্যাপ টোকেন বাতিল করলে টোকে�
 
 test('পেয়ারিং প্রত্যাখ্যান/ব্যস্ততার কোড ঠিকমতো আসে', async () => {
   reset();
-  const app = fakeApp(PORTS[0]);
+  const app = fakeApp(firstPort);
   await app.start();
   try {
     app.setPairMode('deny');
@@ -160,7 +175,7 @@ test('পেয়ারিং প্রত্যাখ্যান/ব্যস
 
 test('Phase 2: mode, referer, userAgent, cookies অ্যাপের কাছে পৌঁছায়', async () => {
   reset();
-  const app = fakeApp(PORTS[0]);
+  const app = fakeApp(firstPort);
   await app.start();
   try {
     await bridge.pair();
