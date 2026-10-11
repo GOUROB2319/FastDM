@@ -214,6 +214,22 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Make the window narrower and wider (also try Windows scaling 125% and 150%) | Every toolbar button stays on one row, including **Updates**. When space runs out, the least used buttons (Open File, Open Folder, Details, Schedule, When done…) lose their text and show only the icon; hovering shows the name. |
 | Change the mode (Low / Medium / High) | The toolbar re-fits; nothing jumps into the overflow menu. |
 
+### Importing a list of links (text file)
+
+| Check | Expected |
+| --- | --- |
+| Add URL -> **Open text file...** and pick a .txt with about 10 YouTube links (some with `&list=...`), 2 folder links and a few lines of comments (`# ...`) | The **Import links** window opens. Comments and blank lines are skipped. Each line shows its type. YouTube links with a playlist part are listed as one video with a note. |
+| Same file, but add a `youtube.com/playlist?...` line and a line of plain text | Both are listed greyed out and cannot be ticked (playlist / not a link). |
+| Repeat one link twice | The repeat is listed, not ticked, with the note "same link as an earlier line". |
+| Pick quality **Up to 720p** and press **Start downloading** | One download per ticked video (never more than the number of lines). They are named after the video title when each one finishes; until then the name looks like `youtube.com dQw4w9WgXcQ.mp4`. The video list is NOT read first, so adding is instant. |
+| A folder link with "Download whole folders automatically" ticked | The folder is scanned (bottom bar shows progress) and every file goes into `<Save to>\<folder name>`, keeping its sub-folders. No window per folder. |
+| Same, with that box unticked | The usual "Download Folder" window opens for each folder. |
+| Pick **Audio only (M4A)** | The downloads become .m4a files. |
+| Drag a .txt file onto the FastDM window | The same Import links window opens. |
+| Paste 3 normal file links (no video sites) in Add URL | Works as before (no import window). |
+| Remove a running title-named download | Its hidden `.fastdm-xxxxxxxx` folder inside the save folder disappears. |
+| Pause a title-named download, then resume it | It continues (the half-finished file is kept in the hidden folder). |
+
 ## 4. Package the extension
 
 ```powershell

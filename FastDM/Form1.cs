@@ -733,6 +733,11 @@ namespace FastDM
         public string FileNameText => txtName.Text.Trim();
         public string Folder => txtFolder.Text.Trim();
 
+        public string RawText => txtUrls.Text;
+
+        // True when the text came from a file: the import window checks every line, so no strict check here.
+        public bool FromFile { get; private set; }
+
         public AddUrlForm(string initialUrl, string folder)
         {
             Text = "Add Download";
@@ -761,6 +766,16 @@ namespace FastDM
             };
 
             Controls.Add(txtUrls);
+
+            var openFile = new Button
+            {
+                Text = "Open text file\u2026",
+                Location = new Point(404, 6),
+                Size = new Size(140, 26)
+            };
+
+            openFile.Click += (s, e) => LoadFromFile();
+            Controls.Add(openFile);
 
             Controls.Add(new Label
             {
@@ -858,6 +873,37 @@ namespace FastDM
             CancelButton = cancel;
         }
 
+        // A text file with one link per line (folders and videos can be mixed).
+        void LoadFromFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Choose a text file with links",
+                Filter = "Text files (*.txt;*.csv;*.m3u;*.m3u8)|*.txt;*.csv;*.m3u;*.m3u8|All files (*.*)|*.*"
+            };
+
+            if (ofd.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                if (new FileInfo(ofd.FileName).Length > 5 * 1024 * 1024)
+                {
+                    MessageBox.Show(this, "This file is too big for a list of links (limit 5 MB).");
+                    return;
+                }
+
+                txtUrls.Text = File.ReadAllText(ofd.FileName);
+                txtUrls.SelectionStart = 0;
+                txtUrls.SelectionLength = 0;
+                FromFile = true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message);
+            }
+        }
+
         bool Check()
         {
             if (Urls.Length == 0)
@@ -869,7 +915,7 @@ namespace FastDM
                 return false;
             }
 
-            foreach (var u in Urls)
+            foreach (var u in FromFile ? Array.Empty<string>() : Urls)
             {
                 if (!Uri.TryCreate(
                         u,
@@ -3165,6 +3211,18 @@ namespace FastDM
             string folder =
                 dlg.Folder;
 
+            // A list from a file, or several links that include video-site links: check them in the import
+            // window first (one picker per video would take forever and could expand playlists).
+            if (dlg.FromFile ||
+                (urls.Length >= 2 && urls.Any(YtDlpSites.IsSupported)))
+            {
+                await StartBatchImportAsync(
+                    dlg.RawText,
+                    folder);
+
+                return;
+            }
+
             await ProcessUrlsAsync(
                 urls,
                 nameText,
@@ -3402,6 +3460,351 @@ namespace FastDM
                     yu,
                     folder,
                     startNow);
+        }
+
+        // Drag-and-drop of a list file
+        async void ImportListFile(string path)
+        {
+            await addGate.WaitAsync();
+
+            try
+            {
+                if (new FileInfo(path).Length > 5 * 1024 * 1024)
+                {
+                    MessageBox.Show(
+                        this,
+                        "This file is too big for a list of links (limit 5 MB).",
+                        "FastDM");
+
+                    return;
+                }
+
+                await StartBatchImportAsync(
+                    File.ReadAllText(path),
+                    settings.DefaultFolder);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "FastDM");
+            }
+            finally
+            {
+                addGate.Release();
+            }
+        }
+
+        // Check the list line by line, show the preview, then add what the user ticked.
+        async Task StartBatchImportAsync(
+            string text,
+            string folder)
+        {
+            var listed =
+                items
+                    .Select(i => i.YtDlp?.Url ?? i.Url ?? "")
+                    .ToList();
+
+            var rows =
+                BatchImport.Parse(
+                    text,
+                    listed);
+
+            if (rows.Count == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "No links were found in this text.",
+                    "FastDM");
+
+                return;
+            }
+
+            using var dlg =
+                new BatchImportForm(
+                    rows,
+                    folder,
+                    settings.MaxBatchUrls);
+
+            Theme.Apply(dlg);
+
+            var result =
+                dlg.ShowDialog(this);
+
+            if (result != DialogResult.OK &&
+                result != DialogResult.Yes)
+                return;
+
+            await AddBatchAsync(
+                dlg.SelectedRows,
+                dlg.Quality,
+                dlg.FoldersAutomatically,
+                dlg.SaveFolder,
+                result == DialogResult.OK);
+        }
+
+        async Task AddBatchAsync(
+            List<BatchRow> chosenRows,
+            BatchQuality quality,
+            bool foldersAutomatically,
+            string folder,
+            bool startNow)
+        {
+            // never more than the limit from Preferences > Downloads
+            int cap = Math.Max(1, settings.MaxBatchUrls);
+            var chosen = chosenRows.Take(cap).ToList();
+            int overCap = chosenRows.Count - chosen.Count;
+
+            int videos = 0;
+            var folderUris = new List<Uri>();
+            var otherUrls = new List<string>();
+
+            foreach (var r in chosen)
+            {
+                if (r.Kind == BatchKind.Video)
+                {
+                    AddBatchVideo(r.Text, quality, folder, startNow);
+                    videos++;
+                }
+                else if (r.Kind == BatchKind.Folder)
+                {
+                    if (Uri.TryCreate(r.Text, UriKind.Absolute, out var fu))
+                        folderUris.Add(fu);
+                }
+                else if (r.Kind == BatchKind.File)
+                {
+                    otherUrls.Add(r.Text);
+                }
+            }
+
+            MarkChanged();
+            SaveState();
+
+            // files and other links: the normal path (size, name, duplicates)
+            int before = items.Count;
+
+            if (otherUrls.Count > 0)
+            {
+                await ProcessUrlsAsync(
+                    otherUrls.ToArray(),
+                    "",
+                    folder,
+                    startNow,
+                    new RequestContext());
+            }
+
+            int others = items.Count - before;
+
+            // folders
+            int folderFiles = 0;
+            int folderNo = 0;
+
+            foreach (var fu in folderUris)
+            {
+                folderNo++;
+
+                if (foldersAutomatically)
+                {
+                    lblActive.Text =
+                        "Folder " + folderNo + " of " + folderUris.Count + "...";
+
+                    folderFiles +=
+                        await AddFolderAllAsync(
+                            fu,
+                            folder,
+                            startNow);
+                }
+                else
+                {
+                    AddFolder(
+                        fu,
+                        startNow);
+                }
+            }
+
+            MarkChanged();
+            SaveState();
+
+            var parts = new List<string>();
+            if (videos > 0) parts.Add(videos + (videos == 1 ? " video" : " videos"));
+            if (folderFiles > 0) parts.Add(folderFiles + (folderFiles == 1 ? " file from folders" : " files from folders"));
+            if (others > 0) parts.Add(others + (others == 1 ? " other file" : " other files"));
+
+            string text =
+                parts.Count > 0
+                    ? "Added: " + string.Join(", ", parts) + "."
+                    : "Nothing was added.";
+
+            if (overCap > 0)
+                text += " " + overCap + " more were left out (limit " + cap + ").";
+
+            lblActive.Text = text;
+        }
+
+        // A video in a batch: no lookup first. The file is named after the title when it is downloaded.
+        void AddBatchVideo(
+            string url,
+            BatchQuality quality,
+            string folder,
+            bool startNow)
+        {
+            string label = "video";
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out var u))
+            {
+                string host =
+                    u.Host.StartsWith("www.")
+                        ? u.Host.Substring(4)
+                        : u.Host;
+
+                string tail =
+                    BatchImport.YouTubeId(u) ??
+                    u.AbsolutePath.Trim('/').Split('/').LastOrDefault() ??
+                    "";
+
+                label = host + (tail.Length > 0 ? " " + tail : "");
+            }
+
+            string ext =
+                quality.AudioOnly
+                    ? "." + quality.AudioFormat
+                    : ".mp4";
+
+            var it = new DownloadItem
+            {
+                Url = url,
+                Folder = folder,
+                FileName = Engine.Sanitize(label) + ext,
+                YtDlp = new YtDlpSpec
+                {
+                    Url = url,
+                    Format = quality.Format,
+                    AudioOnly = quality.AudioOnly,
+                    AudioFormat = quality.AudioFormat,
+                    NameFromTitle = true
+                },
+                State =
+                    startNow
+                        ? DlState.Queued
+                        : DlState.Paused
+            };
+
+            items.Add(it);
+            selectNewId = it.Id;
+        }
+
+        // A whole folder, without the tree window: every file goes into <folder>\<name of the remote folder>.
+        // Returns how many files were added.
+        async Task<int> AddFolderAllAsync(
+            Uri uri,
+            string baseFolder,
+            bool startNow)
+        {
+            RemoteNode? root = null;
+
+            while (root == null)
+            {
+                try
+                {
+                    lblActive.Text = "Scanning " + uri.Host + "...";
+
+                    using var cts =
+                        new CancellationTokenSource(
+                            TimeSpan.FromMinutes(10));
+
+                    root =
+                        await RemoteLister.ScanAsync(
+                            uri,
+                            new Progress<int>(n =>
+                                lblActive.Text =
+                                    "Scanning " + uri.Host + "... " + n + " file(s) found"),
+                            cts.Token);
+                }
+                catch (AuthRequiredException)
+                {
+                    if (!CredentialForm.Prompt(this, uri))
+                        return 0;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        this,
+                        "Could not scan this folder:\n" + uri + "\n\n" +
+                        ex.GetBaseException().Message,
+                        "FastDM",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+
+                    return 0;
+                }
+            }
+
+            string leaf =
+                Uri.UnescapeDataString(uri.AbsolutePath)
+                   .TrimEnd('/');
+
+            leaf = leaf.Substring(leaf.LastIndexOf('/') + 1);
+
+            if (leaf.Length == 0)
+                leaf = uri.Host;
+
+            string target =
+                Path.Combine(
+                    baseFolder,
+                    SafeFolderName(leaf));
+
+            int count = 0;
+            AddFolderNode(root, target, startNow, ref count);
+
+            return count;
+        }
+
+        static string SafeFolderName(string name)
+        {
+            string s = Engine.Sanitize(name).TrimEnd('.', ' ');
+            return s.Length == 0 ? "_" : s;
+        }
+
+        void AddFolderNode(
+            RemoteNode node,
+            string dir,
+            bool startNow,
+            ref int count)
+        {
+            foreach (var c in node.Children)
+            {
+                if (c.IsDir)
+                {
+                    AddFolderNode(
+                        c,
+                        Path.Combine(dir, SafeFolderName(c.Name)),
+                        startNow,
+                        ref count);
+
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(c.Url))
+                    continue;
+
+                var it = new DownloadItem
+                {
+                    Url = c.Url,
+                    Folder = dir,
+                    FileName =
+                        UniqueName(
+                            dir,
+                            Engine.Sanitize(c.Name)),
+                    TotalBytes = c.Size,
+                    NeedsProbe = Engine.IsHttp(c.Url),
+                    State =
+                        startNow
+                            ? DlState.Queued
+                            : DlState.Paused
+                };
+
+                items.Add(it);
+                selectNewId = it.Id;
+                count++;
+            }
         }
 
         async Task AddMediaAsync(
@@ -5290,13 +5693,29 @@ namespace FastDM
         }
 
         // ---------- ড্র্যাগ-ড্রপ + ক্লিপবোর্ড ----------
+        // A single dropped .txt / .csv / .m3u / .m3u8 file is a list of links.
+        static string? DroppedListFile(DragEventArgs e)
+        {
+            if (e.Data?.GetData(DataFormats.FileDrop) is string[] files &&
+                files.Length == 1)
+            {
+                string ext = Path.GetExtension(files[0]).ToLowerInvariant();
+
+                if (ext == ".txt" || ext == ".csv" || ext == ".m3u" || ext == ".m3u8")
+                    return files[0];
+            }
+
+            return null;
+        }
+
         void OnDragEnter(
             object? s,
             DragEventArgs e)
         {
             e.Effect =
-                e.Data.GetDataPresent(
-                    DataFormats.Text)
+                e.Data != null &&
+                (e.Data.GetDataPresent(DataFormats.Text) ||
+                 DroppedListFile(e) != null)
                     ? DragDropEffects.Copy
                     : DragDropEffects.None;
         }
@@ -5305,6 +5724,14 @@ namespace FastDM
             object? s,
             DragEventArgs e)
         {
+            string? listFile = DroppedListFile(e);
+
+            if (listFile != null)
+            {
+                ImportListFile(listFile);
+                return;
+            }
+
             if (e.Data?.GetData(
                     DataFormats.Text)
                 is string t)
