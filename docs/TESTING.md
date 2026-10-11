@@ -211,6 +211,8 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Click **Save to** (download still running) | Explorer opens the folder. If the folder does not exist yet, a message says so. |
 | Click **Link** (an https link) | The page opens in the default browser, for example the YouTube video. |
 | Select an FTP or SFTP download | **Link** stays plain text (not clickable). |
+| Make the window narrower and wider (also try Windows scaling 125% and 150%) | Every toolbar button stays on one row, including **Updates**. When space runs out, the least used buttons (Open File, Open Folder, Details, Schedule, When done…) lose their text and show only the icon; hovering shows the name. |
+| Change the mode (Low / Medium / High) | The toolbar re-fits; nothing jumps into the overflow menu. |
 
 ## 4. Package the extension
 

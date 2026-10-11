@@ -1068,6 +1068,7 @@ namespace FastDM
 
             Shown += (s, e) => FitLastColumn();
             Shown += (s, e) => ApplyCompactView();
+            Shown += (s, e) => FitToolbar();
 
             // Windows চালু হওয়ার সময় নিজে থেকে শুরু হলে ট্রে-তে চুপচাপ থাকে
             Shown += (s, e) =>
@@ -1446,6 +1447,111 @@ namespace FastDM
 
             b.Click += h;
             return b;
+        }
+
+        // ---------- toolbar: every button stays on one row ----------
+        System.Windows.Forms.Timer? toolbarFitTimer;
+
+        // Waits a moment so dragging the window edge does not re-measure on every pixel.
+        void RequestToolbarFit()
+        {
+            if (toolbarFitTimer == null)
+            {
+                toolbarFitTimer =
+                    new System.Windows.Forms.Timer { Interval = 60 };
+
+                toolbarFitTimer.Tick += (s, e) =>
+                {
+                    toolbarFitTimer?.Stop();
+                    FitToolbar();
+                };
+            }
+
+            toolbarFitTimer.Stop();
+            toolbarFitTimer.Start();
+        }
+
+        bool ToolbarOverflows() =>
+            tools.Items
+                 .Cast<ToolStripItem>()
+                 .Any(i => i.Placement == ToolStripItemPlacement.Overflow);
+
+        // Buttons that lose their text first (icon only, the name stays in the tooltip). Menu, Add URL,
+        // Settings and Updates always keep their text.
+        List<ToolStripItem> ToolbarCollapseOrder()
+        {
+            ToolStripItem? ByTip(string tip) =>
+                tools.Items
+                     .Cast<ToolStripItem>()
+                     .FirstOrDefault(i => i.ToolTipText == tip);
+
+            var wanted = new List<ToolStripItem?>
+            {
+                ByTip("Open File"), ByTip("Open Folder"), ByTip("Details"), ByTip("Schedule"),
+                doneMenu, ByTip("Pause All"), ByTip("Remove"), modeMenu, ByTip("Resume"), ByTip("Pause")
+            };
+
+            return wanted.Where(i => i != null).Select(i => i!).ToList();
+        }
+
+        // 1) normal spacing  2) tighter spacing  3) icon only for the least used buttons, one by one,
+        // until nothing is pushed into the "»" overflow menu.
+        void FitToolbar()
+        {
+            if (tools == null || !tools.IsHandleCreated)
+                return;
+
+            var all = tools.Items.Cast<ToolStripItem>().ToList();
+            var order = ToolbarCollapseOrder();
+
+            tools.SuspendLayout();
+
+            foreach (var i in all)
+            {
+                if (i is ToolStripSeparator)
+                    continue;
+
+                i.Padding = new Padding(4);
+            }
+
+            foreach (var i in order)
+            {
+                i.DisplayStyle =
+                    Icons.Available
+                        ? ToolStripItemDisplayStyle.ImageAndText
+                        : ToolStripItemDisplayStyle.Text;
+            }
+
+            tools.ResumeLayout(true);
+            tools.PerformLayout();
+
+            if (ToolbarOverflows())
+            {
+                foreach (var i in all)
+                {
+                    if (i is ToolStripSeparator)
+                        continue;
+
+                    i.Padding = new Padding(2, 4, 2, 4);
+                }
+
+                tools.PerformLayout();
+            }
+
+            if (!Icons.Available)
+                return;
+
+            foreach (var i in order)
+            {
+                if (!ToolbarOverflows())
+                    break;
+
+                if (string.IsNullOrEmpty(i.ToolTipText) || i is ToolStripDropDownButton)
+                    i.ToolTipText = i.Text;
+
+                i.DisplayStyle = ToolStripItemDisplayStyle.Image;
+                tools.PerformLayout();
+            }
         }
 
         void RefreshToolIcons()
@@ -4305,9 +4411,13 @@ namespace FastDM
         void UpdateModeButton()
         {
             if (modeMenu != null)
+            {
                 modeMenu.Text =
                     "Mode: " +
                     settings.ActiveMode;
+
+                RequestToolbarFit();
+            }
         }
 
         void SetTrafficMode(
@@ -4551,6 +4661,7 @@ namespace FastDM
             object? sender,
             EventArgs e)
         {
+            RequestToolbarFit();
             FitLastColumn();
 
             if (tray != null &&
@@ -4704,6 +4815,7 @@ namespace FastDM
             {
                 timer?.Stop();
                 navTimer?.Stop();
+                toolbarFitTimer?.Stop();
             }
             catch { }
 
