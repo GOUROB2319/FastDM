@@ -21,6 +21,7 @@ namespace FastDM
         public string AudioFormat { get; set; } = "m4a";   // m4a | mp3
         public string? BaseName { get; set; }               // এক্সটেনশন ছাড়া ফাইলের নাম
         public long EstimatedBytes { get; set; }
+        public bool NameFromTitle { get; set; }             // true: the file is named after the video title (used by batch imports); BaseName is not needed
     }
 
     // ====================== টুল খুঁজে বের করা ======================
@@ -352,7 +353,7 @@ namespace FastDM
     // ====================== ডাউনলোড ইঞ্জিন ======================
     public static class YtDlpEngine
     {
-        static readonly Regex Intermediate = new Regex(@"\.f\d+(\.|$)|\.part$|\.ytdl$|\.temp$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static Regex Intermediate => YtDlpOutput.Intermediate;
 
         static long ParseNum(string s)
         {
@@ -367,8 +368,13 @@ namespace FastDM
             if (exe == null) throw new FileNotFoundException("yt-dlp.exe was not found. Put it in the Tools folder.");
             Directory.CreateDirectory(it.Folder);
 
+            bool fromTitle = spec.NameFromTitle;
+            string itemDir = Path.Combine(it.Folder, YtDlpOutput.ItemDirName(it.Id));
+
             string baseName = !string.IsNullOrEmpty(spec.BaseName) ? spec.BaseName : Path.GetFileNameWithoutExtension(it.FileName);
-            string template = Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
+            string template = fromTitle
+                ? "%(title).150B.%(ext)s"
+                : Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
 
             var args = YtDlpRunner.CommonArgs();
             args.AddRange(new[]
@@ -380,6 +386,15 @@ namespace FastDM
                 "-f", spec.Format ?? "bv*+ba/b",
                 "-o", template
             });
+
+            // Named after the title: yt-dlp works in a private folder for this download (so partial files can
+            // resume and never mix with other downloads); FastDM moves the finished file out afterwards.
+            if (fromTitle)
+            {
+                Directory.CreateDirectory(itemDir);
+                try { File.SetAttributes(itemDir, File.GetAttributes(itemDir) | FileAttributes.Hidden); } catch { }
+                args.AddRange(new[] { "-P", itemDir, "--windows-filenames" });
+            }
 
             if (spec.AudioOnly)
             {
@@ -442,7 +457,22 @@ namespace FastDM
             if (code != 0)
                 throw new InvalidOperationException(lastError ?? YtDlpRunner.ExtractError(errTail.ToString()));
 
-            string? found = FindOutput(it.Folder, baseName);
+            string? found;
+            if (fromTitle)
+            {
+                string? made = YtDlpOutput.FindFinal(itemDir);
+                found = made == null ? null : YtDlpOutput.MoveToUnique(made, it.Folder);
+
+                if (found != null)
+                {
+                    try { Directory.Delete(itemDir, true); } catch { }
+                }
+            }
+            else
+            {
+                found = FindOutput(it.Folder, baseName);
+            }
+
             if (found == null) throw new FileNotFoundException("The download finished but the output file was not found.");
 
             it.FileName = Path.GetFileName(found);
@@ -468,6 +498,14 @@ namespace FastDM
         public static void Cleanup(DownloadItem it)
         {
             if (it.YtDlp == null || string.IsNullOrEmpty(it.Folder)) return;
+
+            try
+            {
+                string privateDir = Path.Combine(it.Folder, YtDlpOutput.ItemDirName(it.Id));
+                if (Directory.Exists(privateDir)) Directory.Delete(privateDir, true);
+            }
+            catch { }
+
             try
             {
                 string baseName = !string.IsNullOrEmpty(it.YtDlp.BaseName)
