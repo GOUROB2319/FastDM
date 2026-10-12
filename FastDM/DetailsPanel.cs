@@ -137,7 +137,7 @@ namespace FastDM
             string etaText = Eta(it);
             var rows = new System.Collections.Generic.List<string[]>
             {
-                new[] { "Status", it.State == DlState.Completed ? "Complete" : it.State.ToString() },
+                new[] { "Status", it.DeletedAt.HasValue ? "Deleted: " + (it.DeletedReason ?? "") : it.State == DlState.Completed ? "Complete" : it.State.ToString() },
                 new[] { "Size", size },
                 new[] { "Speed", it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "—" },
                 new[] { "ETA", etaText.Length > 0 ? etaText : "—" },

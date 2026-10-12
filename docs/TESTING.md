@@ -230,6 +230,24 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Remove a running title-named download | Its hidden `.fastdm-xxxxxxxx` folder inside the save folder disappears. |
 | Pause a title-named download, then resume it | It continues (the half-finished file is kept in the hidden folder). |
 
+### Deleted list
+
+| Check | Expected |
+| --- | --- |
+| Look at the left menu | A new **Deleted** entry sits under Errors, with a count. |
+| Remove a finished download and choose **Yes** (list only) | It leaves All Downloads and appears under **Deleted** with the reason "Removed from the list". The count goes up. |
+| Remove a finished download and choose **No** (also delete the file) | It appears under Deleted as "Removed, file deleted from disk"; the file is gone from the disk. |
+| Remove a download that is still running | It appears under Deleted as "Removed before it finished". |
+| Delete a finished file in Windows Explorer, wait up to 30 seconds | The download leaves the list by itself and appears under Deleted as "File deleted from disk". |
+| Eject a USB drive that holds finished downloads, wait a minute | Those downloads stay in the list (an unplugged drive is not "deleted"). Plug it back in and all is as before. |
+| Open **Deleted** | The last column is called **Deleted** and shows when. The bottom panel's Status says "Deleted: ...". Resume / Pause do nothing here. |
+| Right-click in **Deleted** | The menu offers Open Folder, Copy URL, **Download again**, **Remove from history**, **Clear history**. |
+| **Download again** (menu, or double-click) | After a question, a fresh download starts from the same link and folder, and the entry leaves Deleted. |
+| Press **Delete**, or the toolbar **Remove**, in Deleted | It asks to remove the entries from the history; files on the disk are not touched. **Clear history** empties the list. |
+| Press **Ctrl+A** in Deleted | Every entry is selected. |
+| Close and start FastDM again | The Deleted list is still there. |
+| Update from the previous version | Preferences > Downloads shows "Move downloads whose file was deleted from the disk to the Deleted list" already ticked. |
+
 ## 4. Package the extension
 
 ```powershell

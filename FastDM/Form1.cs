@@ -58,7 +58,7 @@ namespace FastDM
         public bool SuggestByType { get; set; } = false;       // ডিফল্ট ফোল্ডারের ভেতরে ফাইলের ধরন অনুযায়ী সাবফোল্ডার (Video, Music…)
         public bool SuggestByHost { get; set; } = false;       // ...এবং সাইটের নাম অনুযায়ী সাবফোল্ডার
         public bool CompactView { get; set; } = false;         // ডাউনলোড লিস্টে ছোট সারি
-        public bool AutoRemoveMissing { get; set; } = false;   // ডিস্ক থেকে মুছে ফেলা ফাইল লিস্ট থেকেও সরাও
+        public bool AutoRemoveMissing { get; set; } = true;    // ডিস্ক থেকে মুছে ফেলা ফাইল লিস্ট থেকেও সরাও
         public bool AutoRemoveCompleted { get; set; } = false; // শেষ হলেই লিস্ট থেকে সরাও (ফাইল থাকে)
         public bool AutoRetry { get; set; } = true;            // ব্যর্থ ডাউনলোড নিজে আবার চেষ্টা
         public int MaxRetries { get; set; } = 3;
@@ -216,6 +216,8 @@ namespace FastDM
         public DlState State { get; set; }
         public string? Error { get; set; }
         public DateTime Added { get; set; } = DateTime.Now;
+        public DateTime? DeletedAt { get; set; }         // set when the download moved to the Deleted list
+        public string? DeletedReason { get; set; }       // why: removed from the list / file deleted from disk ...
         public List<Segment> Segments { get; set; } = new List<Segment>();
 
         long _downloaded;
@@ -279,6 +281,7 @@ namespace FastDM
         public int SchemaVersion { get; set; }          // 0 = saved before versions existed; see StateStore.CurrentSchema
         public AppSettings Settings { get; set; } = new AppSettings();
         public List<DownloadItem> Items { get; set; } = new List<DownloadItem>();
+        public List<DownloadItem> Deleted { get; set; } = new List<DownloadItem>();      // history shown under "Deleted"
     }
 
     // ====================== ডাউনলোড ইঞ্জিন ======================
@@ -978,7 +981,8 @@ namespace FastDM
             "Downloading",
             "Queued / Paused",
             "Completed",
-            "Errors"
+            "Errors",
+            "Deleted"
         };
 
         static readonly string[] FileExts =
@@ -1018,7 +1022,7 @@ namespace FastDM
 
         const int SidebarWidth = 200;
 
-        readonly int[] sideCounts = new int[5];
+        readonly int[] sideCounts = new int[6];
 
         ToolStripStatusLabel lblSched = null!;
 
@@ -1679,6 +1683,38 @@ namespace FastDM
                 null,
                 (s, e) => RemoveSelected());
 
+            // only in the Deleted list
+            m.Items.Add("Download again", null, (s, e) => DownloadAgain());
+            m.Items.Add("Remove from history", null, (s, e) => RemoveSelected());
+            m.Items.Add("Clear history", null, (s, e) => ClearHistory());
+
+            m.Opening += (s, e) =>
+            {
+                bool inDeleted = filter == DeletedFilter;
+
+                foreach (ToolStripItem i in m.Items)
+                {
+                    string text = i.Text ?? "";
+
+                    bool deletedOnly =
+                        text == "Download again" ||
+                        text == "Remove from history" ||
+                        text == "Clear history";
+
+                    bool liveOnly =
+                        text == "Resume" ||
+                        text == "Pause" ||
+                        text.StartsWith("Start now") ||
+                        text == "Open File" ||
+                        text == "Remove";
+
+                    if (deletedOnly)
+                        i.Visible = inDeleted;
+                    else if (liveOnly)
+                        i.Visible = !inDeleted;
+                }
+            };
+
             return m;
         }
 
@@ -1835,7 +1871,7 @@ namespace FastDM
                     SmoothingMode.AntiAlias;
 
                 using (var b = new SolidBrush(
-                    StateColor(it.State)))
+                    RowColor(it)))
                 {
                     g.FillEllipse(
                         b,
@@ -1897,7 +1933,7 @@ namespace FastDM
                                RoundRect(fill, 8))
                         using (var b =
                                new SolidBrush(
-                                   StateColor(it.State)))
+                                   RowColor(it)))
                         {
                             g.FillPath(b, gp);
                         }
@@ -1986,6 +2022,9 @@ namespace FastDM
             return p;
         }
 
+        static Color RowColor(DownloadItem it) =>
+            it.DeletedAt.HasValue ? Gray : StateColor(it.State);
+
         static Color StateColor(DlState s)
         {
             switch (s)
@@ -2035,6 +2074,128 @@ namespace FastDM
         // Id of the download that was just added: the next list rebuild selects it, so the details panel shows it.
         string? selectNewId;
 
+        // What the user removed, newest first. Shown under "Deleted" in the sidebar, kept in state.json.
+        readonly List<DownloadItem> deleted = new List<DownloadItem>();
+        const int DeletedFilter = 5;
+        const int MaxDeletedHistory = 500;
+
+        IEnumerable<DownloadItem> VisibleItems() =>
+            filter == DeletedFilter
+                ? deleted.OrderByDescending(i => i.DeletedAt ?? i.Added)
+                : items.Where(i => Match(filter, i)).OrderByDescending(i => i.Added);
+
+        // Keeps a copy of a download that is leaving the list, with the time and the reason.
+        void RecordDeleted(DownloadItem it, string reason)
+        {
+            var rec = new DownloadItem
+            {
+                Url = it.Url,
+                FileName = it.FileName,
+                Folder = it.Folder,
+                Referer = it.Referer,
+                UserAgent = it.UserAgent,
+                ContentType = it.ContentType,
+                TotalBytes = it.TotalBytes,
+                SupportsRange = it.SupportsRange,
+                Stream = it.Stream,
+                YtDlp = it.YtDlp,
+                Added = it.Added,
+                State = it.State == DlState.Downloading ? DlState.Paused : it.State,
+                Error = it.Error,
+                DeletedAt = DateTime.Now,
+                DeletedReason = reason
+            };
+
+            rec.Downloaded = it.Downloaded;
+
+            deleted.Insert(0, rec);
+
+            while (deleted.Count > MaxDeletedHistory)
+                deleted.RemoveAt(deleted.Count - 1);
+        }
+
+        // "Download again" in the Deleted list: a fresh download from the same link, folder and options.
+        void DownloadAgain()
+        {
+            var sel = Sel().Where(i => i.DeletedAt.HasValue && !string.IsNullOrEmpty(i.Url)).ToList();
+
+            if (sel.Count == 0)
+                return;
+
+            if (MessageBox.Show(
+                    this,
+                    "Download " + sel.Count + " item(s) again?",
+                    "Deleted",
+                    MessageBoxButtons.OKCancel,
+                    MessageBoxIcon.Question) != DialogResult.OK)
+                return;
+
+            foreach (var d in sel)
+            {
+                var it = new DownloadItem
+                {
+                    Url = d.Url,
+                    Folder = d.Folder,
+                    FileName = d.FileName,
+                    Referer = d.Referer,
+                    UserAgent = d.UserAgent,
+                    ContentType = d.ContentType,
+                    TotalBytes = d.TotalBytes,
+                    SupportsRange = d.SupportsRange,
+                    Stream = d.Stream,
+                    YtDlp = d.YtDlp,
+                    NeedsProbe = Engine.IsHttp(d.Url) && d.TotalBytes <= 0,
+                    State = DlState.Queued
+                };
+
+                deleted.Remove(d);
+                items.Add(it);
+                selectNewId = it.Id;
+            }
+
+            MarkChanged();
+            SaveState();
+
+            lblActive.Text = sel.Count + " download(s) added again.";
+        }
+
+        void RemoveFromHistory(List<DownloadItem> sel)
+        {
+            if (MessageBox.Show(
+                    this,
+                    "Remove " + sel.Count + (sel.Count == 1 ? " entry" : " entries") +
+                    " from the Deleted list?\n\nFiles on your disk are not touched.",
+                    "Deleted",
+                    MessageBoxButtons.OKCancel,
+                    MessageBoxIcon.Question) != DialogResult.OK)
+                return;
+
+            foreach (var d in sel)
+                deleted.Remove(d);
+
+            MarkChanged();
+            SaveState();
+        }
+
+        void ClearHistory()
+        {
+            if (deleted.Count == 0)
+                return;
+
+            if (MessageBox.Show(
+                    this,
+                    "Clear the whole Deleted list (" + deleted.Count + " entries)?\n\nFiles on your disk are not touched.",
+                    "Deleted",
+                    MessageBoxButtons.OKCancel,
+                    MessageBoxIcon.Question) != DialogResult.OK)
+                return;
+
+            deleted.Clear();
+
+            MarkChanged();
+            SaveState();
+        }
+
         void RebuildList()
         {
             var selected =
@@ -2047,11 +2208,12 @@ namespace FastDM
 
             lv.BeginUpdate();
 
+            if (lv.Columns.Count > 6)
+                lv.Columns[6].Text = filter == DeletedFilter ? "Deleted" : "Added";
+
             lv.Items.Clear();
 
-            foreach (var it in items
-                .Where(i => Match(filter, i))
-                .OrderByDescending(i => i.Added))
+            foreach (var it in VisibleItems())
             {
                 var lvi =
                     new ListViewItem(
@@ -2113,10 +2275,40 @@ namespace FastDM
                 l.SubItems[idx].Text = text;
         }
 
+        static void FillDeletedRow(
+            ListViewItem l,
+            DownloadItem it)
+        {
+            SetIf(l, 0, it.FileName ?? "");
+
+            SetIf(
+                l,
+                1,
+                it.TotalBytes > 0
+                    ? Fmt(it.TotalBytes)
+                    : it.Downloaded > 0
+                        ? Fmt(it.Downloaded)
+                        : "\u2014");
+
+            SetIf(l, 2, it.Percent.ToString("0.0") + "%");
+            SetIf(l, 3, it.DeletedReason ?? "Deleted");
+            SetIf(l, 4, "");
+            SetIf(l, 5, "");
+            SetIf(l, 6, (it.DeletedAt ?? it.Added).ToString("dd MMM HH:mm"));
+
+            l.ToolTipText = it.Url;
+        }
+
         void FillRow(
             ListViewItem l,
             DownloadItem it)
         {
+            if (it.DeletedAt.HasValue)
+            {
+                FillDeletedRow(l, it);
+                return;
+            }
+
             SetIf(
                 l,
                 0,
@@ -2787,21 +2979,24 @@ namespace FastDM
                     .Where(i =>
                         i.State ==
                             DlState.Completed &&
-                        !string.IsNullOrEmpty(i.Folder) &&
-                        !string.IsNullOrEmpty(i.FileName) &&
-                        !File.Exists(i.SavePath))
+                        FileCheck.IsDeleted(
+                            i.Folder,
+                            i.FileName))
                     .ToList();
 
             if (gone.Count == 0)
                 return;
 
             foreach (var g in gone)
+            {
+                RecordDeleted(g, "File deleted from disk");
                 items.Remove(g);
+            }
 
             AppLog.Write(
-                "Removed " +
+                "Moved " +
                 gone.Count +
-                " missing file(s) from the list");
+                " missing file(s) to the Deleted list");
 
             MarkChanged();
             SaveState();
@@ -2809,6 +3004,9 @@ namespace FastDM
 
         void ResumeSelected()
         {
+            if (filter == DeletedFilter)
+                return;
+
             foreach (var it in Sel())
             {
                 if (it.State ==
@@ -2826,6 +3024,9 @@ namespace FastDM
 
         void PauseSelected()
         {
+            if (filter == DeletedFilter)
+                return;
+
             foreach (var it in Sel())
             {
                 if (it.State ==
@@ -2890,6 +3091,13 @@ namespace FastDM
             if (sel.Count == 0)
                 return;
 
+            // in the Deleted list, Remove forgets the history entries
+            if (filter == DeletedFilter)
+            {
+                RemoveFromHistory(sel);
+                return;
+            }
+
             bool deleteDone = false;
 
             // Preferences → Advanced → Delete button action
@@ -2944,6 +3152,12 @@ namespace FastDM
             {
                 it.RemoveRequested = true;
                 it.DeleteFile = deleteDone;
+
+                RecordDeleted(
+                    it,
+                    it.State == DlState.Completed
+                        ? (deleteDone ? "Removed, file deleted from disk" : "Removed from the list")
+                        : "Removed before it finished");
 
                 items.Remove(it);
 
@@ -3004,6 +3218,16 @@ namespace FastDM
                 }
                 else
                 {
+                    if (it.DeletedAt.HasValue &&
+                        !File.Exists(it.SavePath))
+                    {
+                        MessageBox.Show(
+                            this,
+                            "This file was deleted from the disk.");
+
+                        return;
+                    }
+
                     if (it.State !=
                             DlState.Completed ||
                         !File.Exists(
@@ -3117,6 +3341,12 @@ namespace FastDM
                 return;
 
             var it = sel[0];
+
+            if (it.DeletedAt.HasValue)
+            {
+                DownloadAgain();
+                return;
+            }
 
             if (it.State ==
                 DlState.Completed)
@@ -4494,6 +4724,9 @@ namespace FastDM
 
         void StartNowSelected()
         {
+            if (filter == DeletedFilter)
+                return;
+
             foreach (var it in Sel())
             {
                 if (it.State ==
@@ -5142,8 +5375,10 @@ namespace FastDM
                 int idx = i;
 
                 sideCounts[i] =
-                    items.Count(
-                        x => Match(idx, x));
+                    idx == DeletedFilter
+                        ? deleted.Count
+                        : items.Count(
+                            x => Match(idx, x));
             }
         }
 
@@ -5829,7 +6064,9 @@ namespace FastDM
                             Settings =
                                 settings,
                             Items =
-                                items.ToList()
+                                items.ToList(),
+                            Deleted =
+                                deleted.ToList()
                         },
                         new JsonSerializerOptions
                         {
@@ -5891,12 +6128,29 @@ namespace FastDM
 
                 // Layout changes between versions go here, one step at a time.
                 // v0 (no SchemaVersion) -> v1: same layout, nothing to convert.
+                // v1 -> v2: files deleted from the disk now move to the Deleted list by themselves
+                bool upgradeToV2 = data.SchemaVersion < 2;
+
                 if (data.SchemaVersion < StateStore.CurrentSchema)
                     data.SchemaVersion = StateStore.CurrentSchema;
 
                 if (data.Settings != null)
                     settings =
                         data.Settings;
+
+                if (upgradeToV2)
+                    settings.AutoRemoveMissing = true;
+
+                foreach (var d in data.Deleted ?? new List<DownloadItem>())
+                {
+                    if (!d.DeletedAt.HasValue)
+                        d.DeletedAt = d.Added;
+
+                    if (d.State == DlState.Downloading)
+                        d.State = DlState.Paused;
+
+                    deleted.Add(d);
+                }
 
                 // পুরোনো একক গতি/কানেকশন সেটিং → High মোডে (আগের আচরণ হুবহু থাকে)
                 if (!settings.TrafficMigrated)

@@ -427,7 +427,7 @@ namespace FastDM
             Header("Downloads");
 
             Check("Compact view of downloads list", s.CompactView, v => s.CompactView = v);
-            Check("Automatically remove deleted files from download list", s.AutoRemoveMissing, v => s.AutoRemoveMissing = v);
+            Check("Move downloads whose file was deleted from the disk to the Deleted list", s.AutoRemoveMissing, v => s.AutoRemoveMissing = v);
             Check("Automatically remove completed downloads from download list", s.AutoRemoveCompleted, v => s.AutoRemoveCompleted = v);
 
             var retry = Check("Automatically retry failed downloads", s.AutoRetry, v => s.AutoRetry = v);

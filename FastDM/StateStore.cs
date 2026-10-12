@@ -23,7 +23,7 @@ namespace FastDM
     // Nothing here knows about WinForms, so the logic can be tested on its own.
     public static class StateStore
     {
-        public const int CurrentSchema = 1;
+        public const int CurrentSchema = 2;
         public const int KeepDamagedCopies = 5;
         public static readonly TimeSpan BackupEvery = TimeSpan.FromMinutes(15);
 
