@@ -45,7 +45,7 @@ namespace FastDM
         public string? Eta { get; set; }
     }
 
-    // অ্যাপের যে অংশ bridge-কে সেবা দেয় (Form1 এটা বাস্তবায়ন করে)
+    // অ্যাপের যে অংশ bridge-কে সেবা দেয় (MainForm এটা বাস্তবায়ন করে)
     public interface IBridgeHost
     {
         AppSettings BridgeSettings { get; }

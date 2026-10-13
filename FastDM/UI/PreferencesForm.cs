@@ -8,8 +8,8 @@ using System.Windows.Forms;
 
 namespace FastDM
 {
-    // FDM-à¦¸à§à¦Ÿà¦¾à¦‡à¦² Preferences: à¦¬à¦¾à¦®à§‡ à¦¬à¦¿à¦­à¦¾à¦—à§‡à¦° à¦¤à¦¾à¦²à¦¿à¦•à¦¾, à¦¡à¦¾à¦¨à§‡ à¦¸à§à¦•à§à¦°à¦² à¦•à¦°à¦¾ à¦¸à§‡à¦•à¦¶à¦¨à¥¤
-    // à¦¶à§à¦§à§ à¦¸à§‡à¦‡ à¦¸à§‡à¦Ÿà¦¿à¦‚à¦‡ à¦†à¦›à§‡ à¦¯à¦¾ à¦…à§à¦¯à¦¾à¦ªà§‡ à¦¸à¦¤à§à¦¯à¦¿à¦‡ à¦•à¦¾à¦œ à¦•à¦°à§‡ (à¦•à§‹à¦¨à§‹ à¦«à¦¾à¦à¦•à¦¾ à¦•à¦¨à§à¦Ÿà§à¦°à§‹à¦² à¦¨à§‡à¦‡)à¥¤
+    // FDM-স্টাইল Preferences: বামে বিভাগের তালিকা, ডানে স্ক্রল করা সেকশন।
+    // শুধু সেই সেটিংই আছে যা অ্যাপে সত্যিই কাজ করে (কোনো ফাঁকা কন্ট্রোল নেই)।
     class PreferencesForm : Form
     {
         readonly AppSettings s;
@@ -27,17 +27,20 @@ namespace FastDM
 
         const int RowWidth = 640;
 
-        // à¦«à¦¿à¦²à§à¦¡ à¦­à§à¦¯à¦¾à¦²à¦¿à¦¡à§‡à¦¶à¦¨à§‡à¦° à¦œà¦¨à§à¦¯
+        // ফিল্ড ভ্যালিডেশনের জন্য
         // Assigned by the Build* methods called from the constructor before events can run.
         TextBox txtFolder = null!;
-        CheckBox chkAvAuto = null!, chkRunApp = null!;
+        TextBox txtCookieFile = null!;
+        CheckBox chkAvAuto = null!, chkRunApp = null!, chkStartup = null!;
         TextBox txtAvPath = null!, txtAvArgs = null!, txtAppPath = null!, txtAppArgs = null!;
         ComboBox cmbAv = null!;
-        Label lblNet = null!;
+        Label lblNet = null!, lblStartup = null!;
+        readonly string? startSection;
 
-        public PreferencesForm(AppSettings settings)
+        public PreferencesForm(AppSettings settings, string? startSection = null)
         {
             s = settings;
+            this.startSection = startSection;
 
             Text = "Preferences";
             StartPosition = FormStartPosition.CenterParent;
@@ -48,8 +51,8 @@ namespace FastDM
             ClientSize = new Size(900, 640);
             MinimumSize = new Size(780, 520);
 
-            // ---- à¦¨à¦¿à¦šà§‡à¦° à¦¬à¦¾à¦Ÿà¦¨ à¦¬à¦¾à¦° ----
-            // à¦¡à¦¾à¦¨ à¦¦à¦¿à¦• à¦¥à§‡à¦•à§‡ à¦¸à¦¾à¦œà¦¾à¦¨à§‹: à¦ªà§à¦°à¦¥à¦® à¦¯à§‹à¦— à¦•à¦°à¦¾ (Cancel) à¦¸à¦¬à¦šà§‡à¦¯à¦¼à§‡ à¦¡à¦¾à¦¨à§‡, à¦°à¦¿à¦¸à¦¾à¦‡à¦œà§‡à¦“ à¦œà¦¾à¦¯à¦¼à¦—à¦¾ à¦ à¦¿à¦• à¦¥à¦¾à¦•à§‡
+            // ---- নিচের বাটন বার ----
+            // ডান দিক থেকে সাজানো: প্রথম যোগ করা (Cancel) সবচেয়ে ডানে, রিসাইজেও জায়গা ঠিক থাকে
             var bar = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
@@ -69,7 +72,7 @@ namespace FastDM
             AcceptButton = btnSave;
             CancelButton = btnCancel;
 
-            // ---- à¦¬à¦¾à¦® à¦¨à§‡à¦­à¦¿à¦—à§‡à¦¶à¦¨ ----
+            // ---- বাম নেভিগেশন ----
             nav = new ListBox
             {
                 Dock = DockStyle.Left,
@@ -83,7 +86,7 @@ namespace FastDM
             nav.DrawItem += DrawNavItem;
             nav.SelectedIndexChanged += OnNavChanged;
 
-            // ---- à¦¡à¦¾à¦¨ à¦•à¦¨à¦Ÿà§‡à¦¨à§à¦Ÿ ----
+            // ---- ডান কনটেন্ট ----
             content = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(28, 0, 0, 24) };
 
             flow = new FlowLayoutPanel
@@ -105,6 +108,7 @@ namespace FastDM
             BuildDownloads();
             BuildBrowser();
             BuildNetwork();
+            BuildTraffic();
             BuildAntivirus();
             BuildNotifications();
             BuildAdvanced();
@@ -119,11 +123,23 @@ namespace FastDM
             Shown += (a, b) =>
             {
                 Restyle();
-                nav.SelectedIndex = 0;
+                nav.SelectedIndex = Math.Max(0, SectionIndex(startSection));
+                RefreshStartupAsync();
             };
         }
 
-        // Theme.Apply à¦¸à¦¬ à¦²à§‡à¦¬à§‡à¦²à§‡à¦° à¦°à¦‚ à¦à¦• à¦•à¦°à§‡ à¦¦à§‡à¦¯à¦¼, à¦¤à¦¾à¦‡ à¦¹à¦¾à¦²à¦•à¦¾ à¦²à§‡à¦–à¦¾ à¦†à¦° à¦¦à¦¾à¦—à§‡à¦° à¦°à¦‚ à¦à¦–à¦¾à¦¨à§‡ à¦†à¦¬à¦¾à¦° à¦¬à¦¸à¦¾à¦‡
+        int SectionIndex(string? name)
+        {
+            if (name == null) return 0;
+
+            for (int i = 0; i < sectionHeaders.Count; i++)
+                if (string.Equals((string)sectionHeaders[i].Tag, name, StringComparison.OrdinalIgnoreCase))
+                    return i;
+
+            return 0;
+        }
+
+        // Theme.Apply সব লেবেলের রং এক করে দেয়, তাই হালকা লেখা আর দাগের রং এখানে আবার বসাই
         void Restyle()
         {
             foreach (var l in muted) l.ForeColor = Theme.P.SubText;
@@ -133,7 +149,7 @@ namespace FastDM
             nav.Invalidate();
         }
 
-        // ================= à¦¨à§‡à¦­à¦¿à¦—à§‡à¦¶à¦¨ =================
+        // ================= নেভিগেশন =================
         void DrawNavItem(object? sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
@@ -156,7 +172,7 @@ namespace FastDM
                 nav.Items[e.Index].ToString(),
                 f,
                 new Rectangle(e.Bounds.X + 18, e.Bounds.Y, e.Bounds.Width - 18, e.Bounds.Height),
-                sel ? Theme.P.Text : Theme.P.SideText,
+                Theme.P.SideText,                      // the menu column is dark in both themes, so its text is always light
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
 
             if (sel)
@@ -183,7 +199,7 @@ namespace FastDM
                 if (pt.Y <= 60) idx = i;
             }
 
-            // à¦¸à§à¦•à§à¦°à¦² à¦à¦•à¦¦à¦® à¦¨à¦¿à¦šà§‡ à¦ªà§Œà¦à¦›à¦¾à¦²à§‡ à¦¶à§‡à¦· à¦¬à¦¿à¦­à¦¾à¦—
+            // স্ক্রল একদম নিচে পৌঁছালে শেষ বিভাগ
             if (content.VerticalScroll.Value + content.VerticalScroll.LargeChange >= content.VerticalScroll.Maximum)
                 idx = sectionHeaders.Count - 1;
 
@@ -195,7 +211,7 @@ namespace FastDM
             }
         }
 
-        // ================= à¦¨à¦¿à¦°à§à¦®à¦¾à¦£-à¦¸à¦¹à¦¾à¦¯à¦¼à¦• =================
+        // ================= নির্মাণ-সহায়ক =================
         Label Header(string title)
         {
             var l = new Label
@@ -279,7 +295,7 @@ namespace FastDM
             return n;
         }
 
-        // à¦°à§‡à¦¡à¦¿à¦“ à¦—à§à¦°à§à¦ª: à¦¨à¦¿à¦œà¦¸à§à¦¬ à¦ªà§à¦¯à¦¾à¦¨à§‡à¦²à§‡, à¦¯à¦¾à¦¤à§‡ à¦†à¦²à¦¾à¦¦à¦¾ à¦—à§à¦°à§à¦ª à¦®à¦¿à¦¶à§‡ à¦¨à¦¾ à¦¯à¦¾à¦¯à¦¼
+        // রেডিও গ্রুপ: নিজস্ব প্যানেলে, যাতে আলাদা গ্রুপ মিশে না যায়
         void Radios(string[] labels, int selected, Action<int> set)
         {
             var box = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 0, 4) };
@@ -296,12 +312,12 @@ namespace FastDM
             flow.Controls.Add(box);
         }
 
-        // à¦ªà¦¾à¦¥ à¦¬à¦¾à¦›à¦¾à¦‡à¦¯à¦¼à§‡à¦° à¦¸à¦¾à¦°à¦¿: [à¦Ÿà§‡à¦•à§à¦¸à¦Ÿà¦¬à¦•à§à¦¸][...]
+        // পাথ বাছাইয়ের সারি: [টেক্সটবক্স][...]
         TextBox PathRow(string value, bool folder, string? filter)
         {
             var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 2, 0, 4) };
             var txt = new TextBox { Width = 500, Text = value ?? "" };
-            var btn = new Button { Text = "Browseâ€¦", Width = 100, Height = 28 };
+            var btn = new Button { Text = "Browse…", Width = 100, Height = 28 };
 
             btn.Click += (a, b) =>
             {
@@ -342,7 +358,7 @@ namespace FastDM
             return b;
         }
 
-        // ================= à§§) General =================
+        // ================= ১) General =================
         void BuildGeneral()
         {
             Header("General");
@@ -358,9 +374,13 @@ namespace FastDM
             Sub("Default download folder");
             txtFolder = PathRow(s.DefaultFolder, true, null);
 
-            Check("Suggest folders based on file type (Video, Music, Documentsâ€¦)", s.SuggestByType, v => s.SuggestByType = v);
+            Check("Suggest folders based on file type (Video, Music, Documents…)", s.SuggestByType, v => s.SuggestByType = v);
             Check("Suggest folders based on download URL (site name)", s.SuggestByHost, v => s.SuggestByHost = v);
             Hint("Sub-folders are added only when you save into the default folder above. A folder you pick yourself is never changed.");
+
+            Sub("Startup");
+            chkStartup = Check("Launch at startup (minimized)", s.LaunchAtStartup, v => s.LaunchAtStartup = v);
+            lblStartup = Hint("");
 
             Sub("Window");
             Check("Minimize to the system tray", s.MinimizeToTray, v => s.MinimizeToTray = v);
@@ -370,13 +390,45 @@ namespace FastDM
             Check("Check for updates on startup (portable version)", s.CheckUpdatesOnStart, v => s.CheckUpdatesOnStart = v);
         }
 
-        // ================= à§¨) Downloads =================
+        // Windows-এ আসলে চালু আছে কি না দেখে চেকবক্স মেলায়
+        async void RefreshStartupAsync()
+        {
+            try
+            {
+                var st = await StartupManager.GetAsync();
+
+                if (IsDisposed) return;
+
+                chkStartup.Checked = st == StartupState.On;
+
+                switch (st)
+                {
+                    case StartupState.DisabledByUser:
+                        lblStartup.Text = "Turned off in Windows. Open Task Manager → Startup apps and enable FastDM first.";
+                        break;
+                    case StartupState.DisabledByPolicy:
+                        lblStartup.Text = "Blocked by your organization's policy.";
+                        chkStartup.Enabled = false;
+                        break;
+                    case StartupState.Unavailable:
+                        lblStartup.Text = "Not available in this build.";
+                        chkStartup.Enabled = false;
+                        break;
+                    default:
+                        lblStartup.Text = "";
+                        break;
+                }
+            }
+            catch { }
+        }
+
+        // ================= ২) Downloads =================
         void BuildDownloads()
         {
             Header("Downloads");
 
             Check("Compact view of downloads list", s.CompactView, v => s.CompactView = v);
-            Check("Automatically remove deleted files from download list", s.AutoRemoveMissing, v => s.AutoRemoveMissing = v);
+            Check("Move downloads whose file was deleted from the disk to the Deleted list", s.AutoRemoveMissing, v => s.AutoRemoveMissing = v);
             Check("Automatically remove completed downloads from download list", s.AutoRemoveCompleted, v => s.AutoRemoveCompleted = v);
 
             var retry = Check("Automatically retry failed downloads", s.AutoRetry, v => s.AutoRetry = v);
@@ -391,20 +443,19 @@ namespace FastDM
             Num("Maximum urls count in batch download", 1, 1000, s.MaxBatchUrls, v => s.MaxBatchUrls = v);
         }
 
-        // ================= à§©) Browser Integration =================
+        // ================= ৩) Browser Integration =================
         void BuildBrowser()
         {
             Header("Browser Integration");
 
             Hint("Install the FastDM extension in Chrome or Edge, open its Settings and press Connect. " +
-                 "Then right-click any link: FastDM â†’ Download / Open / Create playlist.");
+                 "Then right-click any link: FastDM → Download / Open / Create playlist.");
 
             Check("Allow the browser extension to connect", s.BridgeEnabled, v => s.BridgeEnabled = v);
 
             ActionButton("Forget paired browsers", 200, (a, b) =>
             {
-                lock (s.BridgeTokens)
-                    s.BridgeTokens.Clear();
+                BridgeAuth.ForgetAll(s);
 
                 MessageBox.Show(
                     this,
@@ -413,14 +464,14 @@ namespace FastDM
             });
         }
 
-        // ================= à§ª) Network =================
+        // ================= ৪) Network =================
         void BuildNetwork()
         {
             Header("Network");
 
             lblNet = Hint(NetSummary());
 
-            ActionButton("Proxy and speed limitâ€¦", 240, (a, b) =>
+            ActionButton("Proxy…", 240, (a, b) =>
             {
                 using var nf = new NetworkForm(s);
                 Theme.Apply(nf);
@@ -428,31 +479,144 @@ namespace FastDM
                 lblNet.Text = NetSummary();
             });
 
-            ActionButton("Schedulerâ€¦", 240, (a, b) =>
+            ActionButton("Scheduler…", 240, (a, b) =>
             {
                 using var sf = new ScheduleForm(s);
                 Theme.Apply(sf);
                 sf.ShowDialog(this);
             });
-
-            Sub("Traffic");
-            Num("Connections per download (1â€“16)", 1, 16, s.Connections, v => s.Connections = v);
-            Num("Simultaneous downloads (1â€“10)", 1, 10, s.MaxSimultaneous, v => s.MaxSimultaneous = v);
         }
 
-        string NetSummary()
+        string NetSummary() =>
+            "Proxy: " +
+            (s.Proxy == ProxyMode.None ? "No proxy"
+             : s.Proxy == ProxyMode.Manual ? "Manual (" + s.ProxyHost + ":" + s.ProxyPort + ")"
+             : "System proxy");
+
+        // ================= ৪খ) Traffic Limits =================
+        void BuildTraffic()
         {
-            string proxy =
-                s.Proxy == ProxyMode.None ? "No proxy"
-                : s.Proxy == ProxyMode.Manual ? "Manual (" + s.ProxyHost + ":" + s.ProxyPort + ")"
-                : "System proxy";
+            Header("Traffic Limits");
 
-            string limit = s.SpeedLimitKBps > 0 ? s.SpeedLimitKBps + " KB/s" : "Unlimited";
+            Sub("Current mode");
 
-            return "Proxy: " + proxy + "      Speed limit: " + limit;
+            var modes = new[] { TrafficMode.Low, TrafficMode.Medium, TrafficMode.High };
+
+            Radios(
+                new[] { "Low", "Medium", "High" },
+                Math.Max(0, Array.IndexOf(modes, s.ActiveMode)),
+                i => s.ActiveMode = modes[i]);
+
+            Hint("You can also switch the mode with the Mode button in the main window toolbar.");
+
+            Sub("Mode limits");
+
+            var table = new TableLayoutPanel
+            {
+                AutoSize = true,
+                ColumnCount = 4,
+                Margin = new Padding(0, 4, 0, 8)
+            };
+
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340));
+            for (int c = 0; c < 3; c++)
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+
+            string[] heads = { "Low", "Medium", "High" };
+
+            table.Controls.Add(new Label { Text = "", AutoSize = true }, 0, 0);
+
+            for (int c = 0; c < 3; c++)
+                table.Controls.Add(new Label
+                {
+                    Text = heads[c],
+                    AutoSize = false,
+                    Width = 100,
+                    Height = 26,
+                    Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                    TextAlign = ContentAlignment.MiddleLeft
+                }, c + 1, 0);
+
+            var rowDefs = new (string Label, int Min, int Max)[]
+            {
+                ("Download speed (KB/s, 0 = unlimited)", 0, 10485760),
+                ("Maximum number of connections", 1, 500),
+                ("Maximum number of connections per server", 1, 16),
+                ("Maximum number of simultaneous downloads", 1, 10)
+            };
+
+            var profiles = new[] { s.ProfileOf(TrafficMode.Low), s.ProfileOf(TrafficMode.Medium), s.ProfileOf(TrafficMode.High) };
+            var nums = new NumericUpDown[4, 3];
+
+            for (int r = 0; r < 4; r++)
+            {
+                table.Controls.Add(new Label
+                {
+                    Text = rowDefs[r].Label,
+                    AutoSize = false,
+                    Width = 330,
+                    Height = 28,
+                    TextAlign = ContentAlignment.MiddleLeft
+                }, 0, r + 1);
+
+                for (int c = 0; c < 3; c++)
+                {
+                    int v = r == 0 ? profiles[c].SpeedKBps
+                          : r == 1 ? profiles[c].MaxConnections
+                          : r == 2 ? profiles[c].PerServer
+                          : profiles[c].Simultaneous;
+
+                    var n = new NumericUpDown
+                    {
+                        Width = 96,
+                        Minimum = rowDefs[r].Min,
+                        Maximum = rowDefs[r].Max,
+                        Value = Math.Clamp(v, rowDefs[r].Min, rowDefs[r].Max)
+                    };
+
+                    nums[r, c] = n;
+                    table.Controls.Add(n, c + 1, r + 1);
+                }
+            }
+
+            flow.Controls.Add(table);
+
+            commit.Add(() =>
+            {
+                var made = new TrafficProfile[3];
+
+                for (int c = 0; c < 3; c++)
+                {
+                    made[c] = new TrafficProfile(
+                        (int)nums[0, c].Value,
+                        (int)nums[1, c].Value,
+                        (int)nums[2, c].Value,
+                        (int)nums[3, c].Value);
+
+                    made[c].Clamp();
+                }
+
+                s.LowProfile = made[0];
+                s.MediumProfile = made[1];
+                s.HighProfile = made[2];
+            });
+
+            Hint("The total number of connections is shared by all downloads. " +
+                 "Limits apply to normal web (HTTP/HTTPS) downloads; FTP, SFTP, streams and yt-dlp are not limited by the connection numbers yet.");
+
+            Sub("Slow downloads");
+
+            var pause = Check("Pause slow downloads and let others go first", s.PauseSlow, v => s.PauseSlow = v);
+            var kb = Num("      Speed does not exceed (KB/s)", 0, 100000, s.PauseSlowKBps, v => s.PauseSlowKBps = v);
+            var mins = Num("      for (minutes)", 1, 240, s.PauseSlowMinutes, v => s.PauseSlowMinutes = v);
+
+            kb.Enabled = mins.Enabled = pause.Checked;
+            pause.CheckedChanged += (a, b) => kb.Enabled = mins.Enabled = pause.Checked;
+
+            Hint("A slow download goes to the back of the queue only when other downloads are waiting.");
         }
 
-        // ================= à§«) Antivirus =================
+        // ================= ৫) Antivirus =================
         void BuildAntivirus()
         {
             Header("Antivirus");
@@ -460,7 +624,7 @@ namespace FastDM
             Sub("Select antivirus");
 
             cmbAv = new ComboBox { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, 0, 0, 6) };
-            cmbAv.Items.AddRange(new object[] { "Windows Defender", "Configure manuallyâ€¦" });
+            cmbAv.Items.AddRange(new object[] { "Windows Defender", "Configure manually…" });
             flow.Controls.Add(cmbAv);
 
             Sub("Path");
@@ -511,7 +675,7 @@ namespace FastDM
             });
         }
 
-        // ================= à§¬) Notifications =================
+        // ================= ৬) Notifications =================
         void BuildNotifications()
         {
             Header("Notifications");
@@ -522,7 +686,7 @@ namespace FastDM
             Hint("Notifications appear only while FastDM is minimized or in the tray.");
         }
 
-        // ================= à§­) Advanced =================
+        // ================= ৭) Advanced =================
         void BuildAdvanced()
         {
             Header("Advanced");
@@ -569,6 +733,24 @@ namespace FastDM
                     MessageBox.Show(this, ex.Message, "FastDM");
                 }
             });
+
+            Sub("Video sites (yt-dlp)");
+            Hint("Use cookies from browser. Needed when YouTube says \"Sign in to confirm you're not a bot\". " +
+                 "Pick the browser where you are logged in to YouTube; yt-dlp reads its cookies on this PC only and FastDM does not save them.");
+
+            var cookieBox = new ComboBox { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, 0, 0, 4) };
+            cookieBox.Items.AddRange(YtDlpCookies.Labels);
+            cookieBox.SelectedIndex = Math.Max(0, Array.IndexOf(YtDlpCookies.Browsers, YtDlpCookies.Normalize(s.YtCookieBrowser)));
+            commit.Add(() => s.YtCookieBrowser = YtDlpCookies.Browsers[Math.Max(0, cookieBox.SelectedIndex)]);
+            flow.Controls.Add(cookieBox);
+
+            Hint("Close the browser completely before downloading. Newer Chrome, Edge and Brave versions block cookie access; " +
+                 "if that happens, choose Firefox or use a cookies.txt file below.");
+
+            Hint("Cookies file (optional, cookies.txt in Netscape format). Export it from a browser extension while you are logged in. " +
+                 "When set, it is used instead of the browser choice above.");
+            txtCookieFile = PathRow(s.YtCookieFile, false, "Cookie files (*.txt)|*.txt|All files (*.*)|*.*");
+            commit.Add(() => s.YtCookieFile = txtCookieFile.Text.Trim());
 
             Sub("Tools");
             var yt = ActionButton("Update yt-dlp", 160, null);
@@ -618,7 +800,7 @@ namespace FastDM
             });
         }
 
-        // ================= à¦¸à§‡à¦­ =================
+        // ================= সেভ =================
         bool ToolOk(bool enabled, TextBox path, TextBox args, string what, int navIndex)
         {
             if (!enabled) return true;
@@ -655,8 +837,8 @@ namespace FastDM
                 return;
             }
 
-            if (!ToolOk(chkAvAuto.Checked, txtAvPath, txtAvArgs, "the antivirus", 4)) return;
-            if (!ToolOk(chkRunApp.Checked, txtAppPath, txtAppArgs, "the external application", 6)) return;
+            if (!ToolOk(chkAvAuto.Checked, txtAvPath, txtAvArgs, "the antivirus", SectionIndex("Antivirus"))) return;
+            if (!ToolOk(chkRunApp.Checked, txtAppPath, txtAppArgs, "the external application", SectionIndex("Advanced"))) return;
 
             s.DefaultFolder = txtFolder.Text.Trim();
 

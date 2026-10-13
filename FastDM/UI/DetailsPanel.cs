@@ -13,6 +13,14 @@ namespace FastDM
 
         DownloadItem? item;
         readonly Font bold;
+        readonly Font underline;
+
+        // "Save to" and "Link" values are clickable. Their areas are set while painting.
+        Rectangle saveRect, linkRect;
+        int hover;                                   // 0 = nothing, 1 = "Save to", 2 = "Link"
+
+        public event Action<DownloadItem>? OpenFolderRequested;
+        public event Action<DownloadItem>? OpenLinkRequested;
 
         public DownloadItem? Item => item;
 
@@ -24,6 +32,7 @@ namespace FastDM
             Height = 212;
             Font = new Font("Segoe UI", 9.5f);
             bold = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+            underline = new Font(Font, FontStyle.Underline);
         }
 
         public void SetItem(DownloadItem? it)
@@ -34,8 +43,54 @@ namespace FastDM
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) bold.Dispose();
+            if (disposing)
+            {
+                bold.Dispose();
+                underline.Dispose();
+            }
             base.Dispose(disposing);
+        }
+
+        static bool IsWebLink(string text) =>
+            Uri.TryCreate(text, UriKind.Absolute, out var u) &&
+            (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
+
+        int HitTest(Point p) =>
+            item == null ? 0 : saveRect.Contains(p) ? 1 : linkRect.Contains(p) ? 2 : 0;
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            int h = HitTest(e.Location);
+            if (h == hover) return;
+
+            hover = h;
+            Cursor = h != 0 ? Cursors.Hand : Cursors.Default;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+
+            if (hover == 0) return;
+
+            hover = 0;
+            Cursor = Cursors.Default;
+            Invalidate();
+        }
+
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            base.OnMouseClick(e);
+
+            var it = item;
+            if (e.Button != MouseButtons.Left || it == null) return;
+
+            int h = HitTest(e.Location);
+            if (h == 1) OpenFolderRequested?.Invoke(it);
+            else if (h == 2) OpenLinkRequested?.Invoke(it);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -82,7 +137,7 @@ namespace FastDM
             string etaText = Eta(it);
             var rows = new System.Collections.Generic.List<string[]>
             {
-                new[] { "Status", it.State == DlState.Completed ? "Complete" : it.State.ToString() },
+                new[] { "Status", it.DeletedAt.HasValue ? "Deleted: " + (it.DeletedReason ?? "") : it.State == DlState.Completed ? "Complete" : it.State.ToString() },
                 new[] { "Size", size },
                 new[] { "Speed", it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "—" },
                 new[] { "ETA", etaText.Length > 0 ? etaText : "—" },
@@ -98,12 +153,34 @@ namespace FastDM
 
             int y = r.Y + 32;
             const int lh = 21;
+
+            saveRect = Rectangle.Empty;
+            linkRect = Rectangle.Empty;
+
             foreach (var row in rows)
             {
                 if (y + lh > r.Bottom) break;
                 TextRenderer.DrawText(g, row[0], Font, new Rectangle(r.X, y, 68, lh), p.SubText, f);
+
+                var valueRect = new Rectangle(r.X + 72, y, r.Width - 72, lh);
+                bool isSave = row[0] == "Save to" && row[1].Length > 0;
+                bool isLink = row[0] == "Link" && IsWebLink(row[1]);
+
                 Color vc = row[0] == "Error" ? Color.FromArgb(255, 92, 119) : p.Text;
-                TextRenderer.DrawText(g, row[1], Font, new Rectangle(r.X + 72, y, r.Width - 72, lh), vc, f);
+                Font vf = Font;
+
+                if (isSave || isLink)
+                {
+                    vc = p.Accent;
+
+                    int textW = TextRenderer.MeasureText(g, row[1], Font, new Size(valueRect.Width, lh), f).Width;
+                    var hit = new Rectangle(valueRect.X, valueRect.Y, Math.Min(valueRect.Width, textW), lh);
+
+                    if (isSave) saveRect = hit; else linkRect = hit;
+                    if (hover == (isSave ? 1 : 2)) vf = underline;
+                }
+
+                TextRenderer.DrawText(g, row[1], vf, valueRect, vc, f);
                 y += lh;
             }
         }

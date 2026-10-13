@@ -9,10 +9,17 @@ after the user approves a pairing request.
 | Path | Purpose |
 | --- | --- |
 | `FastDM/` | WinForms desktop application (`net10.0-windows`) |
+| `FastDM/Core/` | Download models, engine, state storage, scheduler, traffic control, rules, updates |
+| `FastDM/Network/` | Proxy, speed limit, saved credentials, FTP/SFTP transfer |
+| `FastDM/Media/` | HLS/DASH detection and download, playlist (.m3u8) builder |
+| `FastDM/YtDlp/` | yt-dlp process, cookies, site list and output parsing |
+| `FastDM/UI/` | Main window, dialogs, theme and shared controls |
 | `FastDM/Bridge/` | Local extension bridge, pairing, and `fastdm://` protocol handling |
-| `FastDM/assets/` | Desktop app icon assets |
+| `FastDM/Resources/` | Desktop app icon |
 | `FastDM.Package/` | Optional MSIX/Windows package project and its image assets |
 | `FastDM.Extension/` | Chrome/Edge Manifest V3 extension |
+| `FastDM.Tests/` | Dependency-free test runner for the bridge (links the real source files) |
+| `.github/workflows/` | GitHub Actions: CI build and tests |
 | `FastDM.Extension/src/` | Extension source code: background, popup, options, shared code |
 | `FastDM.Extension/tests/` | Node automated tests |
 | `FastDM.Extension/tools/` | Extension packaging script |

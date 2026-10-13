@@ -8,6 +8,10 @@ try {
     dotnet build 'FastDM/FastDM.csproj' -c Debug -p:Platform=x64
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    Write-Host 'Running bridge and protocol tests...'
+    dotnet run --project 'FastDM.Tests' -c Release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     Write-Host 'Running extension tests...'
     Push-Location 'FastDM.Extension'
     try {
@@ -18,7 +22,7 @@ try {
         Pop-Location
     }
 
-    Write-Host 'Core build and extension tests passed.'
+    Write-Host 'Core build, bridge tests and extension tests passed.'
 }
 finally {
     Pop-Location

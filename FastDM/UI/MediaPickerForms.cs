@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace FastDM
 {
-    // ====================== à¦•à§‹à¦¯à¦¼à¦¾à¦²à¦¿à¦Ÿà¦¿ / à¦…à¦¡à¦¿à¦“ à¦¬à¦¾à¦›à¦¾à¦‡ à¦¡à¦¾à¦¯à¦¼à¦¾à¦²à¦— ======================
+    // ====================== কোয়ালিটি / অডিও বাছাই ডায়ালগ ======================
     class MediaPickerForm : Form
     {
         class OptItem
@@ -30,7 +30,7 @@ namespace FastDM
         {
             o = options;
 
-            Text = (o.Kind == "hls" ? "HLS" : "DASH") + " stream â€” choose quality";
+            Text = (o.Kind == "hls" ? "HLS" : "DASH") + " stream — choose quality";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
@@ -59,7 +59,7 @@ namespace FastDM
             Controls.Add(new Label { Text = "Save to", Location = new Point(16, 230), AutoSize = true });
             txtFolder = new TextBox { Location = new Point(16, 252), Width = 436, Text = defaultFolder };
             Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browseâ€¦", Location = new Point(460, 251), Size = new Size(84, 28) };
+            var browse = new Button { Text = "Browse…", Location = new Point(460, 251), Size = new Size(84, 28) };
             browse.Click += (a, b) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
@@ -159,7 +159,7 @@ namespace FastDM
 
             if (o.Kind == "hls")
             {
-                // à¦¶à§à¦§à§ à¦…à¦¡à¦¿à¦“ à¦šà¦¾à¦‡ à¦•à¦¿à¦¨à§à¦¤à§ à¦…à¦¡à¦¿à¦“ à¦­à¦¿à¦¡à¦¿à¦“à¦° à¦­à§‡à¦¤à¦°à§‡à¦‡: à¦¸à¦¬à¦šà§‡à¦¯à¦¼à§‡ à¦•à¦® à¦¬à¦¿à¦Ÿà¦°à§‡à¦Ÿà§‡à¦° à¦­à¦¿à¦¡à¦¿à¦“ à¦¨à¦¾à¦®à¦¿à¦¯à¦¼à§‡ à¦…à¦¡à¦¿à¦“ à¦¬à§‡à¦° à¦•à¦°à¦¾ à¦¹à¦¬à§‡
+                // শুধু অডিও চাই কিন্তু অডিও ভিডিওর ভেতরেই: সবচেয়ে কম বিটরেটের ভিডিও নামিয়ে অডিও বের করা হবে
                 if (audioOnly && a == null)
                     v = o.Videos.OrderBy(x => x.Bandwidth <= 0 ? long.MaxValue : x.Bandwidth).FirstOrDefault() ?? v;
                 spec.VideoUrl = v?.Url;
@@ -181,7 +181,7 @@ namespace FastDM
         }
     }
 
-    // ====================== à¦“à¦¯à¦¼à§‡à¦¬à¦ªà§‡à¦œà§‡ à¦ªà¦¾à¦“à¦¯à¦¼à¦¾ à¦­à¦¿à¦¡à¦¿à¦“ à¦²à¦¿à¦™à§à¦• à¦¥à§‡à¦•à§‡ à¦¬à¦¾à¦›à¦¾à¦‡ ======================
+    // ====================== ওয়েবপেজে পাওয়া ভিডিও লিঙ্ক থেকে বাছাই ======================
     class CandidateForm : Form
     {
         readonly ListBox list;

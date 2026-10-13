@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -37,6 +38,37 @@ namespace FastDM
         HttpListener? listener;
         CancellationTokenSource? cts;
         int pairing;                              // একসাথে একটাই পেয়ারিং অনুরোধ
+
+        // An extension that was refused (or ignored) cannot ask again right away: 60 s, doubling each time, up to 10 min.
+        // This stops an unknown extension from flooding the user with pairing dialogs. Kept in memory only.
+        readonly Dictionary<string, (int Denials, DateTime Until)> denied = new Dictionary<string, (int, DateTime)>();
+
+        bool IsCoolingDown(string key)
+        {
+            lock (denied) return denied.TryGetValue(key, out var d) && DateTime.UtcNow < d.Until;
+        }
+
+        void NoteDenied(string key)
+        {
+            lock (denied)
+            {
+                int n = denied.TryGetValue(key, out var d) ? d.Denials + 1 : 1;
+                double secs = Math.Min(600, 60 * Math.Pow(2, Math.Min(n - 1, 10)));
+                denied[key] = (n, DateTime.UtcNow.AddSeconds(secs));
+
+                if (denied.Count > 100)
+                {
+                    var now = DateTime.UtcNow;
+                    foreach (var k in denied.Where(kv => kv.Value.Until < now).Select(kv => kv.Key).ToList()) denied.Remove(k);
+                    if (denied.Count > 200) denied.Clear();
+                }
+            }
+        }
+
+        void NoteApproved(string key)
+        {
+            lock (denied) denied.Remove(key);
+        }
 
         public int Port { get; private set; }
         public bool Running => listener != null && listener.IsListening;
@@ -122,7 +154,9 @@ namespace FastDM
 
                 string path = req.Url?.AbsolutePath?.TrimEnd('/') ?? string.Empty;
                 string? token = req.Headers["X-FastDM-Token"];
-                bool paired = BridgeAuth.IsValid(host.BridgeSettings, token);
+                var tokenState = BridgeAuth.Evaluate(host.BridgeSettings, token, origin, out bool learned);
+                if (learned) host.SaveSettings();            // older pairing: the extension origin is now remembered
+                bool paired = tokenState == BridgeTokenState.Valid;
 
                 // ৩) রাউটিং
                 if (req.HttpMethod == "GET" && path == "/v1/ping")
@@ -184,6 +218,13 @@ namespace FastDM
 
         async Task HandlePair(HttpListenerResponse res, string origin)
         {
+            string key = BridgeAuth.NormalizeOrigin(origin);
+            if (IsCoolingDown(key))
+            {
+                await Send(res, 403, new { error = "pairing_denied" });      // no dialog: this extension was refused a moment ago
+                return;
+            }
+
             if (Interlocked.CompareExchange(ref pairing, 1, 0) != 0)
             {
                 await Send(res, 429, new { error = "pairing_busy" });
@@ -193,11 +234,12 @@ namespace FastDM
             {
                 var ask = host.AskPairAsync(origin);
                 var done = await Task.WhenAny(ask, Task.Delay(PairTimeout));
-                if (done != ask) { await Send(res, 408, new { error = "pairing_timeout" }); return; }
-                if (!await ask) { await Send(res, 403, new { error = "pairing_denied" }); return; }
+                if (done != ask) { NoteDenied(key); await Send(res, 408, new { error = "pairing_timeout" }); return; }
+                if (!await ask) { NoteDenied(key); await Send(res, 403, new { error = "pairing_denied" }); return; }
 
+                NoteApproved(key);
                 string token = BridgeAuth.NewToken();
-                BridgeAuth.AddToken(host.BridgeSettings, token);
+                BridgeAuth.AddToken(host.BridgeSettings, token, key);
                 host.SaveSettings();
                 await Send(res, 200, new { token });
             }

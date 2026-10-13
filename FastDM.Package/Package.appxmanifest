@@ -4,12 +4,13 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap">
 
 	<Identity
 	  Name="GourobSaha.FastDM"
 	  Publisher="CN=58FEFA1E-D2AC-4137-88CE-8D61C80321B7"
-	  Version="1.0.14.0" />
+	  Version="1.0.13.0" />
 
 	<Properties>
 		<DisplayName>FastDM</DisplayName>
@@ -64,6 +65,10 @@
 						<uap:DisplayName>FastDM</uap:DisplayName>
 					</uap:Protocol>
 				</uap:Extension>
+				<!-- Launch at startup: অ্যাপের Preferences থেকে চালু/বন্ধ হয় (TaskId কোডের StartupManager-এর সাথে মিলতে হবে) -->
+				<desktop:Extension Category="windows.startupTask" Executable="$targetnametoken$.exe" EntryPoint="Windows.FullTrustApplication">
+					<desktop:StartupTask TaskId="FastDMStartup" Enabled="false" DisplayName="FastDM" />
+				</desktop:Extension>
 			</Extensions>
 
 		</Application>

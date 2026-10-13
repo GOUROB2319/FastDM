@@ -3,7 +3,8 @@
 	<PropertyGroup>
 		<Platforms>AnyCPU;x64</Platforms>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net10.0-windows</TargetFramework>
+		<TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+		<SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
 		<Nullable>enable</Nullable>
@@ -12,11 +13,11 @@
 		<Version>1.0.14</Version>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<PublishReadyToRun>true</PublishReadyToRun>
-		<ApplicationIcon>assets\Glossy-3D-Download-App-Icon.ico</ApplicationIcon>
+		<ApplicationIcon>Resources\FastDM.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Content Include="assets\Glossy-3D-Download-App-Icon.ico" />
+	  <Content Include="Resources\FastDM.ico" />
 	</ItemGroup>
 
 	<!-- ffmpeg (ভিডিও জোড়া লাগানোর জন্য): Tools ফোল্ডারে ffmpeg.exe (শেয়ার্ড বিল্ড হলে সব DLL সহ) রাখো -->

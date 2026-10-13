@@ -8,7 +8,15 @@ Run these commands from the repository root in PowerShell.
 powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
 ```
 
-Expected final message: `Core build and extension tests passed.`
+Expected final message: `Core build, bridge tests and extension tests passed.`
+
+What it runs:
+
+- `dotnet build` of the desktop app.
+- `FastDM.Tests`: about 100 checks on the extension bridge (pairing, token and extension-ID binding, cookie isolation, allowed link types, the `fastdm://` protocol) against a real local server. Close other copies of FastDM first if the test says the server cannot start (it needs one free port from 17432 to 17436).
+- `npm test` in `FastDM.Extension`: bridge client tests plus a check that the English and Bangla texts, the manifest and the HTML use the same keys.
+
+The same checks run on GitHub for every push and pull request to `master` and `test` (Actions tab, workflow **CI**).
 
 This builds the Windows desktop application and runs the Node tests for
 the browser-extension bridge.
@@ -122,6 +130,124 @@ Check each setting does something:
 
 Not in this step: Launch at startup, Language, UI style, Zoom, Low/Medium/High
 traffic presets, browser download interception and BitTorrent.
+
+## 3e. Traffic modes and Launch at startup (Step 1b)
+
+**Mode button.** The old *Speed* button in the toolbar is now **Mode: High / Medium / Low**.
+Its menu lists the three modes with their speed and simultaneous downloads, and
+**Edit modes…** opens Preferences → **Traffic Limits**. The status bar shows
+`Mode: Medium · 2 MB/s`.
+
+| Check | How |
+| --- | --- |
+| Speed per mode | Choose **Low** (default 256 KB/s): the total speed of all downloads stays near that. Choose **High**: unlimited. |
+| Simultaneous downloads | Queue 6 files in **Low** (2 at a time) and in **High** (4 at a time): *Active* in the status bar matches. |
+| Total connections | In Preferences set **Medium** to 10 connections, 5 per server, add 3 large files from one site: never more than 5 connections to that site and 10 in total (check with Resource Monitor → Network). |
+| Live change | Switch modes while downloading: the new limits apply at once, running segments finish. |
+| Old settings kept | After upgrading, **High** holds your previous speed limit, connections and simultaneous downloads, and the mode starts as High. |
+| Proxy | Preferences → Network → **Proxy…** opens the smaller Proxy window (no speed field any more). |
+| Pause slow downloads | Turn it on with *0 KB/s for 1 minute*, queue more downloads than the simultaneous limit, then pull the network cable for one download only (or use a stalled link): after about a minute it goes to the back of the queue and a waiting one starts. With an empty queue nothing is paused. |
+
+**Launch at startup (minimized)** — Preferences → General → *Startup*.
+
+| Build | Expected |
+| --- | --- |
+| Portable | Tick it and Save: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` has a `FastDM` value ending in `--minimized`. Sign out and in: FastDM starts hidden in the tray. Untick: the value is removed. |
+| Store (MSIX) | Tick it and Save: Task Manager → *Startup apps* shows **FastDM** as *Enabled*. Restart Windows: FastDM starts hidden in the tray. If you switch it off in Task Manager, the Preferences box shows a note and the option cannot be turned back on from the app (Windows rule); enable it in Task Manager first. |
+
+The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* run is "portable".
+
+## 3f. YouTube cookies (yt-dlp) and text encoding
+
+| Check | Expected |
+| --- | --- |
+| Text encoding | Toolbar, Add dialog and status bar show `…`, `—`, `→` and the toolbar icons correctly, with no garbled characters. |
+| Preferences → Advanced → Video sites | A "Use cookies from browser" box with None / Microsoft Edge / Google Chrome / Mozilla Firefox / Brave. Default is None. |
+| Save, close, reopen Preferences | The chosen browser is still selected. Reset puts it back to None. |
+| Preferences → Advanced → Video sites → Cookies file | A Browse box for a `cookies.txt` file. When a file is set, yt-dlp gets `--cookies <file>` and the browser choice is ignored. Clear the box to go back to the browser choice. |
+| YouTube link, cookies None | If YouTube asks you to sign in, the error box explains to choose a browser in Preferences. |
+| YouTube link, Edge selected, Edge fully closed | The quality picker opens (no sign-in error). If Edge blocks cookie access, the error box suggests Firefox. |
+| Same, Firefox selected | The quality picker opens when you are logged in to YouTube in Firefox. |
+| Hand-edit `state.json`: `"YtCookieBrowser": "--exec calc"` | The value is ignored (treated as None); nothing extra is passed to yt-dlp. |
+
+## 3g. Extension origin binding
+
+| Check | Expected |
+| --- | --- |
+| Pair Edge, then add a link | Works as before. |
+| Update from a build that was already paired (before this change) | The browser keeps working with no re-pair, and it is bound to its extension ID on first use. |
+| Install the extension a second time from another folder (a different extension ID) and press Connect | FastDM asks for approval and shows the new ID. Choose No: pressing Connect again within a minute shows "denied" with no new dialog. |
+| After saying No, wait about a minute and press Connect again | The dialog appears again. |
+| Link from the second extension without pairing it | Rejected (401). Only the paired ID can send links. |
+| Preferences → Browser Integration → Forget paired browsers | Every browser needs to Connect again. |
+
+## 3h. Saved list recovery (state.json)
+
+Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type that, Enter). Close FastDM before editing files there.
+
+| Check | Expected |
+| --- | --- |
+| Normal restart | The list and settings are unchanged. No warning. After FastDM has saved once (add a download, or close the app) you see `state.json` and `state.json.bak`. |
+| Open `state.json` in Notepad, type junk at the end, save, start FastDM | A warning says the list was **restored from the latest automatic backup**. The list is back. A file `state.json.damaged-<time>` exists and still contains your junk. |
+| Delete `state.json.bak` and `state.json.bak2`, damage `state.json` again, start FastDM | A warning says it **started with an empty list**. `state.json.damaged-<time>` still holds the old list, so nothing is lost (you can copy it back). |
+| Make `state.json` empty (0 bytes), start FastDM | Same warning as above. |
+| Damage `state.json` several more times | Only the 5 newest `state.json.damaged-*` files are kept. |
+| Put `"SchemaVersion": 99,` as the first line inside the `{ }` of `state.json`, start FastDM | A warning says the settings come from a newer version; `state.json.from-v99` is created once; FastDM still works. |
+| Add a download, wait more than 15 minutes with FastDM open | `state.json.bak` becomes newer and the previous one becomes `state.json.bak2`. |
+
+## 3i. Video links, selection and details panel
+
+| Check | Expected |
+| --- | --- |
+| Drop a YouTube link into FastDM | While it reads the video, the bottom bar counts seconds ("Reading video info… 12 s"), then the quality picker opens. |
+| Preferences → Advanced → turn on **Enable logging**, add a YouTube link, then **Open log folder** | The newest log has a line like `yt-dlp info: 14.2 s, exit 0, js runtime quickjs, cookies off`. Send me this line if the wait is long. |
+| Drop a Facebook reel link that ends with `/` | The video picker opens (not the "Download Folder" window). If it fails, the message shows the real yt-dlp error: send me that text. |
+| Drop an Instagram reel link that ends with `/` | Same as above. |
+| Drop a plain folder link such as `https://server/movies/` | Still opens the "Download Folder" window. |
+| Switch to the **Light** theme, open Settings and click each item in the left menu (Traffic Limits and the others) | The selected item's text stays white and readable (it used to turn dark on the dark menu). |
+| Click in the download list and press **Ctrl+A** | Every row becomes selected. **Delete** then offers to remove all of them. |
+| Add a new download (link, folder or video) | The new download is selected and the bottom panel shows its details, without clicking. |
+| Select a download and hover over **Save to** in the bottom panel | The path turns accent-coloured, is underlined and the cursor becomes a hand. |
+| Click **Save to** (finished download) | Explorer opens with the file selected. |
+| Click **Save to** (download still running) | Explorer opens the folder. If the folder does not exist yet, a message says so. |
+| Click **Link** (an https link) | The page opens in the default browser, for example the YouTube video. |
+| Select an FTP or SFTP download | **Link** stays plain text (not clickable). |
+| Make the window narrower and wider (also try Windows scaling 125% and 150%) | Every toolbar button stays on one row, including **Updates**. When space runs out, the least used buttons (Open File, Open Folder, Details, Schedule, When done…) lose their text and show only the icon; hovering shows the name. |
+| Change the mode (Low / Medium / High) | The toolbar re-fits; nothing jumps into the overflow menu. |
+
+### Importing a list of links (text file)
+
+| Check | Expected |
+| --- | --- |
+| Add URL -> **Open text file...** and pick a .txt with about 10 YouTube links (some with `&list=...`), 2 folder links and a few lines of comments (`# ...`) | The **Import links** window opens. Comments and blank lines are skipped. Each line shows its type. YouTube links with a playlist part are listed as one video with a note. |
+| Same file, but add a `youtube.com/playlist?...` line and a line of plain text | Both are listed greyed out and cannot be ticked (playlist / not a link). |
+| Repeat one link twice | The repeat is listed, not ticked, with the note "same link as an earlier line". |
+| Pick quality **Up to 720p** and press **Start downloading** | One download per ticked video (never more than the number of lines). They are named after the video title when each one finishes; until then the name looks like `youtube.com dQw4w9WgXcQ.mp4`. The video list is NOT read first, so adding is instant. |
+| A folder link with "Download whole folders automatically" ticked | The folder is scanned (bottom bar shows progress) and every file goes into `<Save to>\<folder name>`, keeping its sub-folders. No window per folder. |
+| Same, with that box unticked | The usual "Download Folder" window opens for each folder. |
+| Pick **Audio only (M4A)** | The downloads become .m4a files. |
+| Drag a .txt file onto the FastDM window | The same Import links window opens. |
+| Paste 3 normal file links (no video sites) in Add URL | Works as before (no import window). |
+| Remove a running title-named download | Its hidden `.fastdm-xxxxxxxx` folder inside the save folder disappears. |
+| Pause a title-named download, then resume it | It continues (the half-finished file is kept in the hidden folder). |
+
+### Deleted list
+
+| Check | Expected |
+| --- | --- |
+| Look at the left menu | A new **Deleted** entry sits under Errors, with a count. |
+| Remove a finished download and choose **Yes** (list only) | It leaves All Downloads and appears under **Deleted** with the reason "Removed from the list". The count goes up. |
+| Remove a finished download and choose **No** (also delete the file) | It appears under Deleted as "Removed, file deleted from disk"; the file is gone from the disk. |
+| Remove a download that is still running | It appears under Deleted as "Removed before it finished". |
+| Delete a finished file in Windows Explorer, wait up to 30 seconds | The download leaves the list by itself and appears under Deleted as "File deleted from disk". |
+| Eject a USB drive that holds finished downloads, wait a minute | Those downloads stay in the list (an unplugged drive is not "deleted"). Plug it back in and all is as before. |
+| Open **Deleted** | The last column is called **Deleted** and shows when. The bottom panel's Status says "Deleted: ...". Resume / Pause do nothing here. |
+| Right-click in **Deleted** | The menu offers Open Folder, Copy URL, **Download again**, **Remove from history**, **Clear history**. |
+| **Download again** (menu, or double-click) | After a question, a fresh download starts from the same link and folder, and the entry leaves Deleted. |
+| Press **Delete**, or the toolbar **Remove**, in Deleted | It asks to remove the entries from the history; files on the disk are not touched. **Clear history** empties the list. |
+| Press **Ctrl+A** in Deleted | Every entry is selected. |
+| Close and start FastDM again | The Deleted list is still there. |
+| Update from the previous version | Preferences > Downloads shows "Move downloads whose file was deleted from the disk to the Deleted list" already ticked. |
 
 ## 4. Package the extension
 

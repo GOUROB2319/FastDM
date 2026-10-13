@@ -12,23 +12,24 @@ using System.Threading.Tasks;
 
 namespace FastDM
 {
-    // ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â­ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ (state.json-ÃƒÂ Ã‚Â¦Ã‚Â)
+    // ডাউনলোড আইটেমে সেভ হয় (state.json-এ)
     public class YtDlpSpec
     {
         public string? Url { get; set; }
-        public string? Format { get; set; }                 // yt-dlp -f ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â°
+        public string? Format { get; set; }                 // yt-dlp -f সিলেক্টর
         public bool AudioOnly { get; set; }
         public string AudioFormat { get; set; } = "m4a";   // m4a | mp3
-        public string? BaseName { get; set; }               // ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â®
+        public string? BaseName { get; set; }               // এক্সটেনশন ছাড়া ফাইলের নাম
         public long EstimatedBytes { get; set; }
+        public bool NameFromTitle { get; set; }             // true: the file is named after the video title (used by batch imports); BaseName is not needed
     }
 
-    // ====================== ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â² ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ ======================
+    // ====================== টুল খুঁজে বের করা ======================
     public static class YtDlpLocator
     {
         public static string? Find() => FindExe("yt-dlp.exe");
         public static string? FindDeno() => FindExe("deno.exe");
-        public static string? FindQuickJs() => FindExe("qjs.exe");      // QuickJS / QuickJS-ng (ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¬ ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã…Â¸, Deno-ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Âª)
+        public static string? FindQuickJs() => FindExe("qjs.exe");      // QuickJS / QuickJS-ng (খুব ছোট, Deno-র বিকল্প)
         public static bool HasJsRuntime() => FindQuickJs() != null || FindDeno() != null;
 
         static string? FindExe(string file)
@@ -54,29 +55,59 @@ namespace FastDM
         }
     }
 
-    // ====================== yt-dlp ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¨ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ======================
-    public static class YtDlpSites
+    // Which browser yt-dlp reads login cookies from (Preferences -> Advanced -> Video sites).
+    // Only values from the fixed list below are ever passed to yt-dlp, so a hand-edited
+    // state.json cannot inject extra command-line options.
+    public static class YtDlpCookies
     {
-        static readonly string[] Hosts =
-        {
-            "youtube.com", "youtu.be", "youtube-nocookie.com", "tiktok.com", "facebook.com", "fb.watch",
-            "instagram.com", "twitter.com", "x.com", "vimeo.com", "dailymotion.com", "dai.ly", "reddit.com",
-            "twitch.tv", "soundcloud.com", "bilibili.com", "b23.tv", "streamable.com", "rumble.com",
-            "odysee.com", "ok.ru", "vk.com", "mixcloud.com", "bandcamp.com", "pinterest.com", "tumblr.com"
-        };
+        public static readonly string[] Browsers = { "", "edge", "chrome", "firefox", "brave" };
+        public static readonly string[] Labels = { "None", "Microsoft Edge", "Google Chrome", "Mozilla Firefox", "Brave" };
 
-        public static bool IsSupported(string url)
+        static volatile string browser = "";
+        static volatile string cookieFile = "";
+
+        public static string Browser => browser;
+
+        // Path of an exported cookies.txt (Netscape format). Takes priority over the browser choice,
+        // because newer Chrome/Edge/Brave on Windows block yt-dlp from reading their cookie database.
+        public static string CookieFile => cookieFile;
+
+        public static string Normalize(string? value)
         {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return false;
-            if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return false;
-            string host = u.Host.ToLowerInvariant();
-            foreach (var h in Hosts)
-                if (host == h || host.EndsWith("." + h)) return true;
-            return false;
+            string v = (value ?? "").Trim().ToLowerInvariant();
+            return Array.IndexOf(Browsers, v) >= 0 ? v : "";
+        }
+
+        public static void Apply(AppSettings s)
+        {
+            browser = Normalize(s.YtCookieBrowser);
+            cookieFile = (s.YtCookieFile ?? "").Trim().Trim('"');
+        }
+
+        // Returns a short "what to do next" text when the error looks like a sign-in/cookie problem, else null.
+        public static string? HintFor(string? message)
+        {
+            string m = (message ?? "").ToLowerInvariant();
+            bool signIn = m.Contains("not a bot") || m.Contains("sign in to confirm");
+            bool cookie = m.Contains("cookie");
+            if (!signIn && !cookie) return null;
+
+            if (cookieFile.Length > 0)
+                return "\n\nThe cookies file did not work. Export a fresh cookies.txt while you are logged in to the site, " +
+                       "then choose it again in Preferences → Advanced → Video sites → Cookies file.";
+
+            if (browser.Length == 0)
+                return "\n\nThis site wants you to be signed in. Log in to it in your browser, then either export a cookies.txt file " +
+                       "or choose that browser in Preferences → Advanced → Video sites, and try again.";
+
+            return "\n\nCookies from the selected browser did not work. Close the browser completely (check the system tray too) and try again. " +
+                   "Newer Chrome, Edge and Brave versions block cookie access on Windows; use Firefox, or export a cookies.txt file " +
+                   "and choose it in Preferences → Advanced → Video sites → Cookies file.";
         }
     }
 
-    // ====================== ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¸ ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ ======================
+
+    // ====================== প্রসেস চালানো ======================
     public static class YtDlpRunner
     {
         static ProcessStartInfo Build(string exe, IEnumerable<string> args)
@@ -96,7 +127,7 @@ namespace FastDM
             return psi;
         }
 
-        // ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¬ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢: ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬â€ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â·ÃƒÂ Ã‚Â¦Ã‚Â¾, JS ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â®, ffmpeg, ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¿
+        // সব কমান্ডে এক: ইউজার কনফিগ উপেক্ষা, JS রানটাইম, ffmpeg, প্রক্সি
         public static List<string> CommonArgs()
         {
             var a = new List<string> { "--ignore-config", "--no-colors" };
@@ -105,7 +136,7 @@ namespace FastDM
             string? deno = YtDlpLocator.FindDeno();
             if (qjs != null)
             {
-                // QuickJS ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ (ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã…Â¸); ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â® ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â§ ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â¦Ã‚Â¿
+                // QuickJS থাকলে সেটাই (ছোট); অন্য রানটাইম বন্ধ রাখি
                 a.Add("--no-js-runtimes");
                 a.Add("--js-runtimes"); a.Add("quickjs:" + qjs);
             }
@@ -124,8 +155,15 @@ namespace FastDM
             }
             else if (ProxyConfig.Mode == ProxyMode.None)
             {
-                a.Add("--proxy"); a.Add("");       // ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ = ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¿ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â¦Ã‚Â¨
+                a.Add("--proxy"); a.Add("");       // খালি = সরাসরি কানেকশন
             }
+
+            // Login cookies for sites that ask "Sign in to confirm you're not a bot".
+            // yt-dlp reads them itself, on this PC only; FastDM never stores them. A cookies.txt file wins over a browser.
+            string cookiesTxt = YtDlpCookies.CookieFile;
+            string cookieBrowser = YtDlpCookies.Browser;
+            if (cookiesTxt.Length > 0 && File.Exists(cookiesTxt)) { a.Add("--cookies"); a.Add(cookiesTxt); }
+            else if (cookieBrowser.Length > 0) { a.Add("--cookies-from-browser"); a.Add(cookieBrowser); }
             return a;
         }
 
@@ -158,11 +196,11 @@ namespace FastDM
             }
             if (last == null)
                 last = stderr.Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0).LastOrDefault() ?? "yt-dlp failed.";
-            return last.Length > 400 ? last.Substring(0, 400) + "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : last;
+            return last.Length > 400 ? last.Substring(0, 400) + "…" : last;
         }
     }
 
-    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ (-J) ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¿ ÃƒÂ Ã‚Â¦Ã‚Â¤ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ ======================
+    // ====================== ভিডিওর তথ্য (-J) পড়ে কোয়ালিটি তালিকা বানানো ======================
     public class YtVideoOpt
     {
         public string Label = "", Selector = "";
@@ -194,9 +232,15 @@ namespace FastDM
 
             var json = new StringBuilder();
             var err = new StringBuilder();
+            var watch = Stopwatch.StartNew();
             int code = await YtDlpRunner.RunAsync(exe, args,
                 l => { lock (json) json.AppendLine(l); },
                 l => { lock (err) if (err.Length < 8000) err.AppendLine(l); }, ct);
+            watch.Stop();
+
+            string runtime = YtDlpLocator.FindQuickJs() != null ? "quickjs" : YtDlpLocator.FindDeno() != null ? "deno" : "none";
+            AppLog.Write("yt-dlp info: " + watch.Elapsed.TotalSeconds.ToString("0.0") + " s, exit " + code +
+                         ", js runtime " + runtime + ", cookies " + (YtDlpCookies.Browser.Length > 0 ? YtDlpCookies.Browser : "off"));
 
             if (code != 0 || json.Length == 0)
                 throw new InvalidOperationException(YtDlpRunner.ExtractError(err.ToString()));
@@ -268,8 +312,8 @@ namespace FastDM
                 var hi = byHeight[h];
                 long est = hi.Bytes + (hi.Combined ? 0 : bestAudio);
                 string label = h + "p" + (hi.Fps > 30 ? hi.Fps.ToString() : "") +
-                               (hi.Ext.Length > 0 ? "  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢  " + hi.Ext : "") +
-                               (est > 0 ? "  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢  ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  " + Fmt(est) : "");
+                               (hi.Ext.Length > 0 ? "  •  " + hi.Ext : "") +
+                               (est > 0 ? "  •  ≈ " + Fmt(est) : "");
                 info.Videos.Add(new YtVideoOpt
                 {
                     Label = label,
@@ -279,7 +323,7 @@ namespace FastDM
                 });
             }
 
-            // ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ (ÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â§Ã‚Â ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸) "Best available" ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¦
+            // কোনো ভিডিও ফরম্যাট না থাকলে (শুধু অডিও সাইট) "Best available" বাদ
             if (byHeight.Count == 0) info.Videos.Clear();
             return info;
         }
@@ -293,7 +337,7 @@ namespace FastDM
         }
     }
 
-    // ====================== yt-dlp ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ (ÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â§ÃƒÂ Ã‚Â§Ã‚Â ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â² ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡) ======================
+    // ====================== yt-dlp আপডেট (শুধু পোর্টেবল ভার্সনে) ======================
     public static class YtDlpUpdater
     {
         public static async Task<string> UpdateAsync(CancellationToken ct)
@@ -308,7 +352,7 @@ namespace FastDM
             return s.Length == 0 ? "No output from yt-dlp." : s;
         }
 
-        // ÃƒÂ Ã‚Â¦Ã‚Â¦ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Âª ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã…Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ (Store ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼: ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Âª ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â¥ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡)
+        // দিনে একবার চুপচাপ আপডেট চেক (Store ভার্সনে নয়: সেখানে অ্যাপ আপডেটের সাথে আসে)
         public static async Task MaybeAutoUpdateAsync(AppSettings s)
         {
             if (UpdateChecker.IsPackaged) return;
@@ -321,10 +365,10 @@ namespace FastDM
         }
     }
 
-    // ====================== ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â°ÃƒÂ Ã‚Â¦Ã‚Â¨ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã‚Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¾ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã…â€œÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¨ ======================
+    // ====================== ডাউনলোড ইঞ্জিন ======================
     public static class YtDlpEngine
     {
-        static readonly Regex Intermediate = new Regex(@"\.f\d+(\.|$)|\.part$|\.ytdl$|\.temp$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static Regex Intermediate => YtDlpOutput.Intermediate;
 
         static long ParseNum(string s)
         {
@@ -339,8 +383,13 @@ namespace FastDM
             if (exe == null) throw new FileNotFoundException("yt-dlp.exe was not found. Put it in the Tools folder.");
             Directory.CreateDirectory(it.Folder);
 
+            bool fromTitle = spec.NameFromTitle;
+            string itemDir = Path.Combine(it.Folder, YtDlpOutput.ItemDirName(it.Id));
+
             string baseName = !string.IsNullOrEmpty(spec.BaseName) ? spec.BaseName : Path.GetFileNameWithoutExtension(it.FileName);
-            string template = Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
+            string template = fromTitle
+                ? "%(title).150B.%(ext)s"
+                : Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
 
             var args = YtDlpRunner.CommonArgs();
             args.AddRange(new[]
@@ -352,6 +401,15 @@ namespace FastDM
                 "-f", spec.Format ?? "bv*+ba/b",
                 "-o", template
             });
+
+            // Named after the title: yt-dlp works in a private folder for this download (so partial files can
+            // resume and never mix with other downloads); FastDM moves the finished file out afterwards.
+            if (fromTitle)
+            {
+                Directory.CreateDirectory(itemDir);
+                try { File.SetAttributes(itemDir, File.GetAttributes(itemDir) | FileAttributes.Hidden); } catch { }
+                args.AddRange(new[] { "-P", itemDir, "--windows-filenames" });
+            }
 
             if (spec.AudioOnly)
             {
@@ -387,7 +445,7 @@ namespace FastDM
                             long tot = ParseNum(p[3]);
                             if (tot <= 0) tot = ParseNum(p[4]);
 
-                            // ÃƒÂ Ã‚Â¦Ã‚Â­ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¡ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã¢â‚¬Å“ ÃƒÂ Ã‚Â¦Ã‚Â¶ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚Â ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã¢â‚¬Å¡ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã‚Â¬ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â° ÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã…Â¸ ÃƒÂ Ã‚Â¦Ã‚Â¹ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â¦Ã‚Â¼: ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã¢â‚¬â€ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â¦Ã‚Â¾ ÃƒÂ Ã‚Â¦Ã‚Â¯ÃƒÂ Ã‚Â§Ã¢â‚¬Â¹ÃƒÂ Ã‚Â¦Ã¢â‚¬â€ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬â€œÃƒÂ Ã‚Â¦Ã‚Â¿
+                            // ভিডিওর পর অডিও শুরু হলে সংখ্যা আবার ছোট হয়: আগেরটা যোগ করে রাখি
                             if (dl < lastDl) offset += lastTotal > 0 ? lastTotal : lastDl;
                             lastDl = dl;
                             lastTotal = tot > 0 ? tot : dl;
@@ -400,21 +458,36 @@ namespace FastDM
                         return;
                     }
 
-                    if (line.StartsWith("[Merger]") || line.StartsWith("[VideoRemuxer]")) it.StatusNote = "MergingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦";
-                    else if (line.StartsWith("[ExtractAudio]")) it.StatusNote = "Converting audioÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦";
+                    if (line.StartsWith("[Merger]") || line.StartsWith("[VideoRemuxer]")) it.StatusNote = "Merging…";
+                    else if (line.StartsWith("[ExtractAudio]")) it.StatusNote = "Converting audio…";
 
                     if (line.StartsWith("ERROR:")) lastError = line.Substring(6).Trim();
                     if (isErr && errTail.Length < 4000) errTail.AppendLine(line);
                 }
             }
 
-            it.StatusNote = "StartingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦";
+            it.StatusNote = "Starting…";
             int code = await YtDlpRunner.RunAsync(exe, args, l => OnLine(l, false), l => OnLine(l, true), ct);
 
             if (code != 0)
                 throw new InvalidOperationException(lastError ?? YtDlpRunner.ExtractError(errTail.ToString()));
 
-            string? found = FindOutput(it.Folder, baseName);
+            string? found;
+            if (fromTitle)
+            {
+                string? made = YtDlpOutput.FindFinal(itemDir);
+                found = made == null ? null : YtDlpOutput.MoveToUnique(made, it.Folder);
+
+                if (found != null)
+                {
+                    try { Directory.Delete(itemDir, true); } catch { }
+                }
+            }
+            else
+            {
+                found = FindOutput(it.Folder, baseName);
+            }
+
             if (found == null) throw new FileNotFoundException("The download finished but the output file was not found.");
 
             it.FileName = Path.GetFileName(found);
@@ -436,10 +509,18 @@ namespace FastDM
             catch { return null; }
         }
 
-        // ÃƒÂ Ã‚Â¦Ã¢â‚¬Â ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã…Â¸ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â® ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬ÂºÃƒÂ Ã‚Â¦Ã‚Â²ÃƒÂ Ã‚Â§Ã¢â‚¬Â¡ ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¦ÃƒÂ Ã‚Â¦Ã‚Â¸ÃƒÂ Ã‚Â¦Ã‚Â®ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â§Ã¢â‚¬Å¡ÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã‚Â£ ÃƒÂ Ã‚Â¦Ã‚Â«ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã¢â‚¬Â¡ÃƒÂ Ã‚Â¦Ã‚Â² (.part, .ytdl, .fNNN) ÃƒÂ Ã‚Â¦Ã‚ÂªÃƒÂ Ã‚Â¦Ã‚Â°ÃƒÂ Ã‚Â¦Ã‚Â¿ÃƒÂ Ã‚Â¦Ã‚Â·ÃƒÂ Ã‚Â§Ã‚ÂÃƒÂ Ã‚Â¦Ã¢â‚¬Â¢ÃƒÂ Ã‚Â¦Ã‚Â¾ÃƒÂ Ã‚Â¦Ã‚Â°
+        // আইটেম মুছলে অসম্পূর্ণ ফাইল (.part, .ytdl, .fNNN) পরিষ্কার
         public static void Cleanup(DownloadItem it)
         {
             if (it.YtDlp == null || string.IsNullOrEmpty(it.Folder)) return;
+
+            try
+            {
+                string privateDir = Path.Combine(it.Folder, YtDlpOutput.ItemDirName(it.Id));
+                if (Directory.Exists(privateDir)) Directory.Delete(privateDir, true);
+            }
+            catch { }
+
             try
             {
                 string baseName = !string.IsNullOrEmpty(it.YtDlp.BaseName)
