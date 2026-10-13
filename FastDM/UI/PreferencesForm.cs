@@ -30,6 +30,7 @@ namespace FastDM
         // ফিল্ড ভ্যালিডেশনের জন্য
         // Assigned by the Build* methods called from the constructor before events can run.
         TextBox txtFolder = null!;
+        TextBox txtCookieFile = null!;
         CheckBox chkAvAuto = null!, chkRunApp = null!, chkStartup = null!;
         TextBox txtAvPath = null!, txtAvArgs = null!, txtAppPath = null!, txtAppArgs = null!;
         ComboBox cmbAv = null!;
@@ -743,8 +744,13 @@ namespace FastDM
             commit.Add(() => s.YtCookieBrowser = YtDlpCookies.Browsers[Math.Max(0, cookieBox.SelectedIndex)]);
             flow.Controls.Add(cookieBox);
 
-            Hint("Close the browser completely before downloading. Newer Chrome and Edge versions can block cookie access; " +
-                 "if that happens, choose Firefox.");
+            Hint("Close the browser completely before downloading. Newer Chrome, Edge and Brave versions block cookie access; " +
+                 "if that happens, choose Firefox or use a cookies.txt file below.");
+
+            Hint("Cookies file (optional, cookies.txt in Netscape format). Export it from a browser extension while you are logged in. " +
+                 "When set, it is used instead of the browser choice above.");
+            txtCookieFile = PathRow(s.YtCookieFile, false, "Cookie files (*.txt)|*.txt|All files (*.*)|*.*");
+            commit.Add(() => s.YtCookieFile = txtCookieFile.Text.Trim());
 
             Sub("Tools");
             var yt = ActionButton("Update yt-dlp", 160, null);

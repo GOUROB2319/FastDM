@@ -64,8 +64,13 @@ namespace FastDM
         public static readonly string[] Labels = { "None", "Microsoft Edge", "Google Chrome", "Mozilla Firefox", "Brave" };
 
         static volatile string browser = "";
+        static volatile string cookieFile = "";
 
         public static string Browser => browser;
+
+        // Path of an exported cookies.txt (Netscape format). Takes priority over the browser choice,
+        // because newer Chrome/Edge/Brave on Windows block yt-dlp from reading their cookie database.
+        public static string CookieFile => cookieFile;
 
         public static string Normalize(string? value)
         {
@@ -73,7 +78,11 @@ namespace FastDM
             return Array.IndexOf(Browsers, v) >= 0 ? v : "";
         }
 
-        public static void Apply(AppSettings s) => browser = Normalize(s.YtCookieBrowser);
+        public static void Apply(AppSettings s)
+        {
+            browser = Normalize(s.YtCookieBrowser);
+            cookieFile = (s.YtCookieFile ?? "").Trim().Trim('"');
+        }
 
         // Returns a short "what to do next" text when the error looks like a sign-in/cookie problem, else null.
         public static string? HintFor(string? message)
@@ -83,13 +92,17 @@ namespace FastDM
             bool cookie = m.Contains("cookie");
             if (!signIn && !cookie) return null;
 
-            if (browser.Length == 0)
-                return "\n\nThis site wants you to be signed in. Log in to it in your browser, then choose that browser in " +
-                       "Preferences → Advanced → Video sites → Use cookies from browser, and try again.";
+            if (cookieFile.Length > 0)
+                return "\n\nThe cookies file did not work. Export a fresh cookies.txt while you are logged in to the site, " +
+                       "then choose it again in Preferences → Advanced → Video sites → Cookies file.";
 
-            return "\n\nCookies from the selected browser did not work. Make sure you are logged in there and that the browser " +
-                   "is fully closed (check the system tray too). Newer Chrome/Edge versions can block cookie access; " +
-                   "Firefox is the most reliable choice.";
+            if (browser.Length == 0)
+                return "\n\nThis site wants you to be signed in. Log in to it in your browser, then either export a cookies.txt file " +
+                       "or choose that browser in Preferences → Advanced → Video sites, and try again.";
+
+            return "\n\nCookies from the selected browser did not work. Close the browser completely (check the system tray too) and try again. " +
+                   "Newer Chrome, Edge and Brave versions block cookie access on Windows; use Firefox, or export a cookies.txt file " +
+                   "and choose it in Preferences → Advanced → Video sites → Cookies file.";
         }
     }
 
@@ -146,9 +159,11 @@ namespace FastDM
             }
 
             // Login cookies for sites that ask "Sign in to confirm you're not a bot".
-            // yt-dlp reads them itself, on this PC only; FastDM never stores them.
+            // yt-dlp reads them itself, on this PC only; FastDM never stores them. A cookies.txt file wins over a browser.
+            string cookiesTxt = YtDlpCookies.CookieFile;
             string cookieBrowser = YtDlpCookies.Browser;
-            if (cookieBrowser.Length > 0) { a.Add("--cookies-from-browser"); a.Add(cookieBrowser); }
+            if (cookiesTxt.Length > 0 && File.Exists(cookiesTxt)) { a.Add("--cookies"); a.Add(cookiesTxt); }
+            else if (cookieBrowser.Length > 0) { a.Add("--cookies-from-browser"); a.Add(cookieBrowser); }
             return a;
         }
 

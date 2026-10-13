@@ -61,7 +61,7 @@ namespace FastDM
 
             // Configure the Windows Forms application.
             ApplicationConfiguration.Initialize();
-            Application.Run(new Form1());
+            Application.Run(new MainForm());
         }
 
         static bool TrySendToFirstInstance(string cmd)

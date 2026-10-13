@@ -164,6 +164,7 @@ The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* r
 | Text encoding | Toolbar, Add dialog and status bar show `…`, `—`, `→` and the toolbar icons correctly, with no garbled characters. |
 | Preferences → Advanced → Video sites | A "Use cookies from browser" box with None / Microsoft Edge / Google Chrome / Mozilla Firefox / Brave. Default is None. |
 | Save, close, reopen Preferences | The chosen browser is still selected. Reset puts it back to None. |
+| Preferences → Advanced → Video sites → Cookies file | A Browse box for a `cookies.txt` file. When a file is set, yt-dlp gets `--cookies <file>` and the browser choice is ignored. Clear the box to go back to the browser choice. |
 | YouTube link, cookies None | If YouTube asks you to sign in, the error box explains to choose a browser in Preferences. |
 | YouTube link, Edge selected, Edge fully closed | The quality picker opens (no sign-in error). If Edge blocks cookie access, the error box suggests Firefox. |
 | Same, Firefox selected | The quality picker opens when you are logged in to YouTube in Firefox. |
