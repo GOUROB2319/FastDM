@@ -177,6 +177,7 @@ namespace FastDM
     {
         public static SftpClient CreateSftp(string host, int port, string user, string pass)
         {
+            SftpClient client;
             if (ProxyConfig.Mode == ProxyMode.Manual && ProxyConfig.Host.Length > 0)
             {
                 var type = ProxyConfig.Kind == ProxyKind.Socks5 ? ProxyTypes.Socks5 : ProxyTypes.Http;
@@ -186,9 +187,90 @@ namespace FastDM
                     hasAuth ? ProxyConfig.User : null,
                     hasAuth ? ProxyConfig.Pass : null,
                     new PasswordAuthenticationMethod(user, pass));
-                return new SftpClient(info);
+                client = new SftpClient(info);
             }
-            return new SftpClient(host, port, user, pass);
+            else
+            {
+                client = new SftpClient(host, port, user, pass);
+            }
+
+            // Every SFTP connection goes through here, so the server's identity is checked in one place.
+            client.HostKeyReceived += (s, e) => e.CanTrust = SshHostKeys.Verify(host, port, e.HostKeyName, e.HostKey);
+            return client;
+        }
+    }
+
+    // SFTP server identity check, "trust on first use" like OpenSSH: the first time a server is seen its
+    // key fingerprint is saved; later connections must present the same key, otherwise the connection is
+    // refused (a changed key can mean someone is intercepting the connection).
+    // The server was legitimately reinstalled? Delete its line (or the whole file) at
+    // %LocalAppData%\FastDM\known_hosts.json and connect again.
+    public static class SshHostKeys
+    {
+        static readonly object gate = new object();
+        static Dictionary<string, string>? known;
+
+        public static string FilePath =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                         "FastDM", "known_hosts.json");
+
+        public static bool Verify(string host, int port, string? keyType, byte[]? keyBytes)
+        {
+            if (keyBytes == null || keyBytes.Length == 0) return false;
+
+            string id = host.Trim().ToLowerInvariant() + ":" + port;
+            string print = (keyType ?? "") + " SHA256:" +
+                           Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(keyBytes));
+
+            lock (gate)
+            {
+                known ??= Load();
+
+                if (known.TryGetValue(id, out var saved))
+                {
+                    if (string.Equals(saved, print, StringComparison.Ordinal)) return true;
+
+                    AppLog.Write("SFTP: REFUSED " + id + " - the server key changed (saved " + saved + ", now " + print + "). " +
+                                 "If the server was reinstalled, remove its line from " + FilePath + ".");
+                    return false;
+                }
+
+                known[id] = print;
+                Save();
+                AppLog.Write("SFTP: remembered the key of " + id + " (" + print + ")");
+                return true;
+            }
+        }
+
+        static Dictionary<string, string> Load()
+        {
+            try
+            {
+                if (File.Exists(FilePath))
+                    return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(FilePath))
+                           ?? new Dictionary<string, string>();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("SFTP: could not read " + FilePath + ": " + ex.Message);
+            }
+            return new Dictionary<string, string>();
+        }
+
+        static void Save()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+                string tmp = FilePath + ".tmp";
+                File.WriteAllText(tmp, System.Text.Json.JsonSerializer.Serialize(known,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                File.Move(tmp, FilePath, true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("SFTP: could not save " + FilePath + ": " + ex.Message);
+            }
         }
     }
 
