@@ -66,7 +66,7 @@
 					</uap:Protocol>
 				</uap:Extension>
 				<!-- Launch at startup: অ্যাপের Preferences থেকে চালু/বন্ধ হয় (TaskId কোডের StartupManager-এর সাথে মিলতে হবে) -->
-				<desktop:Extension Category="windows.startupTask" Executable="$targetnametoken$.exe" EntryPoint="Windows.FullTrustApplication">
+				<desktop:Extension Category="windows.startupTask" Executable="FastDM.exe" EntryPoint="Windows.FullTrustApplication">
 					<desktop:StartupTask TaskId="FastDMStartup" Enabled="false" DisplayName="FastDM" />
 				</desktop:Extension>
 			</Extensions>
