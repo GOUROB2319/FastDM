@@ -187,10 +187,10 @@ namespace FastDM
                     }
                     if (s.Start >= 0 && s.Len > 0)
                         req.Headers.Range = new RangeHeaderValue(s.Start, s.Start + s.Len - 1);
-                    Engine.ApplyAuth(req);
+                    DownloadEngine.ApplyAuth(req);
 
-                    using var resp = await Engine.SharedClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-                    Engine.CheckAuth(resp);
+                    using var resp = await DownloadEngine.SharedClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                    DownloadEngine.CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
 
                     using var st = await resp.Content.ReadAsStreamAsync(ct);
@@ -234,9 +234,9 @@ namespace FastDM
                 {
                     try { req.Headers.Referrer = new Uri(referer); } catch { }
                 }
-                Engine.ApplyAuth(req);
-                using var resp = await Engine.SharedClient.SendAsync(req, ct);
-                Engine.CheckAuth(resp);
+                DownloadEngine.ApplyAuth(req);
+                using var resp = await DownloadEngine.SharedClient.SendAsync(req, ct);
+                DownloadEngine.CheckAuth(resp);
                 resp.EnsureSuccessStatusCode();
                 key = await resp.Content.ReadAsByteArrayAsync(ct);
                 if (key.Length != 16) throw new InvalidDataException("Unsupported encryption key.");

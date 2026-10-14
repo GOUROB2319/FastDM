@@ -110,7 +110,7 @@ namespace FastDM
                 }
                 catch { n = ""; }
             }
-            n = Engine.Sanitize(n ?? "").TrimEnd('.', ' ');
+            n = DownloadEngine.Sanitize(n ?? "").TrimEnd('.', ' ');
             if (n.Length > 120) n = n.Substring(0, 120);
             return n.Length == 0 ? "video" : n;
         }

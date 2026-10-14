@@ -20,7 +20,7 @@ using Microsoft.Win32;
 namespace FastDM
 {
     // ====================== ডাউনলোড ইঞ্জিন ======================
-    public static partial class Engine
+    public static partial class DownloadEngine
     {
         // ব্রাউজার থেকে আসা কুকি শুধু মেমোরিতে থাকে (অ্যাপ বন্ধ হলে চলে যায়)।
         // CookieContainer ব্যবহার করায় কুকি শুধু মিলে যাওয়া ডোমেইনে যায়, রিডাইরেক্টে অন্য সাইটে ফাঁস হয় না।
@@ -28,6 +28,9 @@ namespace FastDM
         static readonly CookieContainer Jar = new CookieContainer();
 
         static volatile HttpClient Http = CreateClient();
+
+        // অন্য ফাইল (মিডিয়া/স্ট্রিম) একই HttpClient ব্যবহার করে: প্রক্সি/অথ সব একই থাকে
+        public static HttpClient SharedClient => Http;
 
         // প্রক্সি বদলালে নতুন ক্লায়েন্ট
         public static void ResetClient()
@@ -94,12 +97,30 @@ namespace FastDM
                 req.Headers.TryAddWithoutValidation("User-Agent", it.UserAgent);
         }
 
+        static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+
+        // Makes a server/user supplied name safe as a Windows file name.
+        // May return "" (callers decide the fallback), never "." / ".." or a reserved device name.
         public static string Sanitize(string name)
         {
             foreach (char c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, '_');
 
-            return name.Trim();
+            // Windows drops trailing dots/spaces silently; "." and ".." would point at a folder.
+            name = name.Trim().TrimEnd('.', ' ');
+
+            // "CON", "NUL.txt" ... are device names on Windows, even with an extension.
+            int dot = name.IndexOf('.');
+            string stem = (dot < 0 ? name : name.Substring(0, dot)).TrimEnd();
+            if (ReservedNames.Contains(stem))
+                name = "_" + name;
+
+            return name;
         }
 
         public static string NameFromUrl(string url)
@@ -110,7 +131,11 @@ namespace FastDM
                     Path.GetFileName(new Uri(url).AbsolutePath));
 
                 if (!string.IsNullOrWhiteSpace(n))
-                    return Sanitize(n);
+                {
+                    string clean = Sanitize(n);
+                    if (clean.Length > 0)
+                        return clean;
+                }
             }
             catch { }
 
@@ -161,9 +186,13 @@ namespace FastDM
                 var cd = resp.Content.Headers.ContentDisposition;
                 string? name = cd?.FileNameStar ?? cd?.FileName;
 
-                if (!string.IsNullOrWhiteSpace(name))
+                string clean = string.IsNullOrWhiteSpace(name)
+                    ? ""
+                    : Sanitize(name.Trim('"'));
+
+                if (clean.Length > 0)
                 {
-                    it.FileName = Sanitize(name.Trim('"'));
+                    it.FileName = clean;
                 }
                 else
                 {
@@ -287,10 +316,7 @@ namespace FastDM
                 throw new IOException("Download incomplete.");
             }
 
-            if (File.Exists(it.SavePath))
-                File.Delete(it.SavePath);
-
-            File.Move(it.TempPath, it.SavePath);
+            File.Move(it.TempPath, it.SavePath, overwrite: true);
         }
 
         static string HostOf(
@@ -306,6 +332,25 @@ namespace FastDM
             }
         }
 
+        // No byte for this long = dead connection (the HttpClient itself has no timeout).
+        static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(60);
+
+        // Retry budget: 5 failures in a row; a failure after real progress starts the count again.
+        static bool RetryAllowed(ref int attempt, long progressedBytes)
+        {
+            if (progressedBytes >= (256 << 10))
+                attempt = 0;
+
+            return ++attempt < 6;
+        }
+
+        // 4xx (404, 403, 410 ...) will not fix itself, so retrying only wastes time.
+        static bool IsPermanent(HttpRequestException ex) =>
+            ex.StatusCode is { } code &&
+            (int)code >= 400 && (int)code < 500 &&
+            code != HttpStatusCode.RequestTimeout &&
+            code != HttpStatusCode.TooManyRequests;
+
         static async Task SegmentAsync(
             DownloadItem it,
             Segment seg,
@@ -316,6 +361,8 @@ namespace FastDM
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
+
+                long before = seg.Downloaded;
 
                 try
                 {
@@ -338,10 +385,15 @@ namespace FastDM
                     ApplyAuth(req);
                     ApplyItemHeaders(req, it);
 
+                    using var stall =
+                        CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+                    stall.CancelAfter(StallTimeout);
+
                     using var resp = await Http.SendAsync(
                         req,
                         HttpCompletionOption.ResponseHeadersRead,
-                        ct).ConfigureAwait(false);
+                        stall.Token).ConfigureAwait(false);
 
                     CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
@@ -354,7 +406,7 @@ namespace FastDM
                     }
 
                     using var input =
-                        await resp.Content.ReadAsStreamAsync(ct)
+                        await resp.Content.ReadAsStreamAsync(stall.Token)
                             .ConfigureAwait(false);
 
                     using var fs = new FileStream(
@@ -372,8 +424,11 @@ namespace FastDM
 
                     while ((n = await input.ReadAsync(
                                buf.AsMemory(),
-                               ct).ConfigureAwait(false)) > 0)
+                               stall.Token).ConfigureAwait(false)) > 0)
                     {
+                        // disk write and speed limit may take long on purpose: not a stall
+                        stall.CancelAfter(Timeout.InfiniteTimeSpan);
+
                         if (it.SupportsRange)
                         {
                             long room =
@@ -399,6 +454,8 @@ namespace FastDM
                         if (it.SupportsRange &&
                             seg.Start + seg.Downloaded > seg.End)
                             break;
+
+                        stall.CancelAfter(StallTimeout);
                     }
 
                     if (!it.SupportsRange)
@@ -414,15 +471,19 @@ namespace FastDM
                     seg.Finished = true;
                     return;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    throw;
+                    throw;      // the user paused/stopped (a stall timeout falls through to retry)
                 }
                 catch (AuthRequiredException)
                 {
                     throw;
                 }
-                catch (Exception) when (++attempt < 6)
+                catch (HttpRequestException ex) when (IsPermanent(ex))
+                {
+                    throw;
+                }
+                catch (Exception) when (RetryAllowed(ref attempt, seg.Downloaded - before))
                 {
                     await Task.Delay(
                         1500 * attempt,

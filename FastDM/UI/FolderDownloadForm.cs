@@ -229,7 +229,7 @@ namespace FastDM
         // ফোল্ডার/ফাইলের নামে যেসব অক্ষর উইন্ডোজে চলে না সেগুলো বাদ
         static string SafeSeg(string s)
         {
-            string r = Engine.Sanitize(s ?? "").TrimEnd('.', ' ');
+            string r = DownloadEngine.Sanitize(s ?? "").TrimEnd('.', ' ');
             return r.Length == 0 ? "_" : r;
         }
 
