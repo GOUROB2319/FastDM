@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,15 @@ using System.Diagnostics;
 
 namespace FastDM
 {
+    static class SecretBuffer
+    {
+        public static void Clear(IntPtr memory, byte[] bytes)
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            for (int i = 0; i < bytes.Length; i++) Marshal.WriteByte(memory, i, 0);
+        }
+    }
+
     // ====================== সাধারণ টাইপ ======================
     public class AuthRequiredException : Exception
     {
@@ -43,6 +53,9 @@ namespace FastDM
                 var parts = u.UserInfo.Split(new[] { ':' }, 2);
                 user = Uri.UnescapeDataString(parts[0]);
                 pass = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "";
+                string safe = UrlCredential.Strip(u.AbsoluteUri, out _, out _);
+                if (Uri.TryCreate(safe, UriKind.Absolute, out var clean))
+                    Set(clean, user, pass, remember: false);
                 return true;
             }
 
@@ -110,7 +123,7 @@ namespace FastDM
                 CredWrite(ref c, 0);
             }
             catch (Exception exIgnored1) { AppLog.Write("CredentialStore (ignored): " + exIgnored1.Message); }
-            finally { Marshal.FreeHGlobal(mem); }
+            finally { try { SecretBuffer.Clear(mem, blob); } finally { Marshal.FreeHGlobal(mem); } }
         }
 
         static bool ReadCred(string target, out string user, out string pass)
@@ -190,7 +203,7 @@ namespace FastDM
                 CredWrite(ref c, 0);
             }
             catch (Exception exIgnored2) { AppLog.Write("CredentialStore (ignored): " + exIgnored2.Message); }
-            finally { Marshal.FreeHGlobal(mem); }
+            finally { try { SecretBuffer.Clear(mem, blob); } finally { Marshal.FreeHGlobal(mem); } }
         }
 
         public static bool Read(string key, out string? user, out string? pass)

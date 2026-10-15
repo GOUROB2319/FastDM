@@ -113,11 +113,9 @@ namespace FastDM
                     var ctx = new RequestContext
                     {
                         Referer = add.Referer,
-                        UserAgent = add.UserAgent
+                        UserAgent = add.UserAgent,
+                        Cookies = add.Cookies?.ToList()
                     };
-
-                    // কুকি আগে জারে, তারপর ডাউনলোড/ডায়ালগ
-                    if (add.Cookies != null) DownloadEngine.AddCookies(add.Cookies);
 
                     bool direct =
                         string.Equals(

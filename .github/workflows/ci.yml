@@ -31,8 +31,14 @@ jobs:
       - name: Build the desktop app
         run: dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64
 
-      - name: Run bridge and protocol tests
+      - name: Check MSIX manifest, versions and assets
+        run: powershell -ExecutionPolicy Bypass -File scripts/Test-PackageManifest.ps1
+
+      - name: Run regression, bridge and protocol tests
         run: dotnet run --project FastDM.Tests -c Release
+
+      - name: Run local download-engine integration tests
+        run: dotnet run --project FastDM.IntegrationTests -c Release
 
   extension:
     name: Browser extension (tests)

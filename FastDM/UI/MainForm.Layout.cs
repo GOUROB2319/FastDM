@@ -708,7 +708,7 @@ namespace FastDM
             DrawListViewSubItemEventArgs e)
         {
             var p = Theme.P;
-            var it = (DownloadItem)e.Item.Tag;
+            if (e.Item is not ListViewItem item || item.Tag is not DownloadItem it) return;
             var g = e.Graphics;
 
             var r = new Rectangle(
@@ -718,7 +718,7 @@ namespace FastDM
                 e.Bounds.Height);
 
             Color back =
-                e.Item.Selected
+                item.Selected
                     ? p.Selection
                     : (e.ItemIndex % 2 == 0
                         ? p.Window

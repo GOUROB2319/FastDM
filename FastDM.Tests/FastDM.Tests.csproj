@@ -30,6 +30,13 @@
 		<Compile Include="..\FastDM\YtDlp\YtDlpOutput.cs" Link="Linked\YtDlpOutput.cs" />
 		<Compile Include="..\FastDM\Core\FileCheck.cs" Link="Linked\FileCheck.cs" />
 		<Compile Include="..\FastDM\Core\AppLog.cs" Link="Linked\AppLog.cs" />
+		<Compile Include="..\FastDM\Core\DownloadCookieScope.cs" Link="Linked\DownloadCookieScope.cs" />
+		<Compile Include="..\FastDM\Core\HttpRangeValidation.cs" Link="Linked\HttpRangeValidation.cs" />
+		<Compile Include="..\FastDM\Core\UrlCredential.cs" Link="Linked\UrlCredential.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpDiagnostics.cs" Link="Linked\YtDlpDiagnostics.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpProxy.cs" Link="Linked\YtDlpProxy.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpUrlInput.cs" Link="Linked\YtDlpUrlInput.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />
 	</ItemGroup>
 
 </Project>

@@ -35,6 +35,7 @@ namespace FastDM
 
         readonly IBridgeHost host;
         readonly Queue<DateTime> addTimes = new Queue<DateTime>();
+        readonly SemaphoreSlim requestSlots = new SemaphoreSlim(32, 32);
         HttpListener? listener;
         CancellationTokenSource? cts;
         int pairing;                              // একসাথে একটাই পেয়ারিং অনুরোধ
@@ -111,22 +112,44 @@ namespace FastDM
                 HttpListenerContext ctx;
                 try { ctx = await listener.GetContextAsync(); }
                 catch { break; }
-                _ = Task.Run(() => HandleAsync(ctx));
+
+                if (!requestSlots.Wait(0))
+                {
+                    try { await Send(ctx.Response, 503, new { error = "server_busy" }); }
+                    catch (Exception exIgnored4) { AppLog.Write("BridgeServer busy response failed: " + exIgnored4.Message); }
+                    continue;
+                }
+
+                _ = HandleBoundedAsync(ctx, ct);
             }
         }
 
+        async Task HandleBoundedAsync(HttpListenerContext ctx, CancellationToken ct)
+        {
+            try { await HandleAsync(ctx, ct); }
+            finally { requestSlots.Release(); }
+        }
+
         // ---------- রিকোয়েস্ট ----------
-        async Task HandleAsync(HttpListenerContext ctx)
+        async Task HandleAsync(HttpListenerContext ctx, CancellationToken ct)
         {
             var req = ctx.Request;
             var res = ctx.Response;
+            int responseStarted = 0;
+            async Task SendOnce(int status, object? payload)
+            {
+                if (Interlocked.Exchange(ref responseStarted, 1) != 0) return;
+                await Send(res, status, payload);
+            }
+
             try
             {
+                ct.ThrowIfCancellationRequested();
                 // ১) Host চেক (DNS rebinding ঠেকাতে)
                 string hostHdr = (req.Headers["Host"] ?? "").ToLowerInvariant();
                 if (hostHdr != "127.0.0.1:" + Port && hostHdr != "localhost:" + Port)
                 {
-                    await Send(res, 403, new { error = "bad_host" });
+                    await SendOnce(403, new { error = "bad_host" });
                     return;
                 }
 
@@ -143,12 +166,12 @@ namespace FastDM
                 }
                 if (req.HttpMethod == "OPTIONS")
                 {
-                    await Send(res, originOk ? 204 : 403, null!);
+                    await SendOnce(originOk ? 204 : 403, null);
                     return;
                 }
                 if (!originOk)
                 {
-                    await Send(res, 403, new { error = "origin_not_allowed" });
+                    await SendOnce(403, new { error = "origin_not_allowed" });
                     return;
                 }
 
@@ -161,7 +184,7 @@ namespace FastDM
                 // ৩) রাউটিং
                 if (req.HttpMethod == "GET" && path == "/v1/ping")
                 {
-                    await Send(res, 200, new
+                    await SendOnce(200, new
                     {
                         app = "FastDM",
                         version = UpdateChecker.Current.ToString(3),
@@ -173,27 +196,27 @@ namespace FastDM
 
                 if (req.HttpMethod == "POST" && path == "/v1/pair")
                 {
-                    if (origin == null) { await Send(res, 403, new { error = "bad_origin" }); return; }
-                    await HandlePair(res, origin);
+                    if (origin == null) { await SendOnce(403, new { error = "bad_origin" }); return; }
+                    await HandlePair(origin, SendOnce, ct);
                     return;
                 }
 
                 // এর পরের সবকিছুতে টোকেন লাগবে
                 if (!paired)
                 {
-                    await Send(res, 401, new { error = "unauthorized" });
+                    await SendOnce(401, new { error = "unauthorized" });
                     return;
                 }
 
                 if (req.HttpMethod == "POST" && path == "/v1/add")
                 {
-                    await HandleAdd(req, res);
+                    await HandleAdd(req, SendOnce, ct);
                     return;
                 }
 
                 if (req.HttpMethod == "GET" && path == "/v1/tasks")
                 {
-                    await Send(res, 200, host.GetTasks());
+                    await SendOnce(200, host.GetTasks());
                     return;
                 }
 
@@ -203,85 +226,107 @@ namespace FastDM
                     if (parts.Length == 2 && (parts[1] == "pause" || parts[1] == "resume"))
                     {
                         bool ok = host.TaskAction(Uri.UnescapeDataString(parts[0]), parts[1]);
-                        await Send(res, ok ? 200 : 404, new { ok });
+                        await SendOnce(ok ? 200 : 404, new { ok });
                         return;
                     }
                 }
 
-                await Send(res, 404, new { error = "not_found" });
+                await SendOnce(404, new { error = "not_found" });
             }
-            catch
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                try { await Send(res, 500, new { error = "server_error" }); } catch (Exception exIgnored4) { AppLog.Write("BridgeServer (ignored): " + exIgnored4.Message); }
+                try { res.Close(); } catch (Exception exIgnored5) { AppLog.Write("BridgeServer close failed: " + exIgnored5.Message); }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("BridgeServer request failed: " + ex.Message);
+                try { await SendOnce(500, new { error = "server_error" }); }
+                catch (Exception exIgnored6) { AppLog.Write("BridgeServer response failed: " + exIgnored6.Message); }
             }
         }
 
-        async Task HandlePair(HttpListenerResponse res, string origin)
+        async Task HandlePair(string origin, Func<int, object?, Task> send, CancellationToken ct)
         {
             string key = BridgeAuth.NormalizeOrigin(origin);
             if (IsCoolingDown(key))
             {
-                await Send(res, 403, new { error = "pairing_denied" });      // no dialog: this extension was refused a moment ago
+                await send(403, new { error = "pairing_denied" });      // no dialog: this extension was refused a moment ago
                 return;
             }
 
             if (Interlocked.CompareExchange(ref pairing, 1, 0) != 0)
             {
-                await Send(res, 429, new { error = "pairing_busy" });
+                await send(429, new { error = "pairing_busy" });
                 return;
             }
             try
             {
                 var ask = host.AskPairAsync(origin);
-                var done = await Task.WhenAny(ask, Task.Delay(PairTimeout));
-                if (done != ask) { NoteDenied(key); await Send(res, 408, new { error = "pairing_timeout" }); return; }
-                if (!await ask) { NoteDenied(key); await Send(res, 403, new { error = "pairing_denied" }); return; }
+                var done = await Task.WhenAny(ask, Task.Delay(PairTimeout, ct));
+                if (done != ask)
+                {
+                    if (ct.IsCancellationRequested) { NoteDenied(key); ct.ThrowIfCancellationRequested(); }
+                    NoteDenied(key); await send(408, new { error = "pairing_timeout" }); return;
+                }
+                if (!await ask) { NoteDenied(key); await send(403, new { error = "pairing_denied" }); return; }
 
                 NoteApproved(key);
                 string token = BridgeAuth.NewToken();
                 BridgeAuth.AddToken(host.BridgeSettings, token, key);
                 host.SaveSettings();
-                await Send(res, 200, new { token });
+                await send(200, new { token });
             }
             finally { Interlocked.Exchange(ref pairing, 0); }
         }
 
-        async Task HandleAdd(HttpListenerRequest req, HttpListenerResponse res)
+        async Task HandleAdd(HttpListenerRequest req, Func<int, object?, Task> send, CancellationToken ct)
         {
             // রেট লিমিট
+            bool rateLimited;
             lock (addTimes)
             {
                 var now = DateTime.UtcNow;
                 while (addTimes.Count > 0 && now - addTimes.Peek() > AddWindow) addTimes.Dequeue();
-                if (addTimes.Count >= AddLimitPerWindow)
-                {
-                    _ = Send(res, 429, new { error = "rate_limited" });
-                    return;
-                }
-                addTimes.Enqueue(now);
+                rateLimited = addTimes.Count >= AddLimitPerWindow;
+                if (!rateLimited) addTimes.Enqueue(now);
             }
+            if (rateLimited) { await send(429, new { error = "rate_limited" }); return; }
 
-            string? body = await ReadBody(req);
-                if (body == null)
+            string? body;
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                try { body = await ReadBody(req, timeout.Token); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
-                    await Send(res, 413, new { error = "body_too_large" });
+                    await send(408, new { error = "request_timeout" });
                     return;
                 }
-            if (body == null) { await Send(res, 413, new { error = "body_too_large" }); return; }
+                catch (DecoderFallbackException)
+                {
+                    await send(400, new { error = "bad_json" });
+                    return;
+                }
+            }
+            if (body == null)
+            {
+                await send(413, new { error = "body_too_large" });
+                return;
+            }
 
             BridgeAddRequest? add;
             try { add = JsonSerializer.Deserialize<BridgeAddRequest>(body, Json); }
-            catch { await Send(res, 400, new { error = "bad_json" }); return; }
+            catch { await send(400, new { error = "bad_json" }); return; }
 
             if (add == null)
             {
-                await Send(res, 400, new { error = "bad_json" });
+                await send(400, new { error = "bad_json" });
                 return;
             }
 
             if (add == null || !BridgeAuth.IsAllowedUrl(add.Url))
             {
-                await Send(res, 400, new { error = "bad_url" });
+                await send(400, new { error = "bad_url" });
                 return;
             }
 
@@ -292,38 +337,39 @@ namespace FastDM
             add.Cookies = BridgeAuth.CleanCookies(add.Cookies, add.Url);
 
             host.ExternalAdd(add);
-            await Send(res, 200, new { ok = true, status = add.Mode == "download" ? "started" : "opened" });
+            await send(200, new { ok = true, status = add.Mode == "download" ? "started" : "opened" });
         }
 
-        static async Task<string?> ReadBody(HttpListenerRequest req)
+        static async Task<string?> ReadBody(HttpListenerRequest req, CancellationToken ct)
         {
             if (req.ContentLength64 > MaxBody) return null;
-            using var sr = new StreamReader(req.InputStream, Encoding.UTF8);
-            var sb = new StringBuilder();
-            var buf = new char[4096];
+            using var ms = new MemoryStream(Math.Min(MaxBody, (int)Math.Max(0, req.ContentLength64)));
+            var buf = new byte[8192];
             int n;
-            while ((n = await sr.ReadAsync(buf, 0, buf.Length)) > 0)
+            while ((n = await req.InputStream.ReadAsync(buf.AsMemory(), ct)) > 0)
             {
-                sb.Append(buf, 0, n);
-                if (sb.Length > MaxBody) return null;
+                if (ms.Length + n > MaxBody) return null;
+                await ms.WriteAsync(buf.AsMemory(0, n), ct);
             }
-            return sb.ToString();
+            return new UTF8Encoding(false, true).GetString(ms.ToArray());
         }
 
-        static async Task Send(HttpListenerResponse res, int status, object payload)
+        static async Task Send(HttpListenerResponse res, int status, object? payload)
         {
-            res.StatusCode = status;
-            if (payload == null)
+            try
             {
-                res.ContentLength64 = 0;
-                res.Close();
-                return;
+                res.StatusCode = status;
+                if (payload == null)
+                {
+                    res.ContentLength64 = 0;
+                    return;
+                }
+                byte[] data = JsonSerializer.SerializeToUtf8Bytes(payload, Json);
+                res.ContentType = "application/json; charset=utf-8";
+                res.ContentLength64 = data.Length;
+                await res.OutputStream.WriteAsync(data, 0, data.Length);
             }
-            byte[] data = JsonSerializer.SerializeToUtf8Bytes(payload, Json);
-            res.ContentType = "application/json; charset=utf-8";
-            res.ContentLength64 = data.Length;
-            await res.OutputStream.WriteAsync(data, 0, data.Length);
-            res.Close();
+            finally { res.Close(); }
         }
     }
 }

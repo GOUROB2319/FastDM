@@ -77,6 +77,15 @@ export async function forgetPairing() {
   await clearToken();
 }
 
+function protocolSafeUrl(value) {
+  const target = new URL(value);
+  if (!['http:', 'https:', 'ftp:', 'sftp:'].includes(target.protocol))
+    throw new BridgeError('bad_url');
+  target.username = '';
+  target.password = '';
+  return target.href;
+}
+
 async function authed(path, opts = {}) {
   const found = await discover();
   if (!found) throw new BridgeError('not_running');
@@ -112,7 +121,8 @@ export function taskAction(id, action) {
 // fastdm:// দিয়ে অ্যাপ চালু করা (অ্যাপ বন্ধ থাকলে)। লিঙ্ক দিলে অ্যাপ Add ডায়ালগ খোলে।
 export async function launchApp(url, action = 'add') {
   const act = action === 'playlist' ? 'playlist' : 'add';     // fastdm://playlist শুধু ফোল্ডার-প্লেলিস্টের জন্য
-  const target = url ? `fastdm://${act}?url=${encodeURIComponent(url)}` : 'fastdm://open';
+  const safeUrl = url ? protocolSafeUrl(url) : '';
+  const target = safeUrl ? `fastdm://${act}?url=${encodeURIComponent(safeUrl)}` : 'fastdm://open';
   const tab = await chrome.tabs.create({ url: target, active: false });
   setTimeout(() => { chrome.tabs.remove(tab.id).catch(() => {}); }, 2000);
   return target;

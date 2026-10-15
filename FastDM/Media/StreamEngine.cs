@@ -34,12 +34,13 @@ namespace FastDM
         public static async Task RunAsync(DownloadItem it, int connections, CancellationToken ct)
         {
             var spec = it.Stream ?? throw new InvalidOperationException("The stream specification is missing.");
+            using var client = DownloadEngine.CreateCookieClient(it.Url, spec.Cookies ?? it.Cookies);
             Directory.CreateDirectory(it.Folder);
             string partsDir = it.PartsDir;
             Directory.CreateDirectory(partsDir);
 
             it.StatusNote = "Reading stream…";
-            var tracks = await ResolveAsync(spec, ct);
+            var tracks = await ResolveAsync(spec, ct, client);
             if (tracks.Count == 0) throw new InvalidOperationException("Nothing to download for the selected options.");
 
             foreach (var tr in tracks)
@@ -75,7 +76,7 @@ namespace FastDM
                 new ParallelOptions { MaxDegreeOfParallelism = par, CancellationToken = ct },
                 async (seg, token) =>
                 {
-                    await DownloadSegmentAsync(it, seg, spec.Referer, keys, token);
+                    await DownloadSegmentAsync(client, it, seg, spec.Referer, keys, token);
                     int d = Interlocked.Increment(ref done);
                     it.StreamDone = d;
                     UpdateEstimate(it);
@@ -99,7 +100,7 @@ namespace FastDM
         }
 
         // ---------- ম্যানিফেস্ট থেকে ট্র্যাক বানানো ----------
-        static async Task<List<Track>> ResolveAsync(StreamSpec spec, CancellationToken ct)
+        static async Task<List<Track>> ResolveAsync(StreamSpec spec, CancellationToken ct, HttpClient client)
         {
             var tracks = new List<Track>();
 
@@ -107,15 +108,15 @@ namespace FastDM
             {
                 bool separateAudio = !string.IsNullOrEmpty(spec.AudioUrl);
                 if (!(spec.AudioOnly && separateAudio) && spec.VideoUrl is { Length: > 0 } videoUrl)
-                    tracks.Add(await HlsTrackAsync("video", videoUrl, spec.Referer, ct));
+                    tracks.Add(await HlsTrackAsync("video", videoUrl, spec.Referer, ct, client));
                 if (spec.AudioUrl is { Length: > 0 } audioUrl)
-                    tracks.Add(await HlsTrackAsync("audio", audioUrl, spec.Referer, ct));
+                    tracks.Add(await HlsTrackAsync("audio", audioUrl, spec.Referer, ct, client));
                 return tracks;
             }
 
             // DASH
             string manifestUrl = spec.ManifestUrl ?? throw new InvalidOperationException("The DASH manifest URL is missing.");
-            string text = await MediaNet.GetTextAsync(manifestUrl, spec.Referer, ct);
+            string text = await MediaNet.GetTextAsync(manifestUrl, spec.Referer, ct, client: client);
             var mpd = Dash.Parse(text, new Uri(manifestUrl));
             if (mpd.Unsupported != null) throw new NotSupportedException(mpd.Unsupported);
 
@@ -134,9 +135,9 @@ namespace FastDM
             return tracks;
         }
 
-        static async Task<Track> HlsTrackAsync(string name, string url, string? referer, CancellationToken ct)
+        static async Task<Track> HlsTrackAsync(string name, string url, string? referer, CancellationToken ct, HttpClient client)
         {
-            string text = await MediaNet.GetTextAsync(url, referer, ct);
+            string text = await MediaNet.GetTextAsync(url, referer, ct, client: client);
             var pl = Hls.ParseMedia(text, new Uri(url));
             if (pl.Unsupported != null) throw new NotSupportedException(pl.Unsupported);
 
@@ -170,7 +171,7 @@ namespace FastDM
         }
 
         // ---------- একটা সেগমেন্ট নামানো (+ দরকার হলে AES-128 ডিক্রিপ্ট) ----------
-        static async Task DownloadSegmentAsync(DownloadItem it, PartSeg s, string? referer,
+        static async Task DownloadSegmentAsync(HttpClient client, DownloadItem it, PartSeg s, string? referer,
                                                ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
         {
             int attempt = 0;
@@ -189,7 +190,7 @@ namespace FastDM
                         req.Headers.Range = new RangeHeaderValue(s.Start, s.Start + s.Len - 1);
                     DownloadEngine.ApplyAuth(req);
 
-                    using var resp = await DownloadEngine.SharedClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                    using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
                     DownloadEngine.CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
 
@@ -206,7 +207,7 @@ namespace FastDM
                     }
 
                     byte[] data = ms.ToArray();
-                    if (!string.IsNullOrEmpty(s.KeyUrl)) data = await DecryptAsync(data, s, referer, keys, ct);
+                    if (!string.IsNullOrEmpty(s.KeyUrl)) data = await DecryptAsync(client, data, s, referer, keys, ct);
 
                     string tmp = s.File + ".tmp";
                     await File.WriteAllBytesAsync(tmp, data, ct);
@@ -223,7 +224,7 @@ namespace FastDM
             }
         }
 
-        static async Task<byte[]> DecryptAsync(byte[] data, PartSeg s, string? referer,
+        static async Task<byte[]> DecryptAsync(HttpClient client, byte[] data, PartSeg s, string? referer,
                                                ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
         {
             string keyUrl = s.KeyUrl ?? throw new InvalidOperationException("The encryption key URL is missing.");
@@ -235,7 +236,7 @@ namespace FastDM
                     try { req.Headers.Referrer = new Uri(referer); } catch (Exception exIgnored3) { AppLog.Write("StreamEngine (ignored): " + exIgnored3.Message); }
                 }
                 DownloadEngine.ApplyAuth(req);
-                using var resp = await DownloadEngine.SharedClient.SendAsync(req, ct);
+                using var resp = await client.SendAsync(req, ct);
                 DownloadEngine.CheckAuth(resp);
                 resp.EnsureSuccessStatusCode();
                 key = await resp.Content.ReadAsByteArrayAsync(ct);

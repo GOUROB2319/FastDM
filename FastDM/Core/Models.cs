@@ -179,6 +179,7 @@ namespace FastDM
         public string YtCookieFile { get; set; } = "";                        // yt-dlp: path of an exported cookies.txt (used before the browser choice)
         public string YtCookieBrowser { get; set; } = "";                     // yt-dlp login cookies: "" | edge | chrome | firefox | brave
         public DateTime LastYtDlpUpdate { get; set; } = DateTime.MinValue;   // yt-dlp শেষ কবে আপডেট চেক হয়েছে
+        public DateTime LastYtDlpAttempt { get; set; } = DateTime.MinValue; // failed updates retry after a short backoff
         public bool SidebarOpen { get; set; } = true;                        // বাম সাইডবার খোলা না বন্ধ
         public bool BridgeEnabled { get; set; } = true;                      // ব্রাউজার এক্সটেনশনের সংযোগ চালু
         public Dictionary<string, string> BridgeTokenOrigins { get; set; } = new Dictionary<string, string>(); // token-hash -> extension origin it was paired with
@@ -188,7 +189,28 @@ namespace FastDM
     public class DownloadItem
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
-        public string Url { get; set; } = "";
+        string url = "";
+        public string Url
+        {
+            get => url;
+            set
+            {
+                url = UrlCredential.Strip(value, out var user, out var pass);
+                if (user != null)
+                {
+                    UrlHadCredentials = true;
+                    if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                        CredStore.Set(uri, user, pass ?? "", remember: false);
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public bool UrlHadCredentials { get; private set; }
+
+        // Extension cookies are request-scoped and must never be serialized into state.json.
+        [JsonIgnore]
+        public List<BridgeCookie>? Cookies { get; set; }
         public string FileName { get; set; } = "";
         public string Folder { get; set; } = "";
         public string? Referer { get; set; }             // এক্সটেনশন থেকে এলে: লিঙ্কটা যে পেজে ছিল

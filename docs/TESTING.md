@@ -8,18 +8,20 @@ Run these commands from the repository root in PowerShell.
 powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1
 ```
 
-Expected final message: `Core build, bridge tests and extension tests passed.`
+Expected final message: `Desktop build, package checks, regression tests and extension tests passed.`
 
 What it runs:
 
 - `dotnet build` of the desktop app.
-- `FastDM.Tests`: about 100 checks on the extension bridge (pairing, token and extension-ID binding, cookie isolation, allowed link types, the `fastdm://` protocol) against a real local server. Close other copies of FastDM first if the test says the server cannot start (it needs one free port from 17432 to 17436).
+- `scripts/Test-PackageManifest.ps1`: package/app version consistency, manifest asset sources and copies of any locally installed optional tools.
+- `FastDM.Tests`: dependency-free checks for bridge pairing and limits, URL credentials and log redaction, cookie scope, yt-dlp proxy/cookie selection, range validation, protocol handling, and existing app helpers. Bridge tests use a local server; close other FastDM copies if a test cannot bind a port from 17432 to 17436.
+- `FastDM.IntegrationTests`: loopback-server tests for exact range bytes, redirects, temporary retries, server errors, bad `Content-Range`, zero-byte response, per-download cookie isolation, and cancel/resume; it also checks child-process Unicode output and cancellation.
 - `npm test` in `FastDM.Extension`: bridge client tests plus a check that the English and Bangla texts, the manifest and the HTML use the same keys.
 
 The same checks run on GitHub for every push and pull request to `master` and `test` (Actions tab, workflow **CI**).
 
-This builds the Windows desktop application and runs the Node tests for
-the browser-extension bridge.
+This builds the Windows desktop application and runs package, .NET, local HTTP
+integration and Node extension checks.
 
 ## 2. Test the desktop app
 
@@ -258,10 +260,39 @@ powershell -ExecutionPolicy Bypass -File tools/pack.ps1
 
 The upload-ready archive is created in
 `FastDM.Extension/dist/FastDM-Extension-0.1.0.zip`.
+If an archive with that name already exists, the packer chooses the next unused
+`-1`, `-2`, and so on suffix instead of overwriting the existing archive.
 
 ## 5. Build the MSIX package (optional)
 
-Install Visual Studio 2022 with the **MSIX Packaging Tools** component. Then
-open `FastDM.slnx`, choose `Debug | x64`, and use **Build Solution**. This
-requires Visual Studio's Desktop Bridge targets; `dotnet build FastDM.slnx`
-alone is not sufficient.
+Install Visual Studio with the **MSIX Packaging Tools** component. Then open
+`FastDM.slnx`, choose `Debug | x64`, and use **Build Solution**. This requires
+Visual Studio's Desktop Bridge targets; `dotnet build FastDM.slnx` may not
+locate them on its own. Use that Visual Studio installation's MSBuild when
+needed.
+
+
+## 6. Check package metadata and local tools
+
+The main test script runs the MSIX manifest/version/asset check after the app
+build. To run it directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Test-PackageManifest.ps1
+```
+
+The check reports optional local tools and confirms that any present under
+`FastDM/Tools/` were copied to the app build output. A clean checkout has no
+local tool binaries and should still build; see [`docs/TOOLS.md`](TOOLS.md).
+
+## 7. Verify the current source in a clean temporary workspace
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1
+```
+
+This copies tracked and non-ignored source files to a uniquely named directory
+under the operating system's temporary folder, leaving ignored local tools,
+build outputs, and caches behind. It builds the desktop app and runs the .NET,
+loopback integration, and extension tests there, then removes only that
+temporary copy.

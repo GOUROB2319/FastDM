@@ -32,6 +32,7 @@ namespace FastDM.Tests
             {
                 ReadCases(Fresh);
                 WriteCases(Fresh);
+                CredentialMigrationCases(Fresh);
                 OtherCases(Fresh);
             }
             finally
@@ -157,6 +158,30 @@ namespace FastDM.Tests
             string? again = StateStore.KeepNewerCopy(file, 7);
             T.Check("the copy is made only once (never overwritten)", again == kept && File.ReadAllText(kept!) == "{\"Name\":\"new\",\"SchemaVersion\":7}");
             T.Check("no file -> nothing kept", StateStore.KeepNewerCopy(Path.Combine(dir, "missing.json"), 3) == null);
+        }
+
+        static void CredentialMigrationCases(Func<string> fresh)
+        {
+            T.Section("state.json: URL credential migration");
+            string dir = fresh(), file = Path.Combine(dir, "state.json");
+            string source = """{"SchemaVersion":2,"Items":[{"Url":"ftp://user:pass@host.test/file?sig=keep","FileName":"keep.zip","YtDlp":{"Url":"https://yt-user:yt-pass@video.test/watch?v=1"}}],"Deleted":[]}""";
+            foreach (string path in new[] { file, StateStore.Backup1(file), StateStore.Backup2(file) })
+                File.WriteAllText(path, source);
+
+            int[] changed = new[] { file, StateStore.Backup1(file), StateStore.Backup2(file) }
+                .Select(StateStore.SanitizeInlineCredentials).ToArray();
+            string sanitized = File.ReadAllText(file);
+            using var doc = JsonDocument.Parse(sanitized);
+            var item = doc.RootElement.GetProperty("Items")[0];
+            string? migratedUrl = item.GetProperty("Url").GetString();
+            string? migratedName = item.GetProperty("FileName").GetString();
+            string? migratedYtUrl = item.GetProperty("YtDlp").GetProperty("Url").GetString();
+            T.Check("URL credentials are removed from state and both backups", changed.All(count => count == 2) &&
+                new[] { file, StateStore.Backup1(file), StateStore.Backup2(file) }.All(path =>
+                    !File.ReadAllText(path).Contains("user:pass") && !File.ReadAllText(path).Contains("yt-user:yt-pass")));
+            T.Check("credential migration preserves download data and signed query strings (" + migratedUrl + ", " + migratedName + ", " + migratedYtUrl + ")",
+                migratedUrl == "ftp://host.test/file?sig=keep" && migratedName == "keep.zip" && migratedYtUrl == "https://video.test/watch?v=1");
+            T.Check("a second migration is a no-op", StateStore.SanitizeInlineCredentials(file) == 0);
         }
     }
 }

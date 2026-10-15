@@ -18,12 +18,13 @@ after the user approves a pairing request.
 | `FastDM/Resources/` | Desktop app icon |
 | `FastDM.Package/` | Optional MSIX/Windows package project and its image assets |
 | `FastDM.Extension/` | Chrome/Edge Manifest V3 extension |
-| `FastDM.Tests/` | Dependency-free test runner for the bridge (links the real source files) |
+| `FastDM.Tests/` | Dependency-free unit, bridge, protocol, privacy and configuration regression runner |
+| `FastDM.IntegrationTests/` | Windows loopback HTTP tests for range downloads, cookies, cancellation and resume |
 | `.github/workflows/` | GitHub Actions: CI build and tests |
 | `FastDM.Extension/src/` | Extension source code: background, popup, options, shared code |
 | `FastDM.Extension/tests/` | Node automated tests |
 | `FastDM.Extension/tools/` | Extension packaging script |
-| `docs/` | Design and architecture notes |
+| `docs/` | Design notes, privacy policy, tool requirements and audit/testing documentation |
 | `scripts/` | Repeatable local build/test commands |
 
 ## Code conventions
@@ -37,9 +38,12 @@ after the user approves a pairing request.
 
 ## Tools that are not in Git
 
-`yt-dlp.exe` (and `ffmpeg.exe` with its DLLs, for joining video and audio) go into
-`FastDM/Tools/`. The build copies that folder next to the app. Without it the app
-still runs, but yt-dlp and stream-merge downloads are unavailable.
+`yt-dlp.exe`, a JavaScript runtime, and `ffmpeg.exe` with its required DLLs go in
+`FastDM/Tools/`. The build copies that folder next to the app. Without these
+optional local tools the app still runs, but video-site and stream-merge features
+are unavailable. FastDM does not search `PATH` for these executables or download
+them automatically. See [`docs/TOOLS.md`](docs/TOOLS.md) for requirements and the
+local tool provenance review.
 
 The privacy policy is at [`docs/Privacy.md`](docs/Privacy.md).
 
@@ -60,12 +64,19 @@ To run the desktop app directly:
 dotnet run --project FastDM/FastDM.csproj -c Debug -p:Platform=x64
 ```
 
+To build and run the current source in an isolated temporary workspace without
+ignored local tools, build outputs, or caches:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1
+```
+
 For the full browser-extension and MSIX manual checks, follow
 [`docs/TESTING.md`](docs/TESTING.md).
 
 ## MSIX requirement
 
 The desktop app can be built with the .NET SDK alone. Building
-`FastDM.Package` requires Visual Studio 2022 with the **MSIX Packaging Tools**
-component (the Desktop Bridge MSBuild targets). Open `FastDM.slnx` in that
-Visual Studio installation to build or deploy the package.
+`FastDM.Package` requires a Visual Studio installation with the **MSIX Packaging
+Tools** component (the Desktop Bridge MSBuild targets). Build with that
+installation's MSBuild when the .NET CLI cannot locate those targets.

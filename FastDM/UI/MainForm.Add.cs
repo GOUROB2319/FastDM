@@ -32,7 +32,7 @@ namespace FastDM
 
                 try
                 {
-                    await ShowAddDialogCore(url, ctx);
+                    await ShowAddDialogCore(url, ctx ?? new RequestContext());
                 }
                 finally
                 {
@@ -144,6 +144,8 @@ namespace FastDM
             bool startNow,
             RequestContext ctx)
         {
+            urls = urls.Select(UrlCredential.StripAndRemember).ToArray();
+
             // একবারে সর্বোচ্চ কয়টা লিঙ্ক (Preferences → Downloads)
             int maxBatch = Math.Max(1, settings.MaxBatchUrls);
 
@@ -193,7 +195,8 @@ namespace FastDM
                     var (isFolder, resolved) =
                         await DownloadEngine.DetectFolderAsync(
                             new Uri(u),
-                            cts.Token);
+                            cts.Token,
+                            ctx.Cookies);
 
                     if (isFolder)
                     {
@@ -214,7 +217,8 @@ namespace FastDM
                         var media =
                             await MediaDetector.ProbeAsync(
                                 new Uri(u),
-                                mcts.Token);
+                                mcts.Token,
+                                ctx.Cookies);
 
                         if (media.Kind ==
                                 MediaKind.Hls ||
@@ -248,6 +252,7 @@ namespace FastDM
                     Folder = folder,
                     Referer = ctx?.Referer,
                     UserAgent = ctx?.UserAgent,
+                    Cookies = ctx?.Cookies?.ToList(),
                     FileName =
                         fileUrls.Count == 1 &&
                         folderUris.Count == 0 &&
@@ -766,7 +771,8 @@ namespace FastDM
                     await AddDirectCandidateAsync(
                         pick.Url,
                         saveFolder,
-                        startNow);
+                        startNow,
+                        r.Cookies);
 
                     return;
                 }
@@ -794,7 +800,8 @@ namespace FastDM
                             kind,
                             referer,
                             r.Title,
-                            cts.Token);
+                            cts.Token,
+                            r.Cookies);
                 }
                 catch (AuthRequiredException)
                 {
@@ -834,6 +841,7 @@ namespace FastDM
 
             var spec = pf.Spec;
             if (spec == null) return;
+            spec.Cookies = r.Cookies?.ToList();
             string ext =
                 spec.AudioOnly
                     ? ".m4a"
@@ -941,20 +949,13 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                string hint =
-                    YtDlpCookies.HintFor(ex.GetBaseException().Message) ??
-                    (UpdateChecker.IsPackaged
-                        ? "\n\nIf this keeps happening, a newer app version (with an updated yt-dlp) may fix it."
-                        : "\n\nTry Settings → Update yt-dlp.");
-
-                MessageBox.Show(
-                    this,
-                    "Could not read this video.\n\n" +
-                    ex.GetBaseException().Message +
-                    hint,
-                    "Video",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                using var error = new YtDlpErrorForm(
+                    ex.GetBaseException().Message,
+                    YtDlpCookies.SelectSource(),
+                    UpdateChecker.IsPackaged);
+                Theme.Apply(error);
+                if (error.ShowDialog(this) == DialogResult.OK && error.OpenVideoSettings)
+                    ShowSettings("Advanced");
 
                 return;
             }
@@ -1012,13 +1013,15 @@ namespace FastDM
         async Task AddDirectCandidateAsync(
             string url,
             string saveFolder,
-            bool startNow)
+            bool startNow,
+            List<BridgeCookie>? cookies = null)
         {
             var it = new DownloadItem
             {
                 Url = url,
                 Folder = saveFolder,
-                FileName = ""
+                FileName = "",
+                Cookies = cookies?.ToList()
             };
 
             try

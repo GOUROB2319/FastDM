@@ -8,8 +8,16 @@ try {
     dotnet build 'FastDM/FastDM.csproj' -c Debug -p:Platform=x64
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    Write-Host 'Running bridge and protocol tests...'
+    Write-Host 'Checking MSIX manifest, app version, assets and optional tool copies...'
+    powershell -ExecutionPolicy Bypass -File 'scripts/Test-PackageManifest.ps1'
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Write-Host 'Running unit, bridge and protocol regression checks...'
     dotnet run --project 'FastDM.Tests' -c Release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    Write-Host 'Running local HTTP download-engine integration tests...'
+    dotnet run --project 'FastDM.IntegrationTests' -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host 'Running extension tests...'
@@ -22,7 +30,7 @@ try {
         Pop-Location
     }
 
-    Write-Host 'Core build, bridge tests and extension tests passed.'
+    Write-Host 'Desktop build, package checks, regression tests and extension tests passed.'
 }
 finally {
     Pop-Location

@@ -4,46 +4,39 @@ Title: FastDM Privacy Policy
 
 # Privacy Policy for FastDM
 
-**Last updated: September 30, 2026**
+**Last updated: October 15, 2026**
 
-FastDM ("the app") is a desktop download manager for Windows, developed by Gourob Saha.
+FastDM is a Windows download manager developed by Gourob Saha.
 
-## Data Collection
+## Information FastDM collects
 
-FastDM does **not** collect, store, or transmit any personal information to the developer or any third party. 
+FastDM does not send telemetry, analytics, advertising data, or download history to the developer. It does not require an online account.
 
-Specifically:
+FastDM does make network requests to services you choose to use. Those services receive the information required for the request, which can include the URL, your IP address, request headers, browser cookies, and credentials. Video downloads may use yt-dlp and the video site's own services. The extension sends a selected link and, only when enabled, matching browser cookies to the FastDM app on your computer.
 
-- FastDM does not collect your name, email address, location, or any other personal identifiers.
-- FastDM does not use analytics, advertising SDKs, or tracking technologies.
-- FastDM does not create an online account or require sign-in.
+## Data stored on your device
 
-## Local Data Storage
+- The download list, settings, and URLs are stored in the FastDM state file under your Windows application data folder. URL query strings can contain signed links or access tokens; treat this file as private.
+- Credentials embedded in a URL are removed before the URL is saved and are held in session memory only. Credentials entered in a login prompt can be saved only when you select **Remember**, which uses Windows Credential Manager. A saved proxy password is also held by Windows Credential Manager.
+- Browser-extension cookies are held in memory for the selected request or download. They are not saved in the download list and are cleared when FastDM exits.
+- yt-dlp can read a browser profile you select or a cookies.txt file you select. FastDM does not create or upload a cookie file. yt-dlp sends the relevant cookies to the video service as part of its request.
+- Diagnostic logging is off by default. When enabled, logs stay on the device and FastDM redacts URL credentials, URL query and fragment values, cookies, authorization values, common token/password fields, and Windows user-profile paths. Do not share logs without reviewing them.
 
-FastDM stores the following information **only on your own device**, and this data never leaves your computer :
+## Network connections and updates
 
-- The list of your downloads (file names, URLs, download status, and progress) is saved locally in a settings file on your PC so the app can resume downloads after restarting.
-- Files you choose to download are saved to the folder you select on your own device.
+FastDM connects directly to the download URLs and services you request, using your configured proxy when applicable. FastDM does not relay downloads through a developer-operated server. The desktop app may check for app updates; the portable build may also use yt-dlp's upstream update mechanism when you request or enable it. The MSIX build receives app updates through its package distribution channel.
 
-## Network Access
-
-FastDM connects directly to the URLs you provide in order to download files. FastDM does not route your downloads through any server operated by the developer.
-
-## Third-Party Services
-
-FastDM does not integrate with any third-party analytics, advertising, or data-sharing services.
+The privacy practices of the destination websites and any configured proxy apply to information sent to those services. Review their policies before sending them sensitive URLs, cookies, or credentials.
 
 ## Children's Privacy
 
-FastDM does not knowingly collect any information from children, because it does not collect personal information from any user.
+FastDM does not knowingly collect personal information from children. Users should follow the rules that apply in their location and the terms of the services they access.
 
-## Changes to This Policy
+## Changes to this policy
 
-This privacy policy may be updated occasionally. Any changes will be posted on this page.
+This policy may be updated when FastDM's data handling changes. The current version is published with the project.
 
 ## Contact
 
-If you have questions about this privacy policy, you can contact the developer :
-
-**Gourob Saha**
+Gourob Saha
 Email: gourobsaha2319@gmail.com

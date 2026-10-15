@@ -44,7 +44,7 @@ namespace FastDM.Tests
 
             async Task<(HttpStatusCode Code, JsonElement Json)> Call(string method, string path, string? origin, string? token = null, string? body = null, string? hostHeader = null)
             {
-                var req = new HttpRequestMessage(new HttpMethod(method), baseUrl + path);
+                using var req = new HttpRequestMessage(new HttpMethod(method), baseUrl + path);
                 if (origin != null) req.Headers.TryAddWithoutValidation("Origin", origin);
                 if (token != null) req.Headers.TryAddWithoutValidation("X-FastDM-Token", token);
                 if (hostHeader != null) req.Headers.Host = hostHeader;
@@ -95,6 +95,15 @@ namespace FastDM.Tests
             T.Check("add with a javascript: link -> 400 bad_url", c7b == HttpStatusCode.BadRequest && Err(j7b) == "bad_url" && host.Added == 1);
             var (c7c, j7c) = await Call("POST", "/v1/add", A, tokenA, "{ not json");
             T.Check("add with broken JSON -> 400 bad_json", c7c == HttpStatusCode.BadRequest && Err(j7c) == "bad_json");
+
+            string oversized = "{\"url\":\"https://a.test/x.zip\",\"title\":\"" + new string('x', 256 * 1024) + "\"}";
+            var (c7d, j7d) = await Call("POST", "/v1/add", A, tokenA, oversized);
+            T.Check("oversized request body -> completed 413 body_too_large", c7d == HttpStatusCode.RequestEntityTooLarge && Err(j7d) == "body_too_large");
+
+            var burst = await Task.WhenAll(Enumerable.Range(0, 45).Select(_ =>
+                Call("POST", "/v1/add", A, tokenA, "{\"url\":\"https://a.test/burst.zip\",\"mode\":\"download\"}")));
+            T.Check("concurrent add burst gets a completed response for every request", burst.Length == 45 && burst.All(x => x.Code != 0));
+            T.Check("rate limit sends a completed 429 response", burst.Any(x => x.Code == HttpStatusCode.TooManyRequests && Err(x.Json) == "rate_limited"));
             T.Check("tasks from A -> 200", (await Call("GET", "/v1/tasks", A, tokenA)).Code == HttpStatusCode.OK);
 
             // ---- refused extension cannot spam dialogs ----

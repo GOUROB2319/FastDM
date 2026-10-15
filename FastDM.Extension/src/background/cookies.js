@@ -25,13 +25,17 @@ export async function cookiesFor(url) {
   if (!(await hasCookieAccess())) return [];
   try {
     const list = await chrome.cookies.getAll({ url });
-    return list.map((c) => ({
-      name: c.name,
-      value: c.value,
-      domain: c.domain,
-      path: c.path,
-      secure: !!c.secure,
-    }));
+    return list.map((c) => {
+      const cookie = {
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        secure: !!c.secure,
+      };
+      if (Number.isFinite(c.expirationDate)) cookie.expirationDate = c.expirationDate;
+      return cookie;
+    });
   } catch {
     return [];
   }

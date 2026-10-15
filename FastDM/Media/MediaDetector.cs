@@ -42,9 +42,15 @@ namespace FastDM
             return MediaKind.None;
         }
 
-        public static async Task<MediaProbeResult> ProbeAsync(Uri uri, CancellationToken ct)
+        public static async Task<MediaProbeResult> ProbeAsync(Uri uri, CancellationToken ct,
+                                                              IReadOnlyCollection<BridgeCookie>? cookies = null)
         {
-            var result = new MediaProbeResult { Url = uri.AbsoluteUri, Kind = MediaKind.None };
+            var result = new MediaProbeResult
+            {
+                Url = uri.AbsoluteUri,
+                Kind = MediaKind.None,
+                Cookies = cookies?.ToList()
+            };
 
             var byExt = KindFromUrl(uri.AbsoluteUri);
             if (byExt == MediaKind.Hls || byExt == MediaKind.Dash) { result.Kind = byExt; return result; }
@@ -53,9 +59,10 @@ namespace FastDM
             string ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
             if (SkipExt.Contains(ext)) return result;
 
+            using var client = DownloadEngine.CreateCookieClient(uri.AbsoluteUri, cookies);
             using var req = new HttpRequestMessage(HttpMethod.Get, uri);
             DownloadEngine.ApplyAuth(req);
-            using var resp = await DownloadEngine.SharedClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!resp.IsSuccessStatusCode) return result;
 
             string ctype = (resp.Content.Headers.ContentType?.MediaType ?? "").ToLowerInvariant();
@@ -140,7 +147,8 @@ namespace FastDM
     // ====================== নেটওয়ার্ক হেল্পার ======================
     public static class MediaNet
     {
-        public static async Task<string> GetTextAsync(string url, string? referer, CancellationToken ct, int maxBytes = 4_000_000)
+        public static async Task<string> GetTextAsync(string url, string? referer, CancellationToken ct,
+                                                       int maxBytes = 4_000_000, HttpClient? client = null)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(referer))
@@ -149,7 +157,7 @@ namespace FastDM
             }
             DownloadEngine.ApplyAuth(req);
 
-            using var resp = await DownloadEngine.SharedClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await (client ?? DownloadEngine.SharedClient).SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             DownloadEngine.CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
 
@@ -177,17 +185,8 @@ namespace FastDM
                 Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe")
             };
             foreach (var c in local) if (File.Exists(c)) return c;
-
-            string path = Environment.GetEnvironmentVariable("PATH") ?? "";
-            foreach (var dir in path.Split(Path.PathSeparator))
-            {
-                try
-                {
-                    string p = Path.Combine(dir.Trim().Trim('"'), "ffmpeg.exe");
-                    if (File.Exists(p)) return p;
-                }
-                catch (Exception exIgnored3) { AppLog.Write("MediaDetector (ignored): " + exIgnored3.Message); }
-            }
+            // Never execute an arbitrary ffmpeg found through PATH. The supported binary is
+            // installed next to FastDM so packaged and portable builds use a known location.
             return null;
         }
     }

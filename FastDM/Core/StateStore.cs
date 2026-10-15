@@ -2,6 +2,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace FastDM
 {
@@ -140,6 +142,70 @@ namespace FastDM
             File.WriteAllText(tmp, json);
             File.Move(tmp, file, true);
             RefreshBackupIfDue(file, json);
+        }
+
+        // Inline URL credentials are removed from the active state and both automatic backups
+        // during the one-time migration. Non-URL data and signed query strings stay intact.
+        public static int SanitizeInlineCredentials(string file)
+        {
+            if (!File.Exists(file)) return 0;
+            try
+            {
+                var root = JsonNode.Parse(File.ReadAllText(file));
+                if (root is not JsonObject state) return -1;
+                int changed = 0;
+                foreach (string collectionName in new[] { "Items", "Deleted" })
+                {
+                    if (FindProperty(state, collectionName) is not JsonArray collection) continue;
+                    foreach (var node in collection)
+                    {
+                        if (node is not JsonObject item) continue;
+                        changed += SanitizeUrl(item, "Url");
+                        if (FindProperty(item, "YtDlp") is JsonObject ytdlp)
+                            changed += SanitizeUrl(ytdlp, "Url");
+                    }
+                }
+                if (changed == 0) return 0;
+
+                string temp = file + ".sanitize-" + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllText(temp, state.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    File.Move(temp, file, true);
+                }
+                finally
+                {
+                    try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                }
+                return changed;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Could not sanitize saved URL credentials: " + ex.Message);
+                return -1;
+            }
+        }
+
+        static JsonNode? FindProperty(JsonObject obj, string name)
+        {
+            foreach (var property in obj)
+                if (string.Equals(property.Key, name, StringComparison.OrdinalIgnoreCase)) return property.Value;
+            return null;
+        }
+
+        static int SanitizeUrl(JsonObject obj, string name)
+        {
+            foreach (var property in obj.ToArray())
+            {
+                if (!string.Equals(property.Key, name, StringComparison.OrdinalIgnoreCase) ||
+                    property.Value is not JsonValue value || !value.TryGetValue<string>(out var url) || url == null)
+                    continue;
+                string safe = UrlCredential.Strip(url, out _, out _);
+                if (string.Equals(url, safe, StringComparison.Ordinal)) return 0;
+                obj[property.Key] = safe;
+                return 1;
+            }
+            return 0;
         }
 
         static void RefreshBackupIfDue(string file, string json)

@@ -177,6 +177,9 @@ namespace FastDM
                 if (c == null || string.IsNullOrEmpty(c.Name) || string.IsNullOrEmpty(c.Domain)) continue;
                 if (c.Name.Length > MaxCookieField || (c.Value ?? "").Length > MaxCookieField) continue;
                 if (HasControlChars(c.Name) || HasControlChars(c.Value ?? "") || c.Name.IndexOfAny(new[] { ';', '=', ',', ' ' }) >= 0) continue;
+                if (c.ExpirationDate is double expiry &&
+                    (!double.IsFinite(expiry) || expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000d ||
+                     expiry > DateTimeOffset.MaxValue.ToUnixTimeMilliseconds() / 1000d)) continue;
 
                 string d = c.Domain.Trim().TrimStart('.').ToLowerInvariant();
                 if (d.Length == 0 || !(host == d || host.EndsWith("." + d, StringComparison.Ordinal))) continue;
@@ -184,7 +187,7 @@ namespace FastDM
                 string path = string.IsNullOrEmpty(c.Path) || c.Path[0] != '/' || HasControlChars(c.Path) ? "/" : c.Path;
                 // প্রথমের ডট রাখি: ডট থাকলে সাবডোমেইনেও যায় (ব্রাউজারের domain cookie), না থাকলে শুধু ওই হোস্টে (host-only)
                 bool domainWide = c.Domain.TrimStart().StartsWith(".");
-                clean.Add(new BridgeCookie { Name = c.Name, Value = c.Value ?? "", Domain = domainWide ? "." + d : d, Path = path, Secure = c.Secure });
+                clean.Add(new BridgeCookie { Name = c.Name, Value = c.Value ?? "", Domain = domainWide ? "." + d : d, Path = path, Secure = c.Secure, ExpirationDate = c.ExpirationDate });
             }
             return clean.Count > 0 ? clean : null;
         }

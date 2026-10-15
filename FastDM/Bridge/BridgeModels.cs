@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace FastDM
 {
@@ -23,6 +24,8 @@ namespace FastDM
         public string Domain { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public bool Secure { get; set; }
+        [JsonPropertyName("expirationDate")]
+        public double? ExpirationDate { get; set; }
     }
 
     // একটা অনুরোধের সাথে আসা অতিরিক্ত তথ্য (Add ডায়ালগ বা সরাসরি ডাউনলোড, দুই পথেই লাগে)
@@ -30,6 +33,7 @@ namespace FastDM
     {
         public string? Referer { get; set; }
         public string? UserAgent { get; set; }
+        public List<BridgeCookie>? Cookies { get; set; }
     }
 
     // অ্যাপ → এক্সটেনশন: ডাউনলোডের অবস্থা (পপআপে দেখানোর জন্য)

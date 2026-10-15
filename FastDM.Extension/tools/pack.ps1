@@ -1,19 +1,35 @@
-# স্টোরে জমা দেওয়ার জন্য এক্সটেনশন zip বানায় (tests/, tools/, package.json বাদ)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$manifest = Get-Content (Join-Path $root 'manifest.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $root 'manifest.json') -Raw | ConvertFrom-Json
 $dist = Join-Path $root 'dist'
-$stage = Join-Path $dist 'stage'
-$zip = Join-Path $dist ("FastDM-Extension-" + $manifest.version + ".zip")
+New-Item -ItemType Directory -Path $dist -Force | Out-Null
 
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
-
-foreach ($item in @('manifest.json', '_locales', 'src', 'assets')) {
-  Copy-Item (Join-Path $root $item) -Destination $stage -Recurse -Force
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("FastDM-Extension-pack-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tempRoot | Out-Null
+$stage = Join-Path $tempRoot 'stage'
+$archive = Join-Path $tempRoot 'extension.zip'
+$baseName = "FastDM-Extension-$($manifest.version)"
+$destination = Join-Path $dist ($baseName + '.zip')
+$suffix = 1
+while (Test-Path -LiteralPath $destination) {
+  $destination = Join-Path $dist ("$baseName-$suffix.zip")
+  $suffix++
 }
 
-if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
-Remove-Item $stage -Recurse -Force
-Write-Host "Created $zip"
+try {
+  New-Item -ItemType Directory -Path $stage | Out-Null
+  foreach ($item in @('manifest.json', '_locales', 'src', 'assets')) {
+    $source = Join-Path $root $item
+    if (-not (Test-Path -LiteralPath $source)) { throw "Required extension package path is missing: $item" }
+    Copy-Item -LiteralPath $source -Destination $stage -Recurse
+  }
+
+  Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
+  [System.IO.File]::Move($archive, $destination)
+  Write-Host "Created $destination"
+}
+finally {
+  if (Test-Path -LiteralPath $tempRoot) {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+  }
+}

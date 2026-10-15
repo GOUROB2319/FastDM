@@ -231,7 +231,7 @@ namespace FastDM
             {
                 tray.Visible = false;
                 tray.Dispose();
-                tray = null;
+                tray = null!;
             }
 
             trayMenu?.Dispose();

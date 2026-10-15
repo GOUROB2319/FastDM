@@ -22,12 +22,9 @@ namespace FastDM
     // ====================== ডাউনলোড ইঞ্জিন ======================
     public static partial class DownloadEngine
     {
-        // ব্রাউজার থেকে আসা কুকি শুধু মেমোরিতে থাকে (অ্যাপ বন্ধ হলে চলে যায়)।
-        // CookieContainer ব্যবহার করায় কুকি শুধু মিলে যাওয়া ডোমেইনে যায়, রিডাইরেক্টে অন্য সাইটে ফাঁস হয় না।
-        // (Http-এর আগে থাকতে হবে, কারণ CreateClient এটা ব্যবহার করে)
-        static readonly CookieContainer Jar = new CookieContainer();
-
-        static volatile HttpClient Http = CreateClient();
+        // The shared client never has a cookie jar. External cookies are passed through
+        // a client and CookieContainer created for exactly one item.
+        static volatile HttpClient Http = CreateClient(null, null);
 
         // অন্য ফাইল (মিডিয়া/স্ট্রিম) একই HttpClient ব্যবহার করে: প্রক্সি/অথ সব একই থাকে
         public static HttpClient SharedClient => Http;
@@ -35,11 +32,13 @@ namespace FastDM
         // প্রক্সি বদলালে নতুন ক্লায়েন্ট
         public static void ResetClient()
         {
-            Http = CreateClient();
+            Http = CreateClient(null, null);
+            // Do not dispose the old client here: proxy settings can change during active downloads.
         }
 
-        static HttpClient CreateClient()
+        static HttpClient CreateClient(string? url, IReadOnlyCollection<BridgeCookie>? cookies)
         {
+            bool useCookies = cookies != null && cookies.Count > 0;
             var handler = new HttpClientHandler
             {
                 UseProxy = true,
@@ -47,8 +46,8 @@ namespace FastDM
                 AllowAutoRedirect = true,
                 MaxAutomaticRedirections = 10,
                 AutomaticDecompression = DecompressionMethods.None,
-                UseCookies = true,
-                CookieContainer = Jar
+                UseCookies = useCookies,
+                CookieContainer = useCookies ? DownloadCookieScope.Create(url ?? string.Empty, cookies) : new CookieContainer()
             };
 
             var c = new HttpClient(handler)
@@ -62,29 +61,7 @@ namespace FastDM
             return c;
         }
 
-        // এক্সটেনশনের পাঠানো কুকি জারে বসানো
-        public static void AddCookies(List<BridgeCookie> cookies)
-        {
-            if (cookies == null) return;
-
-            foreach (var c in cookies)
-            {
-                try
-                {
-                    var ck = new Cookie(
-                        c.Name,
-                        c.Value ?? "",
-                        string.IsNullOrEmpty(c.Path) ? "/" : c.Path,
-                        c.Domain)
-                    {
-                        Secure = c.Secure
-                    };
-
-                    Jar.Add(ck);
-                }
-                catch (Exception exIgnored1) { /* অবৈধ কুকি বাদ */ AppLog.Write("DownloadEngine (ignored): " + exIgnored1.Message); }
-            }
-        }
+        public static HttpClient CreateCookieClient(string url, IReadOnlyCollection<BridgeCookie>? cookies) => CreateClient(url, cookies);
 
         // আইটেমের নিজস্ব Referer / User-Agent (থাকলে) রিকোয়েস্টে বসানো
         public static void ApplyItemHeaders(HttpRequestMessage req, DownloadItem it)
@@ -152,13 +129,14 @@ namespace FastDM
                 return;
             }
 
+            using var client = CreateCookieClient(it.Url, it.Cookies);
             using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
             req.Headers.Range = new RangeHeaderValue(0, 0);
 
             ApplyAuth(req);
             ApplyItemHeaders(req, it);
 
-            using var resp = await Http.SendAsync(
+            using var resp = await client.SendAsync(
                 req,
                 HttpCompletionOption.ResponseHeadersRead,
                 ct);
@@ -169,10 +147,9 @@ namespace FastDM
             it.ContentType = resp.Content.Headers.ContentType?.MediaType;
             it.ServerTime = resp.Content.Headers.LastModified;
 
-            if (resp.StatusCode == HttpStatusCode.PartialContent &&
-                resp.Content.Headers.ContentRange?.Length != null)
+            if (HttpRangeValidation.IsProbeResponse(resp, out long probedTotal))
             {
-                it.TotalBytes = resp.Content.Headers.ContentRange.Length.Value;
+                it.TotalBytes = probedTotal;
                 it.SupportsRange = true;
             }
             else
@@ -209,6 +186,7 @@ namespace FastDM
             CancellationToken ct)
         {
             Directory.CreateDirectory(it.Folder);
+            using var client = CreateCookieClient(it.Url, it.Cookies ?? it.Stream?.Cookies);
 
             bool fresh =
                 it.Segments.Count == 0 ||
@@ -284,6 +262,7 @@ namespace FastDM
                                    linked.Token).ConfigureAwait(false))
                         {
                             await SegmentAsync(
+                                client,
                                 it,
                                 s,
                                 linked.Token).ConfigureAwait(false);
@@ -381,6 +360,7 @@ namespace FastDM
             code != HttpStatusCode.TooManyRequests;
 
         static async Task SegmentAsync(
+            HttpClient client,
             DownloadItem it,
             Segment seg,
             CancellationToken ct)
@@ -419,7 +399,7 @@ namespace FastDM
 
                     stall.CancelAfter(StallTimeout);
 
-                    using var resp = await Http.SendAsync(
+                    using var resp = await client.SendAsync(
                         req,
                         HttpCompletionOption.ResponseHeadersRead,
                         stall.Token).ConfigureAwait(false);
@@ -427,12 +407,9 @@ namespace FastDM
                     CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
 
-                    if (it.SupportsRange &&
-                        resp.StatusCode != HttpStatusCode.PartialContent)
-                    {
-                        throw new IOException(
-                            "Server does not support resume.");
-                    }
+                    long expectedRangeBytes = it.SupportsRange
+                        ? HttpRangeValidation.ValidateSegmentResponse(resp, pos, seg.End, it.TotalBytes)
+                        : -1;
 
                     using var input =
                         await resp.Content.ReadAsStreamAsync(stall.Token)
@@ -466,7 +443,7 @@ namespace FastDM
                                 1;
 
                             if (n > room)
-                                n = (int)room;
+                                throw new InvalidDataException("The server sent more bytes than the requested range.");
                         }
 
                         await fs.WriteAsync(
@@ -497,6 +474,9 @@ namespace FastDM
                             "Connection closed early.");
                     }
 
+                    if (it.SupportsRange && seg.Downloaded - before != expectedRangeBytes)
+                        throw new IOException("Connection returned an incomplete byte range.");
+
                     seg.Finished = true;
                     return;
                 }
@@ -509,6 +489,10 @@ namespace FastDM
                     throw;
                 }
                 catch (HttpRequestException ex) when (IsPermanent(ex))
+                {
+                    throw;
+                }
+                catch (InvalidDataException)
                 {
                     throw;
                 }

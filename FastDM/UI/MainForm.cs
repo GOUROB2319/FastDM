@@ -446,6 +446,27 @@ namespace FastDM
 
                     items.Add(it);
                 }
+
+                bool removedInlineCredentials = items.Concat(deleted).Any(i =>
+                    i.UrlHadCredentials || i.YtDlp?.UrlHadCredentials == true);
+                if (removedInlineCredentials && data.SchemaVersion <= StateStore.CurrentSchema && !stateWriteBlocked)
+                {
+                    startupNotice = (startupNotice == null ? "" : startupNotice + "\n\n") +
+                        "FastDM removed credentials embedded in saved URLs. They are available for this session only. " +
+                        "To keep using a protected FTP/SFTP site after restarting, enter its credentials when prompted and choose Remember.";
+                    SaveState();
+
+                    bool backupMigrationFailed = false;
+                    foreach (string file in new[] { DataFile, StateStore.Backup1(DataFile), StateStore.Backup2(DataFile) })
+                    {
+                        if (StateStore.SanitizeInlineCredentials(file) < 0)
+                            backupMigrationFailed = true;
+                    }
+                    if (backupMigrationFailed)
+                    {
+                        startupNotice += "\n\nFastDM could not sanitize every saved backup. Keep the backup files private and contact support if you need help.";
+                    }
+                }
             }
             catch (Exception exIgnored6) { AppLog.Write("MainForm (ignored): " + exIgnored6.Message); }
         }

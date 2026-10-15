@@ -367,10 +367,12 @@ namespace FastDM
             return string.Join("  •  ", parts);
         }
 
-        public static async Task<MediaOptions> LoadAsync(string url, MediaKind kind, string? referer, string? title, CancellationToken ct)
+        public static async Task<MediaOptions> LoadAsync(string url, MediaKind kind, string? referer, string? title,
+                                                         CancellationToken ct, IReadOnlyCollection<BridgeCookie>? cookies = null)
         {
             var uri = new Uri(url);
-            string text = await MediaNet.GetTextAsync(url, referer, ct);
+            using var client = DownloadEngine.CreateCookieClient(url, cookies);
+            string text = await MediaNet.GetTextAsync(url, referer, ct, client: client);
             var opts = new MediaOptions { ManifestUrl = url, Referer = referer, Title = title };
 
             if (kind == MediaKind.Hls)

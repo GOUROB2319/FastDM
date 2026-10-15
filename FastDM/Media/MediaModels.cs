@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 using System.Xml;
 using System.Xml.Linq;
 using HtmlAgilityPack;
@@ -28,6 +29,9 @@ namespace FastDM
         public string? AudioRepId { get; set; }          // DASH
         public bool AudioOnly { get; set; }
         public string? Referer { get; set; }
+
+        [JsonIgnore]
+        public List<BridgeCookie>? Cookies { get; set; }
     }
 
     public class VideoOpt
@@ -67,5 +71,7 @@ namespace FastDM
         public string Url = "";
         public string? Title;
         public List<MediaCandidate> Candidates = new List<MediaCandidate>();
+        [JsonIgnore]
+        public List<BridgeCookie>? Cookies;
     }
 }

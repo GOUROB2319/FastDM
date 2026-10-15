@@ -15,7 +15,19 @@ namespace FastDM
     // ডাউনলোড আইটেমে সেভ হয় (state.json-এ)
     public class YtDlpSpec
     {
-        public string? Url { get; set; }
+        string? url;
+        public string? Url
+        {
+            get => url;
+            set
+            {
+                UrlHadCredentials = Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.UserInfo);
+                url = UrlCredential.StripAndRemember(value);
+            }
+        }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool UrlHadCredentials { get; private set; }
         public string? Format { get; set; }                 // yt-dlp -f সিলেক্টর
         public bool AudioOnly { get; set; }
         public string AudioFormat { get; set; } = "m4a";   // m4a | mp3
@@ -40,17 +52,8 @@ namespace FastDM
                 Path.Combine(AppContext.BaseDirectory, file)
             };
             foreach (var c in local) if (File.Exists(c)) return c;
-
-            string path = Environment.GetEnvironmentVariable("PATH") ?? "";
-            foreach (var dir in path.Split(Path.PathSeparator))
-            {
-                try
-                {
-                    string p = Path.Combine(dir.Trim().Trim('"'), file);
-                    if (File.Exists(p)) return p;
-                }
-                catch (Exception exIgnored1) { AppLog.Write("YtDlp (ignored): " + exIgnored1.Message); }
-            }
+            // Do not execute an arbitrary yt-dlp/ffmpeg found through PATH. Tool discovery is
+            // app-local so packaged builds and clean clones have predictable provenance.
             return null;
         }
     }
@@ -84,25 +87,20 @@ namespace FastDM
             cookieFile = (s.YtCookieFile ?? "").Trim().Trim('"');
         }
 
+        public static YtDlpCookieSource SelectSource() =>
+            YtDlpDiagnostics.SelectCookieSource(cookieFile, browser);
+
         // Returns a short "what to do next" text when the error looks like a sign-in/cookie problem, else null.
         public static string? HintFor(string? message)
         {
             string m = (message ?? "").ToLowerInvariant();
             bool signIn = m.Contains("not a bot") || m.Contains("sign in to confirm");
             bool cookie = m.Contains("cookie");
-            if (!signIn && !cookie) return null;
-
-            if (cookieFile.Length > 0)
-                return "\n\nThe cookies file did not work. Export a fresh cookies.txt while you are logged in to the site, " +
-                       "then choose it again in Preferences → Advanced → Video sites → Cookies file.";
-
-            if (browser.Length == 0)
-                return "\n\nThis site wants you to be signed in. Log in to it in your browser, then either export a cookies.txt file " +
-                       "or choose that browser in Preferences → Advanced → Video sites, and try again.";
-
-            return "\n\nCookies from the selected browser did not work. Close the browser completely (check the system tray too) and try again. " +
-                   "Newer Chrome, Edge and Brave versions block cookie access on Windows; use Firefox, or export a cookies.txt file " +
-                   "and choose it in Preferences → Advanced → Video sites → Cookies file.";
+            var source = SelectSource();
+            var kind = YtDlpDiagnostics.Classify(message, source);
+            if (!signIn && !cookie && kind is not YtDlpFailureKind.MissingCookieFile and not YtDlpFailureKind.InvalidCookieFile)
+                return null;
+            return "\n\n" + YtDlpDiagnostics.Describe(kind, UpdateChecker.IsPackaged).NextStep;
         }
     }
 
@@ -110,19 +108,30 @@ namespace FastDM
     // ====================== প্রসেস চালানো ======================
     public static class YtDlpRunner
     {
-        static ProcessStartInfo Build(string exe, IEnumerable<string> args)
+        static ProcessStartInfo Build(string exe, IEnumerable<string> args, bool redirectInput)
         {
             var psi = new ProcessStartInfo(exe)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                RedirectStandardInput = redirectInput,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
+            if (redirectInput) psi.StandardInputEncoding = Encoding.UTF8;
             psi.Environment["PYTHONIOENCODING"] = "utf-8";
             psi.Environment["PYTHONUTF8"] = "1";
+            psi.Environment["PATH"] = YtDlpProcessEnvironment.BuildRestrictedPath(new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "Tools"),
+                AppContext.BaseDirectory,
+                Environment.SystemDirectory,
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows)
+            });
+            YtDlpProxy.ApplyEnvironment(psi, ProxyConfig.Mode, ProxyConfig.Kind,
+                ProxyConfig.Host, ProxyConfig.Port, ProxyConfig.User, ProxyConfig.Pass);
             foreach (var a in args) psi.ArgumentList.Add(a);
             return psi;
         }
@@ -145,32 +154,24 @@ namespace FastDM
             string? ff = FfmpegLocator.Find();
             if (ff != null) { a.Add("--ffmpeg-location"); a.Add(ff); }
 
-            if (ProxyConfig.Mode == ProxyMode.Manual && ProxyConfig.Host.Length > 0)
-            {
-                string scheme = ProxyConfig.Kind == ProxyKind.Socks5 ? "socks5" : "http";
-                string cred = ProxyConfig.User.Length > 0
-                    ? Uri.EscapeDataString(ProxyConfig.User) + ":" + Uri.EscapeDataString(ProxyConfig.Pass) + "@"
-                    : "";
-                a.Add("--proxy"); a.Add(scheme + "://" + cred + ProxyConfig.Host + ":" + ProxyConfig.Port);
-            }
-            else if (ProxyConfig.Mode == ProxyMode.None)
-            {
-                a.Add("--proxy"); a.Add("");       // খালি = সরাসরি কানেকশন
-            }
+            a.AddRange(YtDlpProxy.BuildArguments(ProxyConfig.Mode, ProxyConfig.Kind,
+                ProxyConfig.Host, ProxyConfig.Port, ProxyConfig.User));
 
             // Login cookies for sites that ask "Sign in to confirm you're not a bot".
             // yt-dlp reads them itself, on this PC only; FastDM never stores them. A cookies.txt file wins over a browser.
-            string cookiesTxt = YtDlpCookies.CookieFile;
-            string cookieBrowser = YtDlpCookies.Browser;
-            if (cookiesTxt.Length > 0 && File.Exists(cookiesTxt)) { a.Add("--cookies"); a.Add(cookiesTxt); }
-            else if (cookieBrowser.Length > 0) { a.Add("--cookies-from-browser"); a.Add(cookieBrowser); }
+            var source = YtDlpCookies.SelectSource();
+            if (source.Kind is YtDlpCookieSourceKind.MissingCookieFile or YtDlpCookieSourceKind.InvalidCookieFile)
+                throw new InvalidOperationException(source.Error);
+            if (source.Kind == YtDlpCookieSourceKind.CookieFile) { a.Add("--cookies"); a.Add(source.FilePath!); }
+            else if (source.Kind == YtDlpCookieSourceKind.Browser) { a.Add("--cookies-from-browser"); a.Add(source.Browser!); }
             return a;
         }
 
         public static async Task<int> RunAsync(string exe, IEnumerable<string> args,
-                                               Action<string> onOut, Action<string> onErr, CancellationToken ct)
+                                               Action<string> onOut, Action<string> onErr, CancellationToken ct,
+                                               string? standardInput = null)
         {
-            using var p = new Process { StartInfo = Build(exe, args) };
+            using var p = new Process { StartInfo = Build(exe, args, standardInput != null) };
             p.OutputDataReceived += (s, e) => { if (e.Data != null) onOut?.Invoke(e.Data); };
             p.ErrorDataReceived += (s, e) => { if (e.Data != null) onErr?.Invoke(e.Data); };
 
@@ -180,8 +181,31 @@ namespace FastDM
 
             using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored2) { AppLog.Write("YtDlp (ignored): " + exIgnored2.Message); } }))
             {
-                await p.WaitForExitAsync(ct);
+                try
+                {
+                    if (standardInput != null)
+                    {
+                        await p.StandardInput.WriteAsync(standardInput.AsMemory(), ct);
+                        await p.StandardInput.FlushAsync(ct);
+                        p.StandardInput.Close();
+                    }
+                    await p.WaitForExitAsync(ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored3) { AppLog.Write("YtDlp (ignored): " + exIgnored3.Message); }
+                    await p.WaitForExitAsync(CancellationToken.None);
+                    p.WaitForExit();
+                    throw;
+                }
+                catch
+                {
+                    try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored4) { AppLog.Write("YtDlp cleanup failed: " + exIgnored4.Message); }
+                    await p.WaitForExitAsync(CancellationToken.None);
+                    throw;
+                }
             }
+            p.WaitForExit(); // drain async stdout/stderr callbacks before returning
             return p.ExitCode;
         }
 
@@ -196,6 +220,7 @@ namespace FastDM
             }
             if (last == null)
                 last = stderr.Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0).LastOrDefault() ?? "yt-dlp failed.";
+            last = AppLog.Redact(last);
             return last.Length > 400 ? last.Substring(0, 400) + "…" : last;
         }
     }
@@ -228,19 +253,29 @@ namespace FastDM
             if (exe == null) throw new FileNotFoundException("yt-dlp.exe was not found. Put it in the Tools folder.");
 
             var args = YtDlpRunner.CommonArgs();
-            args.AddRange(new[] { "-J", "--no-playlist", "--no-warnings", "--", url });
+            args.AddRange(new[] { "-J", "--no-playlist", "--no-warnings" });
+            var urlInput = YtDlpUrlInput.Create(url);
+            args.AddRange(urlInput.Arguments);
 
             var json = new StringBuilder();
             var err = new StringBuilder();
             var watch = Stopwatch.StartNew();
             int code = await YtDlpRunner.RunAsync(exe, args,
                 l => { lock (json) json.AppendLine(l); },
-                l => { lock (err) if (err.Length < 8000) err.AppendLine(l); }, ct);
+                l => { lock (err) if (err.Length < 8000) err.AppendLine(l); }, ct,
+                urlInput.StandardInput);
             watch.Stop();
 
             string runtime = YtDlpLocator.FindQuickJs() != null ? "quickjs" : YtDlpLocator.FindDeno() != null ? "deno" : "none";
+            var cookieSource = YtDlpCookies.SelectSource();
+            string cookieLabel = cookieSource.Kind switch
+            {
+                YtDlpCookieSourceKind.CookieFile => "file",
+                YtDlpCookieSourceKind.Browser => cookieSource.Browser ?? "browser",
+                _ => "off"
+            };
             AppLog.Write("yt-dlp info: " + watch.Elapsed.TotalSeconds.ToString("0.0") + " s, exit " + code +
-                         ", js runtime " + runtime + ", cookies " + (YtDlpCookies.Browser.Length > 0 ? YtDlpCookies.Browser : "off"));
+                         ", js runtime " + runtime + ", cookies " + cookieLabel);
 
             if (code != 0 || json.Length == 0)
                 throw new InvalidOperationException(YtDlpRunner.ExtractError(err.ToString()));
@@ -346,10 +381,12 @@ namespace FastDM
             if (exe == null) return "yt-dlp.exe was not found in the Tools folder.";
 
             var sb = new StringBuilder();
-            await YtDlpRunner.RunAsync(exe, new[] { "--ignore-config", "-U" },
+            int code = await YtDlpRunner.RunAsync(exe, new[] { "--ignore-config", "-U" },
                 l => { lock (sb) sb.AppendLine(l); }, l => { lock (sb) sb.AppendLine(l); }, ct);
             string s = sb.ToString().Trim();
-            return s.Length == 0 ? "No output from yt-dlp." : s;
+            if (code != 0)
+                throw new InvalidOperationException("yt-dlp update failed (exit code " + code + "): " + YtDlpRunner.ExtractError(s));
+            return s.Length == 0 ? "yt-dlp reported success with no output." : AppLog.Redact(s);
         }
 
         // দিনে একবার চুপচাপ আপডেট চেক (Store ভার্সনে নয়: সেখানে অ্যাপ আপডেটের সাথে আসে)
@@ -357,11 +394,18 @@ namespace FastDM
         {
             if (UpdateChecker.IsPackaged) return;
             if ((DateTime.Now - s.LastYtDlpUpdate).TotalHours < 24) return;
+            if ((DateTime.Now - s.LastYtDlpAttempt).TotalHours < 1) return;
             if (YtDlpLocator.Find() == null) return;
 
-            s.LastYtDlpUpdate = DateTime.Now;
+            s.LastYtDlpAttempt = DateTime.Now;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            try { await UpdateAsync(cts.Token); } catch (Exception exIgnored3) { AppLog.Write("YtDlp (ignored): " + exIgnored3.Message); }
+            try
+            {
+                await UpdateAsync(cts.Token);
+                s.LastYtDlpUpdate = DateTime.Now;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception exIgnored3) { AppLog.Write("YtDlp update failed (ignored): " + exIgnored3.Message); }
         }
     }
 
@@ -424,8 +468,8 @@ namespace FastDM
             long limit = SpeedLimiter.BytesPerSec;
             if (limit > 0) args.AddRange(new[] { "--limit-rate", Math.Max(1, limit / 1024) + "K" });
 
-            args.Add("--");
-            args.Add(spec.Url ?? it.Url);
+            var urlInput = YtDlpUrlInput.Create(spec.Url ?? it.Url);
+            args.AddRange(urlInput.Arguments);
 
             var gate = new object();
             long offset = 0, lastDl = 0, lastTotal = 0;
@@ -467,7 +511,8 @@ namespace FastDM
             }
 
             it.StatusNote = "Starting…";
-            int code = await YtDlpRunner.RunAsync(exe, args, l => OnLine(l, false), l => OnLine(l, true), ct);
+            int code = await YtDlpRunner.RunAsync(exe, args, l => OnLine(l, false), l => OnLine(l, true), ct,
+                urlInput.StandardInput);
 
             if (code != 0)
                 throw new InvalidOperationException(lastError ?? YtDlpRunner.ExtractError(errTail.ToString()));

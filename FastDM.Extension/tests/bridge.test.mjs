@@ -143,7 +143,20 @@ test('অ্যাপ বন্ধ থাকলে fastdm:// ফলব্যা�
   const r = await bridge.sendLink(url);
   assert.deepEqual(r, { via: 'protocol' });
   assert.equal(tabsCreated.length, 1);
-  assert.equal(tabsCreated[0], 'fastdm://add?url=' + encodeURIComponent(url));
+  assert.equal(tabsCreated[0], 'fastdm://add?url=' + encodeURIComponent(new URL(url).href));
+});
+
+test('protocol fallback strips URL credentials before launching the app', async () => {
+  reset();
+  const url = 'sftp://user:secret@example.com/file?sig=keep';
+  const r = await bridge.sendLink(url);
+  const launched = new URL(tabsCreated[0]);
+  const target = new URL(launched.searchParams.get('url'));
+  assert.deepEqual(r, { via: 'protocol' });
+  assert.equal(target.username, '');
+  assert.equal(target.password, '');
+  assert.equal(target.search, '?sig=keep');
+  assert.equal(tabsCreated[0].includes('secret'), false);
 });
 
 test('অ্যাপ টোকেন বাতিল করলে টোকেন মুছে যায়, needsPairing', async () => {

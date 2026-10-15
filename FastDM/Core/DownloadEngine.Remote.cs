@@ -36,18 +36,21 @@ namespace FastDM
             if (resp.StatusCode == HttpStatusCode.Unauthorized) throw new AuthRequiredException();
         }
 
-        public static async Task<string> GetPageAsync(Uri uri, CancellationToken ct)
+        public static async Task<string> GetPageAsync(Uri uri, CancellationToken ct,
+                                                       IReadOnlyCollection<BridgeCookie>? cookies = null)
         {
+            using var client = CreateCookieClient(uri.AbsoluteUri, cookies);
             using var req = new HttpRequestMessage(HttpMethod.Get, uri);
             ApplyAuth(req);
-            using var resp = await Http.SendAsync(req, ct);
+            using var resp = await client.SendAsync(req, ct);
             CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
             return await resp.Content.ReadAsStringAsync(ct);
         }
 
         // লিঙ্কটা ফোল্ডার কি না বোঝা
-        public static async Task<(bool IsFolder, Uri Resolved)> DetectFolderAsync(Uri uri, CancellationToken ct)
+        public static async Task<(bool IsFolder, Uri Resolved)> DetectFolderAsync(Uri uri, CancellationToken ct,
+                                                                                   IReadOnlyCollection<BridgeCookie>? cookies = null)
         {
             string path = Uri.UnescapeDataString(uri.AbsolutePath);
             if (path.EndsWith("/")) return (true, uri);              // শেষে / = ফোল্ডার
@@ -57,9 +60,10 @@ namespace FastDM
             if (last.Contains('.')) return (false, uri);             // এক্সটেনশন আছে = ফাইল
 
             // এক্সটেনশনহীন http লিঙ্ক: সার্ভার / দিয়ে রিডাইরেক্ট করে HTML দিলে ফোল্ডার
+            using var client = CreateCookieClient(uri.AbsoluteUri, cookies);
             using var req = new HttpRequestMessage(HttpMethod.Get, uri);
             ApplyAuth(req);
-            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             var final = resp.RequestMessage?.RequestUri ?? uri;
             bool html = resp.Content.Headers.ContentType?.MediaType?.Contains("html") == true;
             bool folder = resp.IsSuccessStatusCode && html && final.AbsolutePath.EndsWith("/");

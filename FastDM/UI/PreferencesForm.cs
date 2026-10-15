@@ -133,7 +133,7 @@ namespace FastDM
             if (name == null) return 0;
 
             for (int i = 0; i < sectionHeaders.Count; i++)
-                if (string.Equals((string)sectionHeaders[i].Tag, name, StringComparison.OrdinalIgnoreCase))
+                if (sectionHeaders[i].Tag is string tag && string.Equals(tag, name, StringComparison.OrdinalIgnoreCase))
                     return i;
 
             return 0;
@@ -758,10 +758,40 @@ namespace FastDM
             Hint("Close the browser completely before downloading. Newer Chrome, Edge and Brave versions block cookie access; " +
                  "if that happens, choose Firefox or use a cookies.txt file below.");
 
-            Hint("Cookies file (optional, cookies.txt in Netscape format). Export it from a browser extension while you are logged in. " +
-                 "When set, it is used instead of the browser choice above.");
+            Hint("cookies.txt contains sign-in cookies. Do not share it or attach it to a support request. " +
+                 "When set, this file is used instead of the browser choice above.");
             txtCookieFile = PathRow(s.YtCookieFile, false, "Cookie files (*.txt)|*.txt|All files (*.*)|*.*");
             commit.Add(() => s.YtCookieFile = txtCookieFile.Text.Trim());
+
+            var cookieSourceStatus = new Label { AutoSize = true, MaximumSize = new Size(RowWidth, 0), Margin = new Padding(0, 2, 0, 8) };
+            flow.Controls.Add(cookieSourceStatus);
+            void RefreshCookieSourceStatus()
+            {
+                string browser = YtDlpCookies.Browsers[Math.Max(0, cookieBox.SelectedIndex)];
+                var source = YtDlpDiagnostics.SelectCookieSource(txtCookieFile.Text, browser);
+                cookieSourceStatus.Text = source.Kind switch
+                {
+                    YtDlpCookieSourceKind.CookieFile => "Active cookie source: cookies.txt",
+                    YtDlpCookieSourceKind.Browser => "Active cookie source: " + YtDlpCookies.Labels[Array.IndexOf(YtDlpCookies.Browsers, source.Browser)],
+                    YtDlpCookieSourceKind.MissingCookieFile => "Selected cookies.txt file is missing. Fix or clear its path before downloading.",
+                    YtDlpCookieSourceKind.InvalidCookieFile => "Selected cookies.txt file is unreadable or has an invalid Netscape header.",
+                    _ => "Active cookie source: None"
+                };
+                cookieSourceStatus.ForeColor = source.Kind is YtDlpCookieSourceKind.MissingCookieFile or YtDlpCookieSourceKind.InvalidCookieFile
+                    ? Color.Firebrick : Theme.P.SubText;
+            }
+            cookieBox.SelectedIndexChanged += (a, b) => RefreshCookieSourceStatus();
+            txtCookieFile.TextChanged += (a, b) => RefreshCookieSourceStatus();
+            RefreshCookieSourceStatus();
+
+            var cookieHelp = new LinkLabel
+            {
+                Text = "yt-dlp cookie export and format guidance",
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, 8)
+            };
+            cookieHelp.LinkClicked += (a, b) => UpdateChecker.OpenUrl("https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-youtube");
+            flow.Controls.Add(cookieHelp);
 
             Sub("Tools");
             var yt = ActionButton("Update yt-dlp", 160, null);
@@ -861,6 +891,16 @@ namespace FastDM
 
             if (!ToolOk(chkAvAuto.Checked, txtAvPath, txtAvArgs, "the antivirus", SectionIndex("Antivirus"))) return;
             if (!ToolOk(chkRunApp.Checked, txtAppPath, txtAppArgs, "the external application", SectionIndex("Advanced"))) return;
+
+            if (txtCookieFile.Text.Trim().Length > 0)
+            {
+                var source = YtDlpDiagnostics.SelectCookieSource(txtCookieFile.Text, s.YtCookieBrowser);
+                if (source.Kind is YtDlpCookieSourceKind.MissingCookieFile or YtDlpCookieSourceKind.InvalidCookieFile)
+                {
+                    Warn(source.Error ?? "Choose a readable cookies.txt file or clear the field.", SectionIndex("Advanced"), txtCookieFile);
+                    return;
+                }
+            }
 
             s.DefaultFolder = txtFolder.Text.Trim();
 
