@@ -803,6 +803,16 @@ namespace FastDM
                         return;
                     }
 
+                    if (FileCheck.IsRiskyToOpen(it.SavePath) &&
+                        MessageBox.Show(
+                            this,
+                            "This is a program or script file. Run it only if you trust where it came from.\n\nOpen it anyway?",
+                            "FastDM",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning,
+                            MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                        return;
+
                     Process.Start(
                         new ProcessStartInfo(
                             it.SavePath)

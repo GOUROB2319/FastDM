@@ -5,6 +5,12 @@ namespace FastDM.Tests
     {
         public static void Run()
         {
+            T.Section("Risky file types: ask before opening");
+
+            T.Check("setup.exe / Run.BAT / x.ps1 -> risky", FileCheck.IsRiskyToOpen(@"C:\d\setup.exe") && FileCheck.IsRiskyToOpen("Run.BAT") && FileCheck.IsRiskyToOpen("x.ps1"));
+            T.Check("movie.mp4 / book.pdf / no extension -> not risky", !FileCheck.IsRiskyToOpen("movie.mp4") && !FileCheck.IsRiskyToOpen("book.pdf") && !FileCheck.IsRiskyToOpen("README"));
+            T.Check("empty or null path -> not risky", !FileCheck.IsRiskyToOpen("") && !FileCheck.IsRiskyToOpen(null));
+
             T.Section("Deleted files: how we decide");
 
             string dir = Path.Combine(Path.GetTempPath(), "fastdm-fc-" + Guid.NewGuid().ToString("N"));

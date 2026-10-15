@@ -59,9 +59,38 @@ namespace FastDM
                 args.Any(a => a.Equals(StartupManager.MinimizedArg, StringComparison.OrdinalIgnoreCase)) ||
                 (UpdateChecker.IsPackaged && StartupManager.LaunchedByStartupTask());
 
+            // Last line of defence: an unexpected error is shown and logged
+            // instead of silently killing the app (e.g. inside an async void handler).
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) => ReportCrash(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportCrash(e.ExceptionObject as Exception);
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                AppLog.Write("Unobserved task error: " + e.Exception.GetBaseException());
+                e.SetObserved();
+            };
+
             // Configure the Windows Forms application.
             ApplicationConfiguration.Initialize();
             Application.Run(new MainForm());
+        }
+
+        static void ReportCrash(Exception? ex)
+        {
+            try
+            {
+                AppLog.Write("Unhandled error: " + ex);
+
+                MessageBox.Show(
+                    "FastDM hit an unexpected error:\n\n" + (ex?.Message ?? "unknown error"),
+                    "FastDM",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            catch
+            {
+                // Nothing more can be done here.
+            }
         }
 
         static bool TrySendToFirstInstance(string cmd)

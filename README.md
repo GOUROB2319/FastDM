@@ -35,6 +35,12 @@ after the user approves a pairing request.
   All fields and the constructor stay in the main file (`MainForm.cs`).
 - The static class `Engine` is called `DownloadEngine`, like `StreamEngine` and `YtDlpEngine`.
 
+## Tools that are not in Git
+
+`yt-dlp.exe` (and `ffmpeg.exe` with its DLLs, for joining video and audio) go into
+`FastDM/Tools/`. The build copies that folder next to the app. Without it the app
+still runs, but yt-dlp and stream-merge downloads are unavailable.
+
 The privacy policy is at [`docs/Privacy.md`](docs/Privacy.md).
 
 Generated folders (`bin`, `obj`, `.vs`, and `FastDM.Extension/dist`) are not

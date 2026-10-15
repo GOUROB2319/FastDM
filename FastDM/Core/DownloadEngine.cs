@@ -218,6 +218,8 @@ namespace FastDM
 
             if (fresh)
             {
+                EnsureFreeSpace(it.Folder, it.TotalBytes);
+
                 it.Segments = new List<Segment>();
                 it.Downloaded = 0;
 
@@ -317,6 +319,33 @@ namespace FastDM
             }
 
             File.Move(it.TempPath, it.SavePath, overwrite: true);
+        }
+
+        // Fails early with a clear message instead of halfway through a big download.
+        // The size must fit with 16 MB to spare; network shares and unknown drives are not checked.
+        static void EnsureFreeSpace(string folder, long needed)
+        {
+            if (needed <= 0) return;
+
+            string? root;
+            long free;
+
+            try
+            {
+                root = Path.GetPathRoot(Path.GetFullPath(folder));
+
+                if (string.IsNullOrEmpty(root) || root.StartsWith(@"\\"))
+                    return;
+
+                free = new DriveInfo(root).AvailableFreeSpace;
+            }
+            catch
+            {
+                return;
+            }
+
+            if (free < needed + (16L << 20))
+                throw new IOException("Not enough free space on " + root + " for this download.");
         }
 
         static string HostOf(

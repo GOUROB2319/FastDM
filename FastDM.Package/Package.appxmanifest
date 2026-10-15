@@ -43,7 +43,7 @@
 
 			<uap:VisualElements
 			  DisplayName="FastDM"
-			  Description="FastDM.Package"
+			  Description="FastDM - fast download manager with browser extension"
 			  BackgroundColor="transparent"
 			  Square150x150Logo="Images\Square150x150Logo.png"
 			  Square44x44Logo="Images\Square44x44Logo.png">
