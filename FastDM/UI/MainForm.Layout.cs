@@ -307,8 +307,21 @@ namespace FastDM
                     "\uE72C",
                     false,
                     async (s, e) =>
-                        await UpdateChecker
-                            .CheckAndShowAsync(this, false),
+                    {
+                        try
+                        {
+                            await UpdateChecker
+                                .CheckAndShowAsync(this, false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            AppLog.Write("MainForm.BuildUI Updates button: cancelled");
+                        }
+                        catch (Exception exGuard)
+                        {
+                            Program.ReportError("MainForm.BuildUI Updates button", exGuard);
+                        }
+                    },
                     false));
 
             // ক্রম গুরুত্বপূর্ণ: Fill আগে, তারপর বাকিগুলো

@@ -84,7 +84,7 @@ namespace FastDM
             it.StatusNote = "Merging…";
             string final = await MergeAsync(it, tracks, spec, ct);
 
-            try { Directory.Delete(partsDir, true); } catch { }
+            try { Directory.Delete(partsDir, true); } catch (Exception exIgnored1) { AppLog.Write("StreamEngine (ignored): " + exIgnored1.Message); }
 
             it.StatusNote = "";
             it.StreamDone = it.StreamTotal;
@@ -183,7 +183,7 @@ namespace FastDM
                     using var req = new HttpRequestMessage(HttpMethod.Get, s.Url);
                     if (!string.IsNullOrEmpty(referer))
                     {
-                        try { req.Headers.Referrer = new Uri(referer); } catch { }
+                        try { req.Headers.Referrer = new Uri(referer); } catch (Exception exIgnored2) { AppLog.Write("StreamEngine (ignored): " + exIgnored2.Message); }
                     }
                     if (s.Start >= 0 && s.Len > 0)
                         req.Headers.Range = new RangeHeaderValue(s.Start, s.Start + s.Len - 1);
@@ -232,7 +232,7 @@ namespace FastDM
                 using var req = new HttpRequestMessage(HttpMethod.Get, keyUrl);
                 if (!string.IsNullOrEmpty(referer))
                 {
-                    try { req.Headers.Referrer = new Uri(referer); } catch { }
+                    try { req.Headers.Referrer = new Uri(referer); } catch (Exception exIgnored3) { AppLog.Write("StreamEngine (ignored): " + exIgnored3.Message); }
                 }
                 DownloadEngine.ApplyAuth(req);
                 using var resp = await DownloadEngine.SharedClient.SendAsync(req, ct);
@@ -308,7 +308,7 @@ namespace FastDM
                     it.FileName = Path.GetFileName(outPath);
                     return outPath;
                 }
-                try { if (File.Exists(outPath)) File.Delete(outPath); } catch { }
+                try { if (File.Exists(outPath)) File.Delete(outPath); } catch (Exception exIgnored4) { AppLog.Write("StreamEngine (ignored): " + exIgnored4.Message); }
                 note = "Saved without merging (ffmpeg: " + Shorten(err) + ")";
             }
             else note = "Saved without merging (ffmpeg not found).";
@@ -368,7 +368,7 @@ namespace FastDM
             p.BeginErrorReadLine();
             p.BeginOutputReadLine();
 
-            using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch { } }))
+            using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored5) { AppLog.Write("StreamEngine (ignored): " + exIgnored5.Message); } }))
             {
                 await p.WaitForExitAsync(ct);
             }

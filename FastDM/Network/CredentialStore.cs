@@ -109,7 +109,7 @@ namespace FastDM
                 };
                 CredWrite(ref c, 0);
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("CredentialStore (ignored): " + exIgnored1.Message); }
             finally { Marshal.FreeHGlobal(mem); }
         }
 
@@ -189,7 +189,7 @@ namespace FastDM
                 };
                 CredWrite(ref c, 0);
             }
-            catch { }
+            catch (Exception exIgnored2) { AppLog.Write("CredentialStore (ignored): " + exIgnored2.Message); }
             finally { Marshal.FreeHGlobal(mem); }
         }
 
@@ -215,7 +215,7 @@ namespace FastDM
 
         public static void Delete(string key)
         {
-            try { CredDelete(Target(key), TYPE_GENERIC, 0); } catch { }
+            try { CredDelete(Target(key), TYPE_GENERIC, 0); } catch (Exception exIgnored3) { AppLog.Write("CredentialStore (ignored): " + exIgnored3.Message); }
         }
     }
 }

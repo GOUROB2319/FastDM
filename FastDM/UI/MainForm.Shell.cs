@@ -62,7 +62,7 @@ namespace FastDM
                     Icon.ExtractAssociatedIcon(
                         Application.ExecutablePath);
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored1.Message); }
 
             tray =
                 new NotifyIcon
@@ -202,7 +202,7 @@ namespace FastDM
                 SystemEvents.UserPreferenceChanged -=
                     OnSysPrefChanged;
             }
-            catch { }
+            catch (Exception exIgnored2) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored2.Message); }
 
             try
             {
@@ -210,20 +210,20 @@ namespace FastDM
                 navTimer?.Stop();
                 toolbarFitTimer?.Stop();
             }
-            catch { }
+            catch (Exception exIgnored3) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored3.Message); }
 
             try
             {
                 regWait?.Unregister(null);
                 showEvent?.Dispose();
             }
-            catch { }
+            catch (Exception exIgnored4) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored4.Message); }
 
             try
             {
                 pipeCts?.Cancel();
             }
-            catch { }
+            catch (Exception exIgnored5) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored5.Message); }
 
             StopBridge();
 
@@ -272,7 +272,7 @@ namespace FastDM
                     text,
                     icon);
             }
-            catch { }
+            catch (Exception exIgnored6) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored6.Message); }
         }
 
         void NotifyError(
@@ -387,7 +387,7 @@ namespace FastDM
                         () =>
                             ShowAddDialog(t)));
             }
-            catch { }
+            catch (Exception exIgnored7) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored7.Message); }
         }
 
         void ShowStartupNotice()

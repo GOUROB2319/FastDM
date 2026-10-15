@@ -29,6 +29,7 @@
 		<Compile Include="..\FastDM\Core\BatchImport.cs" Link="Linked\BatchImport.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpOutput.cs" Link="Linked\YtDlpOutput.cs" />
 		<Compile Include="..\FastDM\Core\FileCheck.cs" Link="Linked\FileCheck.cs" />
+		<Compile Include="..\FastDM\Core\AppLog.cs" Link="Linked\AppLog.cs" />
 	</ItemGroup>
 
 </Project>

@@ -34,7 +34,7 @@ namespace FastDM
                     TrimOld();
                 }
             }
-            catch { }
+            catch { /* the logger itself must never throw or log */ }
         }
 
         static DateTime lastTrim = DateTime.MinValue;
@@ -50,7 +50,7 @@ namespace FastDM
 
             foreach (var f in old)
             {
-                try { f.Delete(); } catch { }
+                try { f.Delete(); } catch { /* an old log that is in use stays */ }
             }
         }
     }

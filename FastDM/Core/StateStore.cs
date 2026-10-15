@@ -72,7 +72,7 @@ namespace FastDM
                     r.FromBackup = true;
                     if (!r.KeepBlocked)
                     {
-                        try { File.Copy(bak, file, true); } catch { }     // put the good copy back on disk right away
+                        try { File.Copy(bak, file, true); } catch (Exception exIgnored1) { AppLog.Write("StateStore (ignored): " + exIgnored1.Message); }     // put the good copy back on disk right away
                     }
                     break;
                 }
@@ -128,10 +128,10 @@ namespace FastDM
                     .Skip(KeepDamagedCopies);
                 foreach (var f in old)
                 {
-                    try { File.Delete(f); } catch { }
+                    try { File.Delete(f); } catch (Exception exIgnored2) { AppLog.Write("StateStore (ignored): " + exIgnored2.Message); }
                 }
             }
-            catch { }
+            catch (Exception exIgnored3) { AppLog.Write("StateStore (ignored): " + exIgnored3.Message); }
         }
 
         public static void Write(string file, string json)
@@ -155,7 +155,7 @@ namespace FastDM
                 File.WriteAllText(tmp, json);
                 File.Move(tmp, b1, true);
             }
-            catch { /* a failed backup must never stop saving */ }
+            catch (Exception exIgnored4) { /* a failed backup must never stop saving */ AppLog.Write("StateStore (ignored): " + exIgnored4.Message); }
         }
 
         // The file was written by a newer FastDM: keep an untouched copy once, because this older version

@@ -82,7 +82,7 @@ namespace FastDM
 
                     Jar.Add(ck);
                 }
-                catch { /* অবৈধ কুকি বাদ */ }
+                catch (Exception exIgnored1) { /* অবৈধ কুকি বাদ */ AppLog.Write("DownloadEngine (ignored): " + exIgnored1.Message); }
             }
         }
 
@@ -137,7 +137,7 @@ namespace FastDM
                         return clean;
                 }
             }
-            catch { }
+            catch (Exception exIgnored2) { AppLog.Write("DownloadEngine (ignored): " + exIgnored2.Message); }
 
             return "download.bin";
         }

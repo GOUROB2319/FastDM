@@ -395,31 +395,42 @@ namespace FastDM
         {
             try
             {
-                var st = await StartupManager.GetAsync();
-
-                if (IsDisposed) return;
-
-                chkStartup.Checked = st == StartupState.On;
-
-                switch (st)
+                try
                 {
-                    case StartupState.DisabledByUser:
-                        lblStartup.Text = "Turned off in Windows. Open Task Manager → Startup apps and enable FastDM first.";
-                        break;
-                    case StartupState.DisabledByPolicy:
-                        lblStartup.Text = "Blocked by your organization's policy.";
-                        chkStartup.Enabled = false;
-                        break;
-                    case StartupState.Unavailable:
-                        lblStartup.Text = "Not available in this build.";
-                        chkStartup.Enabled = false;
-                        break;
-                    default:
-                        lblStartup.Text = "";
-                        break;
+                    var st = await StartupManager.GetAsync();
+
+                    if (IsDisposed) return;
+
+                    chkStartup.Checked = st == StartupState.On;
+
+                    switch (st)
+                    {
+                        case StartupState.DisabledByUser:
+                            lblStartup.Text = "Turned off in Windows. Open Task Manager → Startup apps and enable FastDM first.";
+                            break;
+                        case StartupState.DisabledByPolicy:
+                            lblStartup.Text = "Blocked by your organization's policy.";
+                            chkStartup.Enabled = false;
+                            break;
+                        case StartupState.Unavailable:
+                            lblStartup.Text = "Not available in this build.";
+                            chkStartup.Enabled = false;
+                            break;
+                        default:
+                            lblStartup.Text = "";
+                            break;
+                    }
                 }
+                catch (Exception exIgnored1) { AppLog.Write("PreferencesForm (ignored): " + exIgnored1.Message); }
             }
-            catch { }
+            catch (OperationCanceledException)
+            {
+                AppLog.Write("PreferencesForm.RefreshStartupAsync: cancelled");
+            }
+            catch (Exception exGuard)
+            {
+                Program.ReportError("PreferencesForm.RefreshStartupAsync", exGuard);
+            }
         }
 
         // ================= ২) Downloads =================
@@ -757,27 +768,38 @@ namespace FastDM
 
             yt.Click += async (a, b) =>
             {
-                if (UpdateChecker.IsPackaged)
-                {
-                    MessageBox.Show(this, "In the Store version, yt-dlp is updated together with the app.", "yt-dlp");
-                    return;
-                }
-
-                yt.Enabled = false;
-
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-                    string msg = await YtDlpUpdater.UpdateAsync(cts.Token);
-                    MessageBox.Show(this, msg, "yt-dlp");
+                    if (UpdateChecker.IsPackaged)
+                    {
+                        MessageBox.Show(this, "In the Store version, yt-dlp is updated together with the app.", "yt-dlp");
+                        return;
+                    }
+
+                    yt.Enabled = false;
+
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                        string msg = await YtDlpUpdater.UpdateAsync(cts.Token);
+                        MessageBox.Show(this, msg, "yt-dlp");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, ex.Message, "yt-dlp");
+                    }
+                    finally
+                    {
+                        yt.Enabled = true;
+                    }
                 }
-                catch (Exception ex)
+                catch (OperationCanceledException)
                 {
-                    MessageBox.Show(this, ex.Message, "yt-dlp");
+                    AppLog.Write("PreferencesForm.BuildAdvanced yt.Click: cancelled");
                 }
-                finally
+                catch (Exception exGuard)
                 {
-                    yt.Enabled = true;
+                    Program.ReportError("PreferencesForm.BuildAdvanced yt.Click", exGuard);
                 }
             };
 

@@ -49,7 +49,7 @@ namespace FastDM
                     string p = Path.Combine(dir.Trim().Trim('"'), file);
                     if (File.Exists(p)) return p;
                 }
-                catch { }
+                catch (Exception exIgnored1) { AppLog.Write("YtDlp (ignored): " + exIgnored1.Message); }
             }
             return null;
         }
@@ -178,7 +178,7 @@ namespace FastDM
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
 
-            using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch { } }))
+            using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored2) { AppLog.Write("YtDlp (ignored): " + exIgnored2.Message); } }))
             {
                 await p.WaitForExitAsync(ct);
             }
@@ -361,7 +361,7 @@ namespace FastDM
 
             s.LastYtDlpUpdate = DateTime.Now;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            try { await UpdateAsync(cts.Token); } catch { }
+            try { await UpdateAsync(cts.Token); } catch (Exception exIgnored3) { AppLog.Write("YtDlp (ignored): " + exIgnored3.Message); }
         }
     }
 
@@ -407,7 +407,7 @@ namespace FastDM
             if (fromTitle)
             {
                 Directory.CreateDirectory(itemDir);
-                try { File.SetAttributes(itemDir, File.GetAttributes(itemDir) | FileAttributes.Hidden); } catch { }
+                try { File.SetAttributes(itemDir, File.GetAttributes(itemDir) | FileAttributes.Hidden); } catch (Exception exIgnored4) { AppLog.Write("YtDlp (ignored): " + exIgnored4.Message); }
                 args.AddRange(new[] { "-P", itemDir, "--windows-filenames" });
             }
 
@@ -480,7 +480,7 @@ namespace FastDM
 
                 if (found != null)
                 {
-                    try { Directory.Delete(itemDir, true); } catch { }
+                    try { Directory.Delete(itemDir, true); } catch (Exception exIgnored5) { AppLog.Write("YtDlp (ignored): " + exIgnored5.Message); }
                 }
             }
             else
@@ -519,7 +519,7 @@ namespace FastDM
                 string privateDir = Path.Combine(it.Folder, YtDlpOutput.ItemDirName(it.Id));
                 if (Directory.Exists(privateDir)) Directory.Delete(privateDir, true);
             }
-            catch { }
+            catch (Exception exIgnored6) { AppLog.Write("YtDlp (ignored): " + exIgnored6.Message); }
 
             try
             {
@@ -528,7 +528,7 @@ namespace FastDM
                 foreach (var f in Directory.GetFiles(it.Folder, baseName + ".*"))
                     if (Intermediate.IsMatch(Path.GetFileName(f))) File.Delete(f);
             }
-            catch { }
+            catch (Exception exIgnored7) { AppLog.Write("YtDlp (ignored): " + exIgnored7.Message); }
         }
     }
 }

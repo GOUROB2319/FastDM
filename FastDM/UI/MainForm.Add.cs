@@ -26,15 +26,26 @@ namespace FastDM
             string url,
             RequestContext? ctx = null)
         {
-            await addGate.WaitAsync();
-
             try
             {
-                await ShowAddDialogCore(url, ctx);
+                await addGate.WaitAsync();
+
+                try
+                {
+                    await ShowAddDialogCore(url, ctx);
+                }
+                finally
+                {
+                    addGate.Release();
+                }
             }
-            finally
+            catch (OperationCanceledException)
             {
-                addGate.Release();
+                AppLog.Write("MainForm.ShowAddDialog: cancelled");
+            }
+            catch (Exception exGuard)
+            {
+                Program.ReportError("MainForm.ShowAddDialog", exGuard);
             }
         }
 
@@ -44,25 +55,36 @@ namespace FastDM
             string url,
             RequestContext ctx)
         {
-            await addGate.WaitAsync();
-
             try
             {
-                await ProcessUrlsAsync(
-                    new[] { url },
-                    "",
-                    settings.DefaultFolder,
-                    true,
-                    ctx);
+                await addGate.WaitAsync();
+
+                try
+                {
+                    await ProcessUrlsAsync(
+                        new[] { url },
+                        "",
+                        settings.DefaultFolder,
+                        true,
+                        ctx);
+                }
+                catch (Exception ex)
+                {
+                    lblActive.Text =
+                        "Could not add link: " + ex.Message;
+                }
+                finally
+                {
+                    addGate.Release();
+                }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                lblActive.Text =
-                    "Could not add link: " + ex.Message;
+                AppLog.Write("MainForm.QuickAdd: cancelled");
             }
-            finally
+            catch (Exception exGuard)
             {
-                addGate.Release();
+                Program.ReportError("MainForm.QuickAdd", exGuard);
             }
         }
 
@@ -179,7 +201,7 @@ namespace FastDM
                         continue;
                     }
                 }
-                catch { }
+                catch (Exception exIgnored1) { AppLog.Write("MainForm.Add (ignored): " + exIgnored1.Message); }
 
                 if (DownloadEngine.IsHttp(u))
                 {
@@ -205,7 +227,7 @@ namespace FastDM
                             continue;
                         }
                     }
-                    catch { }
+                    catch (Exception exIgnored2) { AppLog.Write("MainForm.Add (ignored): " + exIgnored2.Message); }
                 }
 
                 fileUrls.Add(u);
@@ -260,7 +282,7 @@ namespace FastDM
                             retry = true;
                         }
                     }
-                    catch { }
+                    catch (Exception exIgnored3) { AppLog.Write("MainForm.Add (ignored): " + exIgnored3.Message); }
                 }
 
                 if (string.IsNullOrWhiteSpace(
@@ -348,31 +370,42 @@ namespace FastDM
         // Drag-and-drop of a list file
         async void ImportListFile(string path)
         {
-            await addGate.WaitAsync();
-
             try
             {
-                if (new FileInfo(path).Length > 5 * 1024 * 1024)
+                await addGate.WaitAsync();
+
+                try
                 {
-                    MessageBox.Show(
-                        this,
-                        "This file is too big for a list of links (limit 5 MB).",
-                        "FastDM");
+                    if (new FileInfo(path).Length > 5 * 1024 * 1024)
+                    {
+                        MessageBox.Show(
+                            this,
+                            "This file is too big for a list of links (limit 5 MB).",
+                            "FastDM");
 
-                    return;
+                        return;
+                    }
+
+                    await StartBatchImportAsync(
+                        File.ReadAllText(path),
+                        settings.DefaultFolder);
                 }
-
-                await StartBatchImportAsync(
-                    File.ReadAllText(path),
-                    settings.DefaultFolder);
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "FastDM");
+                }
+                finally
+                {
+                    addGate.Release();
+                }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                MessageBox.Show(this, ex.Message, "FastDM");
+                AppLog.Write("MainForm.ImportListFile: cancelled");
             }
-            finally
+            catch (Exception exGuard)
             {
-                addGate.Release();
+                Program.ReportError("MainForm.ImportListFile", exGuard);
             }
         }
 
@@ -998,7 +1031,7 @@ namespace FastDM
                     it,
                     cts.Token);
             }
-            catch { }
+            catch (Exception exIgnored4) { AppLog.Write("MainForm.Add (ignored): " + exIgnored4.Message); }
 
             if (string.IsNullOrWhiteSpace(
                     it.FileName))
@@ -1149,66 +1182,77 @@ namespace FastDM
         async void OpenFolderForPlaylist(
             string url)
         {
-            await addGate.WaitAsync();
-
             try
             {
-                if (!Uri.TryCreate(
-                        url,
-                        UriKind.Absolute,
-                        out var u))
-                    return;
+                await addGate.WaitAsync();
 
-                Uri folder = u;
-
-                if (DownloadEngine.IsHttp(url))
+                try
                 {
-                    using var cts =
-                        new CancellationTokenSource(
-                            TimeSpan.FromSeconds(20));
-
-                    var (isFolder, resolved) =
-                        await DownloadEngine.DetectFolderAsync(
-                            u,
-                            cts.Token);
-
-                    if (!isFolder)
-                    {
-                        MessageBox.Show(
-                            this,
-                            "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
-                            "Playlist",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information);
-
+                    if (!Uri.TryCreate(
+                            url,
+                            UriKind.Absolute,
+                            out var u))
                         return;
+
+                    Uri folder = u;
+
+                    if (DownloadEngine.IsHttp(url))
+                    {
+                        using var cts =
+                            new CancellationTokenSource(
+                                TimeSpan.FromSeconds(20));
+
+                        var (isFolder, resolved) =
+                            await DownloadEngine.DetectFolderAsync(
+                                u,
+                                cts.Token);
+
+                        if (!isFolder)
+                        {
+                            MessageBox.Show(
+                                this,
+                                "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
+                                "Playlist",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information);
+
+                            return;
+                        }
+
+                        folder = resolved;
+                    }
+                    else if (!u.AbsolutePath.EndsWith("/"))
+                    {
+                        folder =
+                            new Uri(
+                                u.GetLeftPart(
+                                    UriPartial.Path) +
+                                "/");
                     }
 
-                    folder = resolved;
+                    AddFolder(
+                        folder,
+                        true,
+                        true);
                 }
-                else if (!u.AbsolutePath.EndsWith("/"))
+                catch (Exception ex)
                 {
-                    folder =
-                        new Uri(
-                            u.GetLeftPart(
-                                UriPartial.Path) +
-                            "/");
+                    lblActive.Text =
+                        "Could not open the folder: " +
+                        ex.Message;
                 }
-
-                AddFolder(
-                    folder,
-                    true,
-                    true);
+                finally
+                {
+                    addGate.Release();
+                }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                lblActive.Text =
-                    "Could not open the folder: " +
-                    ex.Message;
+                AppLog.Write("MainForm.OpenFolderForPlaylist: cancelled");
             }
-            finally
+            catch (Exception exGuard)
             {
-                addGate.Release();
+                Program.ReportError("MainForm.OpenFolderForPlaylist", exGuard);
             }
         }
 

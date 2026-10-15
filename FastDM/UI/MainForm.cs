@@ -171,7 +171,7 @@ namespace FastDM
                         ? Clipboard.GetText().Trim()
                         : null;
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MainForm (ignored): " + exIgnored1.Message); }
 
             timer = new System.Windows.Forms.Timer
             {
@@ -195,7 +195,7 @@ namespace FastDM
             {
                 ProtocolHandler.RegisterForCurrentUser();
             }
-            catch { }
+            catch (Exception exIgnored2) { AppLog.Write("MainForm (ignored): " + exIgnored2.Message); }
 
             StartBridge();
 
@@ -225,24 +225,46 @@ namespace FastDM
             {
                 try
                 {
-                    await YtDlpUpdater
-                        .MaybeAutoUpdateAsync(settings);
+                    try
+                    {
+                        await YtDlpUpdater
+                            .MaybeAutoUpdateAsync(settings);
 
-                    SaveState();
+                        SaveState();
+                    }
+                    catch (Exception exIgnored3) { AppLog.Write("MainForm (ignored): " + exIgnored3.Message); }
                 }
-                catch { }
+                catch (OperationCanceledException)
+                {
+                    AppLog.Write("MainForm.ctor Shown: cancelled");
+                }
+                catch (Exception exGuard)
+                {
+                    Program.ReportError("MainForm.ctor Shown", exGuard);
+                }
             };
 
             Shown += async (s, e) =>
             {
-                if (settings.CheckUpdatesOnStart)
+                try
                 {
-                    try
+                    if (settings.CheckUpdatesOnStart)
                     {
-                        await UpdateChecker
-                            .CheckAndShowAsync(this, true);
+                        try
+                        {
+                            await UpdateChecker
+                                .CheckAndShowAsync(this, true);
+                        }
+                        catch (Exception exIgnored4) { AppLog.Write("MainForm (ignored): " + exIgnored4.Message); }
                     }
-                    catch { }
+                }
+                catch (OperationCanceledException)
+                {
+                    AppLog.Write("MainForm.ctor Shown: cancelled");
+                }
+                catch (Exception exGuard)
+                {
+                    Program.ReportError("MainForm.ctor Shown", exGuard);
                 }
             };
         }
@@ -337,7 +359,7 @@ namespace FastDM
                 if (read.KeepBlocked)
                     stateWriteBlocked = true;
             }
-            catch { }
+            catch (Exception exIgnored5) { AppLog.Write("MainForm (ignored): " + exIgnored5.Message); }
 
             if (data == null)
                 return;
@@ -425,7 +447,7 @@ namespace FastDM
                     items.Add(it);
                 }
             }
-            catch { }
+            catch (Exception exIgnored6) { AppLog.Write("MainForm (ignored): " + exIgnored6.Message); }
         }
     }
 }

@@ -102,7 +102,7 @@ namespace FastDM
                     int v = IsDark ? 1 : 0;
                     DwmSetWindowAttribute(f.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int));
                 }
-                catch { }
+                catch (Exception exIgnored1) { AppLog.Write("Theme (ignored): " + exIgnored1.Message); }
             }
             if (f.IsHandleCreated) apply(); else f.HandleCreated += (s, e) => apply();
         }
@@ -116,7 +116,7 @@ namespace FastDM
             void apply()
             {
                 try { SetWindowTheme(c.Handle, IsDark ? "DarkMode_Explorer" : "Explorer", null); }
-                catch { }
+                catch (Exception exIgnored2) { AppLog.Write("Theme (ignored): " + exIgnored2.Message); }
             }
             if (c.IsHandleCreated) apply(); else c.HandleCreated += (s, e) => apply();
         }
@@ -259,7 +259,7 @@ namespace FastDM
                 foreach (var name in new[] { "Segoe Fluent Icons", "Segoe MDL2 Assets" })
                     if (fc.Families.Any(f => f.Name == name)) return name;
             }
-            catch { }
+            catch (Exception exIgnored3) { AppLog.Write("Theme (ignored): " + exIgnored3.Message); }
             return null;
         }
 

@@ -80,7 +80,7 @@ namespace FastDM
         public static void OpenUrl(string url)
         {
             try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("UpdateChecker (ignored): " + exIgnored1.Message); }
         }
 
         // ---------- GitHub ----------

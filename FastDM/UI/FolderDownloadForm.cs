@@ -215,7 +215,21 @@ namespace FastDM
             AcceptButton = playlistMode ? btnStream : btnOk;
             CancelButton = cancel;
 
-            Shown += async (s, e) => await ScanAsync();
+            Shown += async (s, e) =>
+            {
+                try
+                {
+                    await ScanAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    AppLog.Write("FolderDownloadForm.ctor Shown: cancelled");
+                }
+                catch (Exception exGuard)
+                {
+                    Program.ReportError("FolderDownloadForm.ctor Shown", exGuard);
+                }
+            };
             FormClosing += (s, e) => cts?.Cancel();
         }
 

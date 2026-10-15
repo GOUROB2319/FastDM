@@ -219,39 +219,50 @@ namespace FastDM
         {
             try
             {
-                bool want =
-                    settings.LaunchAtStartup;
-
-                var st =
-                    await StartupManager.SetAsync(
-                        want);
-
-                if (want &&
-                    st != StartupState.On)
+                try
                 {
-                    settings.LaunchAtStartup =
-                        false;
+                    bool want =
+                        settings.LaunchAtStartup;
 
-                    SaveState();
+                    var st =
+                        await StartupManager.SetAsync(
+                            want);
 
-                    string why =
-                        st == StartupState.DisabledByUser
-                            ? "Windows has FastDM's startup turned off.\n\nOpen Task Manager → Startup apps, enable FastDM, then turn this option on again."
-                            : st == StartupState.DisabledByPolicy
-                                ? "Starting FastDM with Windows is blocked by your organization's policy."
-                                : "Launch at startup is not available in this build.";
+                    if (want &&
+                        st != StartupState.On)
+                    {
+                        settings.LaunchAtStartup =
+                            false;
 
-                    MessageBox.Show(
-                        this,
-                        why,
-                        "Launch at startup");
+                        SaveState();
+
+                        string why =
+                            st == StartupState.DisabledByUser
+                                ? "Windows has FastDM's startup turned off.\n\nOpen Task Manager → Startup apps, enable FastDM, then turn this option on again."
+                                : st == StartupState.DisabledByPolicy
+                                    ? "Starting FastDM with Windows is blocked by your organization's policy."
+                                    : "Launch at startup is not available in this build.";
+
+                        MessageBox.Show(
+                            this,
+                            why,
+                            "Launch at startup");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write(
+                        "Startup change failed: " +
+                        ex.Message);
                 }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                AppLog.Write(
-                    "Startup change failed: " +
-                    ex.Message);
+                AppLog.Write("MainForm.ApplyStartupAsync: cancelled");
+            }
+            catch (Exception exGuard)
+            {
+                Program.ReportError("MainForm.ApplyStartupAsync", exGuard);
             }
         }
 
@@ -444,7 +455,7 @@ namespace FastDM
                         ApplyTheme();
                     }));
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MainForm.Settings (ignored): " + exIgnored1.Message); }
         }
     }
 }

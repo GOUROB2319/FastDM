@@ -52,7 +52,7 @@ namespace FastDM
             {
                 bridge?.Dispose();
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MainForm.Bridge (ignored): " + exIgnored1.Message); }
 
             bridge = null;
         }
@@ -150,7 +150,7 @@ namespace FastDM
                             }
                         }));
                 }
-                catch { }
+                catch (Exception exIgnored2) { AppLog.Write("MainForm.Bridge (ignored): " + exIgnored2.Message); }
             }
 
             public List<BridgeTaskInfo> GetTasks()
@@ -260,7 +260,7 @@ namespace FastDM
                         new Action(
                             f.SaveState));
                 }
-                catch { }
+                catch (Exception exIgnored3) { AppLog.Write("MainForm.Bridge (ignored): " + exIgnored3.Message); }
             }
         }
 
@@ -397,13 +397,13 @@ namespace FastDM
                                             RestoreFromTray));
                                 }
                             }
-                            catch { }
+                            catch (Exception exIgnored4) { AppLog.Write("MainForm.Bridge (ignored): " + exIgnored4.Message); }
                         },
                         null,
                         Timeout.Infinite,
                         false);
             }
-            catch { }
+            catch (Exception exIgnored5) { AppLog.Write("MainForm.Bridge (ignored): " + exIgnored5.Message); }
         }
     }
 }

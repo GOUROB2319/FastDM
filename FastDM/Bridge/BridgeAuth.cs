@@ -83,7 +83,7 @@ namespace FastDM
                     byte[] b = Convert.FromHexString(hex);
                     if (CryptographicOperations.FixedTimeEquals(b, given)) matchedHash = hex;   // সব কটা দেখি (টাইমিং ফাঁস এড়াতে)
                 }
-                catch { }
+                catch (Exception exIgnored1) { AppLog.Write("BridgeAuth (ignored): " + exIgnored1.Message); }
             }
             return matchedHash != null;
         }

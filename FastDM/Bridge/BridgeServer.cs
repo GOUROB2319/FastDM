@@ -88,7 +88,7 @@ namespace FastDM
                     Port = p;
                     break;
                 }
-                catch { /* পোর্ট ব্যস্ত, পরেরটা */ }
+                catch (Exception exIgnored1) { /* পোর্ট ব্যস্ত, পরেরটা */ AppLog.Write("BridgeServer (ignored): " + exIgnored1.Message); }
             }
             if (listener == null) return false;
 
@@ -99,8 +99,8 @@ namespace FastDM
 
         public void Dispose()
         {
-            try { cts?.Cancel(); } catch { }
-            try { listener?.Stop(); listener?.Close(); } catch { }
+            try { cts?.Cancel(); } catch (Exception exIgnored2) { AppLog.Write("BridgeServer (ignored): " + exIgnored2.Message); }
+            try { listener?.Stop(); listener?.Close(); } catch (Exception exIgnored3) { AppLog.Write("BridgeServer (ignored): " + exIgnored3.Message); }
             listener = null;
         }
 
@@ -212,7 +212,7 @@ namespace FastDM
             }
             catch
             {
-                try { await Send(res, 500, new { error = "server_error" }); } catch { }
+                try { await Send(res, 500, new { error = "server_error" }); } catch (Exception exIgnored4) { AppLog.Write("BridgeServer (ignored): " + exIgnored4.Message); }
             }
         }
 

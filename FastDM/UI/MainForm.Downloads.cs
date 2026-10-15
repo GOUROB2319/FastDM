@@ -266,152 +266,163 @@ namespace FastDM
         async void StartDownload(
             DownloadItem it)
         {
-            var cts =
-                new CancellationTokenSource();
-
-            it.Cts = cts;
-            it.State = DlState.Downloading;
-            it.Error = null;
-            it.PausedBySchedule = false;
-
-            // ম্যানুয়াল শুরু/রিজিউমে হলে অটো-রিট্রাইয়ের গণনা নতুন করে
-            if (!it.AutoRetrying)
-                it.RetryCount = 0;
-
-            it.AutoRetrying = false;
-            it.SlowSince = null;
-
-            AppLog.Write(
-                "Start: " +
-                it.FileName);
-
-            it.SpeedHistory.Clear();
-            it.LastBytes = it.Downloaded;
-            it.LastTick = DateTime.UtcNow;
-            it.Speed = 0;
-
-            MarkChanged();
-
             try
             {
-                if (it.YtDlp != null)
-                {
-                    await YtDlpEngine.RunAsync(
-                        it,
-                        settings.Connections,
-                        cts.Token);
-                }
-                else if (it.Stream != null)
-                {
-                    await StreamEngine.RunAsync(
-                        it,
-                        settings.Connections,
-                        cts.Token);
-                }
-                else
-                {
-                    await DownloadEngine.RunItemAsync(
-                        it,
-                        settings.Connections,
-                        cts.Token);
-                }
+                var cts =
+                    new CancellationTokenSource();
 
-                if (it.TotalBytes <= 0)
-                    it.TotalBytes =
-                        it.Downloaded;
+                it.Cts = cts;
+                it.State = DlState.Downloading;
+                it.Error = null;
+                it.PausedBySchedule = false;
 
-                it.State =
-                    DlState.Completed;
-            }
-            catch (OperationCanceledException)
-            {
-                it.State =
-                    DlState.Paused;
-            }
-            catch (Exception ex)
-            {
-                it.State =
-                    DlState.Error;
+                // ম্যানুয়াল শুরু/রিজিউমে হলে অটো-রিট্রাইয়ের গণনা নতুন করে
+                if (!it.AutoRetrying)
+                    it.RetryCount = 0;
 
-                it.Error =
-                    ex.Message;
+                it.AutoRetrying = false;
+                it.SlowSince = null;
 
                 AppLog.Write(
-                    "Error: " +
-                    it.FileName +
-                    " — " +
-                    ex.Message);
-            }
-            finally
-            {
-                it.Cts = null;
-                it.StatusNote = "";
-                cts.Dispose();
-            }
+                    "Start: " +
+                    it.FileName);
 
-            // ধীর বলে সরানো ডাউনলোড: লাইনের শেষে গিয়ে অপেক্ষা করবে, অন্যগুলো আগে চলবে
-            if (it.RequeueAfterPause)
-            {
-                it.RequeueAfterPause = false;
+                it.SpeedHistory.Clear();
+                it.LastBytes = it.Downloaded;
+                it.LastTick = DateTime.UtcNow;
+                it.Speed = 0;
 
-                if (it.State ==
-                        DlState.Paused &&
-                    !it.RemoveRequested)
+                MarkChanged();
+
+                try
                 {
-                    it.Added =
-                        DateTime.Now;
-
-                    it.State =
-                        DlState.Queued;
-                }
-            }
-
-            if (!it.RemoveRequested)
-            {
-                if (it.State ==
-                    DlState.Completed)
-                {
-                    sessionCompleted++;
-                    lastCompletedName =
-                        it.FileName;
-
-                    FinishDownload(it);
-                }
-                else if (it.State ==
-                         DlState.Error)
-                {
-                    if (settings.AutoRetry &&
-                        it.RetryCount <
-                            Math.Max(1, settings.MaxRetries))
+                    if (it.YtDlp != null)
                     {
-                        it.RetryCount++;
-                        ScheduleRetry(it);
+                        await YtDlpEngine.RunAsync(
+                            it,
+                            settings.Connections,
+                            cts.Token);
+                    }
+                    else if (it.Stream != null)
+                    {
+                        await StreamEngine.RunAsync(
+                            it,
+                            settings.Connections,
+                            cts.Token);
                     }
                     else
                     {
-                        NotifyError(it);
+                        await DownloadEngine.RunItemAsync(
+                            it,
+                            settings.Connections,
+                            cts.Token);
+                    }
+
+                    if (it.TotalBytes <= 0)
+                        it.TotalBytes =
+                            it.Downloaded;
+
+                    it.State =
+                        DlState.Completed;
+                }
+                catch (OperationCanceledException)
+                {
+                    it.State =
+                        DlState.Paused;
+                }
+                catch (Exception ex)
+                {
+                    it.State =
+                        DlState.Error;
+
+                    it.Error =
+                        ex.Message;
+
+                    AppLog.Write(
+                        "Error: " +
+                        it.FileName +
+                        " — " +
+                        ex.Message);
+                }
+                finally
+                {
+                    it.Cts = null;
+                    it.StatusNote = "";
+                    cts.Dispose();
+                }
+
+                // ধীর বলে সরানো ডাউনলোড: লাইনের শেষে গিয়ে অপেক্ষা করবে, অন্যগুলো আগে চলবে
+                if (it.RequeueAfterPause)
+                {
+                    it.RequeueAfterPause = false;
+
+                    if (it.State ==
+                            DlState.Paused &&
+                        !it.RemoveRequested)
+                    {
+                        it.Added =
+                            DateTime.Now;
+
+                        it.State =
+                            DlState.Queued;
                     }
                 }
-            }
 
-            it.Speed = 0;
-
-            if (it.RemoveRequested)
-            {
-                TryDelete(it.TempPath);
-                TryDelete(it.PartsDir);
-                YtDlpEngine.Cleanup(it);
-
-                if (it.State ==
-                        DlState.Completed &&
-                    it.DeleteFile)
+                if (!it.RemoveRequested)
                 {
-                    TryDelete(it.SavePath);
-                }
-            }
+                    if (it.State ==
+                        DlState.Completed)
+                    {
+                        sessionCompleted++;
+                        lastCompletedName =
+                            it.FileName;
 
-            MarkChanged();
-            SaveState();
+                        FinishDownload(it);
+                    }
+                    else if (it.State ==
+                             DlState.Error)
+                    {
+                        if (settings.AutoRetry &&
+                            it.RetryCount <
+                                Math.Max(1, settings.MaxRetries))
+                        {
+                            it.RetryCount++;
+                            ScheduleRetry(it);
+                        }
+                        else
+                        {
+                            NotifyError(it);
+                        }
+                    }
+                }
+
+                it.Speed = 0;
+
+                if (it.RemoveRequested)
+                {
+                    TryDelete(it.TempPath);
+                    TryDelete(it.PartsDir);
+                    YtDlpEngine.Cleanup(it);
+
+                    if (it.State ==
+                            DlState.Completed &&
+                        it.DeleteFile)
+                    {
+                        TryDelete(it.SavePath);
+                    }
+                }
+
+                MarkChanged();
+                SaveState();
+            }
+            catch (OperationCanceledException)
+            {
+                AppLog.Write("MainForm.StartDownload: cancelled");
+            }
+            catch (Exception exGuard)
+            {
+                Program.ReportError("MainForm.StartDownload", exGuard);
+            }
         }
 
         // ডাউনলোড শেষের কাজ: সার্ভারের সময়, Mark of the Web, অ্যান্টিভাইরাস, বাইরের অ্যাপ, লিস্ট থেকে সরানো
@@ -440,29 +451,40 @@ namespace FastDM
         async void ScheduleRetry(
             DownloadItem it)
         {
-            AppLog.Write(
-                "Retry " +
-                it.RetryCount +
-                ": " +
-                it.FileName);
-
-            await Task.Delay(
-                TimeSpan.FromSeconds(
-                    Math.Min(
-                        60,
-                        5 * it.RetryCount)));
-
-            if (items.Contains(it) &&
-                it.State ==
-                    DlState.Error &&
-                !it.RemoveRequested)
+            try
             {
-                it.AutoRetrying = true;
-                it.State =
-                    DlState.Queued;
-                it.Error = null;
+                AppLog.Write(
+                    "Retry " +
+                    it.RetryCount +
+                    ": " +
+                    it.FileName);
 
-                MarkChanged();
+                await Task.Delay(
+                    TimeSpan.FromSeconds(
+                        Math.Min(
+                            60,
+                            5 * it.RetryCount)));
+
+                if (items.Contains(it) &&
+                    it.State ==
+                        DlState.Error &&
+                    !it.RemoveRequested)
+                {
+                    it.AutoRetrying = true;
+                    it.State =
+                        DlState.Queued;
+                    it.Error = null;
+
+                    MarkChanged();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                AppLog.Write("MainForm.ScheduleRetry: cancelled");
+            }
+            catch (Exception exGuard)
+            {
+                Program.ReportError("MainForm.ScheduleRetry", exGuard);
             }
         }
 
@@ -761,7 +783,7 @@ namespace FastDM
                         path,
                         true);
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MainForm.Downloads (ignored): " + exIgnored1.Message); }
         }
 
         void OpenSelected(bool folder)

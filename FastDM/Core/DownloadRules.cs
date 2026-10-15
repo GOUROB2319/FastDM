@@ -54,7 +54,7 @@ namespace FastDM
 
                 if (s.UseServerTime && it.ServerTime.HasValue)
                 {
-                    try { File.SetLastWriteTimeUtc(path, it.ServerTime.Value.UtcDateTime); } catch { }
+                    try { File.SetLastWriteTimeUtc(path, it.ServerTime.Value.UtcDateTime); } catch (Exception exIgnored1) { AppLog.Write("DownloadRules (ignored): " + exIgnored1.Message); }
                 }
 
                 if (s.MarkDownloaded)
@@ -81,7 +81,7 @@ namespace FastDM
                     path + ":Zone.Identifier",
                     "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=" + PlaylistBuilder.StripCredentials(url ?? "") + "\r\n");
             }
-            catch { /* FAT/exFAT ড্রাইভে সম্ভব নয়, চুপচাপ বাদ */ }
+            catch (Exception exIgnored2) { /* FAT/exFAT ড্রাইভে সম্ভব নয়, চুপচাপ বাদ */ AppLog.Write("DownloadRules (ignored): " + exIgnored2.Message); }
         }
 
         // %path% এর জায়গায় ফাইলের পাথ বসিয়ে প্রোগ্রাম চালায়

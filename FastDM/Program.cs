@@ -42,9 +42,9 @@ namespace FastDM
 
                     ev.Set();
                 }
-                catch
-                {
+                catch (Exception exIgnored1) {
                     // Ignore if the first instance is shutting down.
+                    AppLog.Write("Program (ignored): " + exIgnored1.Message);
                 }
 
                 return;
@@ -75,12 +75,24 @@ namespace FastDM
             Application.Run(new MainForm());
         }
 
+        // Unhandled error from anywhere: written to the log, then shown to the user.
         static void ReportCrash(Exception? ex)
+        {
+            AppLog.Write("Unhandled error: " + ex);
+            ShowError(ex);
+        }
+
+        // Error caught by a guarded event handler (async void methods and handlers).
+        internal static void ReportError(string where, Exception ex)
+        {
+            AppLog.Write(where + " failed: " + ex);
+            ShowError(ex);
+        }
+
+        static void ShowError(Exception? ex)
         {
             try
             {
-                AppLog.Write("Unhandled error: " + ex);
-
                 MessageBox.Show(
                     "FastDM hit an unexpected error:\n\n" + (ex?.Message ?? "unknown error"),
                     "FastDM",

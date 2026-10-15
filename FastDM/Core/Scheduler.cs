@@ -88,7 +88,7 @@ namespace FastDM
                         break;
                 }
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("Scheduler (ignored): " + exIgnored1.Message); }
         }
     }
 }

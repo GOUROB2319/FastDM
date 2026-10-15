@@ -70,7 +70,21 @@ namespace FastDM
             Controls.Add(txtPass);
 
             btnTest = new Button { Text = "Test connection", Location = new Point(140, 322), Size = new Size(130, 32) };
-            btnTest.Click += async (a, b) => await RunTestAsync();
+            btnTest.Click += async (a, b) =>
+            {
+                try
+                {
+                    await RunTestAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    AppLog.Write("NetworkForm.ctor btnTest.Click: cancelled");
+                }
+                catch (Exception exGuard)
+                {
+                    Program.ReportError("NetworkForm.ctor btnTest.Click", exGuard);
+                }
+            };
             Controls.Add(btnTest);
 
             lblTest = new Label { Text = "", Location = new Point(280, 329), Size = new Size(190, 22) };
@@ -124,7 +138,7 @@ namespace FastDM
                     (int)numPort.Value, txtUser.Text.Trim(), txtPass.Text, token);
                 if (!IsDisposed) lblTest.Text = msg;
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { AppLog.Write("NetworkForm: connection test cancelled"); }
             catch (Exception ex)
             {
                 if (!IsDisposed)

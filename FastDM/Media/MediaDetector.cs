@@ -129,7 +129,7 @@ namespace FastDM
                     ?? new HtmlNodeCollection(null))
                     Add(HtmlEntity.DeEntitize(n.GetAttributeValue("content", "")));
             }
-            catch { }
+            catch (Exception exIgnored1) { AppLog.Write("MediaDetector (ignored): " + exIgnored1.Message); }
 
             // ২) পেজের লেখার ভেতরে (স্ক্রিপ্ট/JSON) থাকা লিঙ্ক
             string flat = html.Replace("\\/", "/").Replace("\\u0026", "&").Replace("\\u002F", "/");
@@ -145,7 +145,7 @@ namespace FastDM
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(referer))
             {
-                try { req.Headers.Referrer = new Uri(referer); } catch { }
+                try { req.Headers.Referrer = new Uri(referer); } catch (Exception exIgnored2) { AppLog.Write("MediaDetector (ignored): " + exIgnored2.Message); }
             }
             DownloadEngine.ApplyAuth(req);
 
@@ -186,7 +186,7 @@ namespace FastDM
                     string p = Path.Combine(dir.Trim().Trim('"'), "ffmpeg.exe");
                     if (File.Exists(p)) return p;
                 }
-                catch { }
+                catch (Exception exIgnored3) { AppLog.Write("MediaDetector (ignored): " + exIgnored3.Message); }
             }
             return null;
         }

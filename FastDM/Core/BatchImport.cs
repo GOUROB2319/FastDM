@@ -194,7 +194,7 @@ namespace FastDM
                 int i = part.IndexOf('=');
                 string k = i < 0 ? part : part.Substring(0, i);
                 string v = i < 0 ? "" : part.Substring(i + 1);
-                try { d[Uri.UnescapeDataString(k)] = Uri.UnescapeDataString(v.Replace('+', ' ')); } catch { }
+                try { d[Uri.UnescapeDataString(k)] = Uri.UnescapeDataString(v.Replace('+', ' ')); } catch (Exception exIgnored1) { AppLog.Write("BatchImport (ignored): " + exIgnored1.Message); }
             }
             return d;
         }
