@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -8,7 +9,8 @@ namespace FastDM
     public enum YtDlpCookieSourceKind { None, CookieFile, Browser, MissingCookieFile, InvalidCookieFile }
     public enum YtDlpFailureKind
     {
-        MissingTool, MissingCookieFile, InvalidCookieFile, BrowserDatabaseLocked,
+        MissingTool, MissingCookieFile, InvalidCookieFile, BrowserDatabaseNotFound,
+        BrowserDatabaseLocked, BrowserDatabasePermissionDenied,
         RateLimited, TemporaryNetwork, DnsConnection, LoginRequired, BotVerification,
         MissingVisitorData, PoTokenRequired, UnsupportedVideo, GeoRestricted,
         FormatUnavailable, MissingFfmpeg, MergeFailed, InsufficientDiskSpace,
@@ -26,6 +28,30 @@ namespace FastDM
 
     public static class YtDlpDiagnostics
     {
+        public static List<string> CookieArguments(YtDlpCookieSource source, bool omitCookies = false)
+        {
+            var args = new List<string>();
+            if (omitCookies) return args;
+            if (source.Kind is YtDlpCookieSourceKind.MissingCookieFile or YtDlpCookieSourceKind.InvalidCookieFile)
+                throw new InvalidOperationException(source.Error ?? "The selected cookies.txt file is invalid.");
+            if (source.Kind == YtDlpCookieSourceKind.CookieFile)
+            {
+                args.Add("--cookies");
+                args.Add(source.FilePath!);
+            }
+            else if (source.Kind == YtDlpCookieSourceKind.Browser)
+            {
+                args.Add("--cookies-from-browser");
+                args.Add(source.Browser!);
+            }
+            return args;
+        }
+
+        public static bool CanRetryWithoutCookies(YtDlpFailureKind kind) =>
+            kind is YtDlpFailureKind.MissingCookieFile or YtDlpFailureKind.InvalidCookieFile or
+                YtDlpFailureKind.BrowserDatabaseNotFound or YtDlpFailureKind.BrowserDatabaseLocked or
+                YtDlpFailureKind.BrowserDatabasePermissionDenied or YtDlpFailureKind.CookiesRejected;
+
         public static YtDlpCookieSource SelectCookieSource(string? configuredFile, string? browser)
         {
             string path = (configuredFile ?? string.Empty).Trim().Trim('"');
@@ -85,8 +111,13 @@ namespace FastDM
                 return YtDlpFailureKind.InvalidCookieFile;
             if (source?.Kind == YtDlpCookieSourceKind.MissingCookieFile) return YtDlpFailureKind.MissingCookieFile;
             if (source?.Kind == YtDlpCookieSourceKind.InvalidCookieFile) return YtDlpFailureKind.InvalidCookieFile;
-            if (text.Contains("could not copy") && text.Contains("cookie database") ||
-                text.Contains("permission denied") && text.Contains("cookie database")) return YtDlpFailureKind.BrowserDatabaseLocked;
+            if (Regex.IsMatch(text, @"\b(?:could not find|cannot find|can't find|unable to find|no)\s+(?:[a-z0-9_-]+\s+)?cookies database\b") ||
+                Regex.IsMatch(text, @"\b(?:cookie|cookies) database\b.{0,100}\bnot found\b"))
+                return YtDlpFailureKind.BrowserDatabaseNotFound;
+            if (text.Contains("permission denied") && text.Contains("cookie database"))
+                return YtDlpFailureKind.BrowserDatabasePermissionDenied;
+            if ((text.Contains("could not copy") || text.Contains("failed to copy") || text.Contains("unable to copy")) &&
+                text.Contains("cookie database")) return YtDlpFailureKind.BrowserDatabaseLocked;
             if (text.Contains("sign in to confirm you're not a bot") || text.Contains("sign in to confirm you’re not a bot") ||
                 text.Contains("confirm you're not a bot") || text.Contains("confirm you’re not a bot") ||
                 text.Contains("captcha") || text.Contains("bot verification")) return YtDlpFailureKind.BotVerification;
@@ -159,7 +190,9 @@ namespace FastDM
                 YtDlpFailureKind.MissingTool => ("FastDM could not find yt-dlp.", "Install the app's supported yt-dlp tool in its Tools folder, then try again."),
                 YtDlpFailureKind.MissingCookieFile => ("The selected cookies.txt file is missing.", "Choose an existing cookies.txt file in Preferences → Advanced → Video sites."),
                 YtDlpFailureKind.InvalidCookieFile => ("The selected cookies.txt file could not be read or is not in Netscape format.", "Choose a readable cookies.txt file whose first line is a Netscape cookie-file header."),
-                YtDlpFailureKind.BrowserDatabaseLocked => ("yt-dlp could not copy the browser's cookie database.", "Close the browser and its background processes, then retry. If that still fails, choose a cookies.txt file in video settings."),
+                YtDlpFailureKind.BrowserDatabaseNotFound => ("yt-dlp could not find the selected browser's cookie database. This does not show that the video itself is invalid.", "For a public video, set Cookie source to None and retry. Otherwise select the correct browser/profile, choose a readable cookies.txt file, or update yt-dlp."),
+                YtDlpFailureKind.BrowserDatabaseLocked => ("yt-dlp could not copy the browser's cookie database.", "Close the browser and its background processes, then retry. If that still fails, choose a supported browser or cookies.txt file."),
+                YtDlpFailureKind.BrowserDatabasePermissionDenied => ("Windows denied access to the selected browser's cookie database.", "Check that the selected profile belongs to this Windows user. For a public video, set Cookie source to None; otherwise choose a supported browser or cookies.txt file."),
                 YtDlpFailureKind.RateLimited => ("The site is limiting requests from this network or session.", "Wait before trying again. Avoid repeated retries; reduce simultaneous video downloads. If the site asks for a check, complete it in your browser."),
                 YtDlpFailureKind.TemporaryNetwork => ("The video service timed out or the connection was interrupted.", "Check the connection and proxy, then retry once the service is reachable."),
                 YtDlpFailureKind.DnsConnection => ("FastDM could not resolve the video service address.", "Check the network or DNS settings, then retry."),

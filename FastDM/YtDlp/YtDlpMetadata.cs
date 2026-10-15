@@ -391,11 +391,14 @@ namespace FastDM
             catch (UnauthorizedAccessException) { return null; }
         }
 
-        public void Store(string url, YtPreviewData data, DateTimeOffset now)
+        static string CacheKey(string url, bool ignoreCookies) =>
+            YtDlpMetadataParser.CacheKey(url) + (ignoreCookies ? "|without-cookies" : "|configured-cookies");
+
+        public void Store(string url, YtPreviewData data, DateTimeOffset now, bool ignoreCookies = false)
         {
             lock (gate)
             {
-                string key = YtDlpMetadataParser.CacheKey(url);
+                string key = CacheKey(url, ignoreCookies);
                 if (entries.TryGetValue(key, out var old)) DeleteInfoJsonFile(old.Data.InfoJsonPath);
 
                 if (data.Video?.RawInfoJson is string json)
@@ -411,11 +414,11 @@ namespace FastDM
             }
         }
 
-        public bool TryGet(string url, DateTimeOffset now, out YtPreviewData? data)
+        public bool TryGet(string url, DateTimeOffset now, out YtPreviewData? data, bool ignoreCookies = false)
         {
             lock (gate)
             {
-                string key = YtDlpMetadataParser.CacheKey(url);
+                string key = CacheKey(url, ignoreCookies);
                 if (!entries.TryGetValue(key, out var entry))
                 {
                     data = null;
@@ -433,9 +436,9 @@ namespace FastDM
             }
         }
 
-        public void Remove(string url)
+        public void Remove(string url, bool ignoreCookies = false)
         {
-            lock (gate) RemoveKey(YtDlpMetadataParser.CacheKey(url));
+            lock (gate) RemoveKey(CacheKey(url, ignoreCookies));
         }
 
         public void Clear()
@@ -524,6 +527,8 @@ namespace FastDM
         public bool TryParseProgress(string line, out YtDlpProgressUpdate update)
         {
             update = new YtDlpProgressUpdate { Stage = Stage };
+            if (Stage is YtDlpStage.Merging or YtDlpStage.PostProcessing or YtDlpStage.VerifyingOutput)
+                return false;
             if (!line.StartsWith("FDM|", StringComparison.Ordinal)) return false;
             string[] fields = line.Split('|');
             if (fields.Length < 6) return false;

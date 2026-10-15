@@ -81,19 +81,13 @@ namespace FastDM
                     i => i.State ==
                          DlState.Downloading);
 
+            int availableSlots = DownloadQueuePolicy.AvailableSlots(active, settings.MaxSimultaneous);
             foreach (var it in items
-                .Where(i => i.State == DlState.Queued)
+                .Where(i => i.State == DlState.Queued && (!scheduleBlocked || i.IgnoreSchedule))
                 .OrderBy(i => i.Added)
+                .Take(availableSlots)
                 .ToList())
             {
-                if (active >=
-                    settings.MaxSimultaneous)
-                    break;
-
-                if (scheduleBlocked &&
-                    !it.IgnoreSchedule)
-                    continue;
-
                 StartDownload(it);
                 active++;
             }
@@ -358,6 +352,11 @@ namespace FastDM
                 {
                     it.Cts = null;
                     it.StatusNote = "";
+                    if (it.State is DlState.Completed or DlState.Paused or DlState.Error)
+                    {
+                        it.ProgressStage = YtDlpStage.None;
+                        it.Speed = 0;
+                    }
                     cts.Dispose();
                 }
 

@@ -20,6 +20,6 @@ namespace FastDM
 
     public static class CredStore
     {
-        public static void Set(Uri uri, string user, string pass, bool remember) { }
+        public static bool Set(Uri uri, string user, string pass, bool remember) => true;
     }
 }

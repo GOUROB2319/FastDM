@@ -297,3 +297,41 @@ build outputs, and caches behind. It builds the desktop app, checks package
 metadata, builds the MSIX package when Visual Studio MSBuild is available,
 runs the .NET, loopback integration, and extension tests, and packs the
 extension there. It then removes only that temporary copy.
+
+## 8. Additional automated checks
+
+```powershell
+dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64
+dotnet run --project FastDM.Tests -c Release
+dotnet run --project FastDM.IntegrationTests -c Release
+node --test FastDM.Extension/tests/bridge.test.mjs FastDM.Extension/tests/locales.test.mjs
+powershell -ExecutionPolicy Bypass -File scripts/Test-ToolProvenance.ps1
+git diff --check
+```
+
+The integration suite uses a loopback HTTP server and local child processes. It covers exact range bytes, resume/cancel, redirect, zero-byte and non-range responses, scoped cookies, directory listing/navigation bounds and concurrency caps. It does not contact a real video site, use a browser profile, or connect to FTP/SFTP.
+
+Before creating a distribution artifact, run the stricter gate:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Test-ToolProvenance.ps1 -ForRelease
+```
+
+It currently fails for the ignored local FFmpeg/ffprobe build and DLLs because their upstream provenance and complete notices/source are unknown. A normal source checkout has no local tools and builds with video/merge features unavailable.
+
+## 9. Manual UI and remote-server matrix
+
+These checks require a Windows interactive desktop and representative servers. Automated build/test results do not prove them:
+
+| Area | Manual checks |
+| --- | --- |
+| Main toolbar and table | Resize 520/700/900 px and maximized; verify Open File/Open Folder remain visible or in the keyboard-accessible ToolStrip overflow; no standalone toolbar Pause; retain Pause All and per-item Pause. Check all seven headers and row alignment with 0, 1, 4 and 10+ items; test long Unicode names and horizontal scrolling. |
+| DPI, theme and access | 100/125/150/200% DPI and text scaling; light/dark/system theme; keyboard-only focus order, Enter/Escape, screen reader labels, high contrast, long English/Bangla text and small display-height clipping. |
+| Merge states | With a reviewed FFmpeg build, select separate video/audio streams. Verify row, Details and graph show merging with no stale speed/ETA; test success, missing FFmpeg, disk-full/output-lock, cancellation and retry; confirm completion only after non-empty output exists. |
+| FTP/SFTP browse | Open an FTP and SFTP directory, navigate into a child, use Back/Up, select a file, then explicitly download a folder. Test spaces, Unicode, large directories, permission denial, credentials, symlinks, cancellation and changed SFTP fingerprints. Confirm that pasting a folder does not immediately queue all descendants. |
+| HTTP indexes | Test Apache/nginx/h5ai supported index pages and an ordinary HTML page with directory-looking links; verify unsupported pages are rejected. Test redirects, encoded names, traversal-looking links and 1,000-entry cap. |
+| Four-way queue | Queue four slow independent items at High (cap 4), verify four active; set cap 1 and verify serialization. Pause/resume/cancel/retry and scheduler boundaries should release slots without duplicates/deadlock. |
+| Video and cookies | None mode on public video, selected Brave missing/locked DB, valid/missing/malformed cookies file, bot-check/login, removed/private video, rate limit and network failure. No access-control bypass; ensure explicit Retry without cookies is user-triggered. |
+| Store package | Follow [`STORE_RELEASE_CHECKLIST.md`](STORE_RELEASE_CHECKLIST.md), including install/upgrade/uninstall, identity, privacy and Partner Center listing review. |
+
+Record each manual outcome and Windows/tool version before release. No visual UI, live browser cookie or FTP/SFTP server matrix was executed for this audit.

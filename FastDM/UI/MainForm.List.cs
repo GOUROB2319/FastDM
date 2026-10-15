@@ -325,7 +325,9 @@ namespace FastDM
             SetIf(
                 l,
                 2,
-                it.Percent.ToString("0.0") + "%");
+                it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage)
+                    ? YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…"
+                    : it.Percent.ToString("0.0") + "%");
 
             SetIf(
                 l,

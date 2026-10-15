@@ -37,6 +37,9 @@ namespace FastDM
         public static bool IsTransferring(YtDlpStage stage) =>
             stage is YtDlpStage.Downloading or YtDlpStage.DownloadingAudio or YtDlpStage.DownloadingVideo;
 
+        public static bool IsProcessing(YtDlpStage stage) =>
+            stage is YtDlpStage.Merging or YtDlpStage.PostProcessing or YtDlpStage.VerifyingOutput;
+
         public static string StageLabel(YtDlpStage stage) => stage switch
         {
             YtDlpStage.Starting => "Starting",

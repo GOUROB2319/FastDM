@@ -199,25 +199,34 @@ namespace FastDM
                     continue;
                 }
 
-                try
+                bool skipUrl = false;
+                while (true)
                 {
-                    using var cts =
-                        new CancellationTokenSource(
-                            TimeSpan.FromSeconds(20));
-
-                    var (isFolder, resolved) =
-                        await DownloadEngine.DetectFolderAsync(
-                            new Uri(u),
-                            cts.Token,
-                            ctx.Cookies);
-
-                    if (isFolder)
+                    try
                     {
-                        folderUris.Add(resolved);
-                        continue;
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                        var (isFolder, resolved) = await DownloadEngine.DetectFolderAsync(
+                            new Uri(u), cts.Token, ctx.Cookies);
+                        if (isFolder)
+                        {
+                            folderUris.Add(resolved);
+                            skipUrl = true;
+                        }
+                        break;
+                    }
+                    catch (AuthRequiredException)
+                    {
+                        if (CredentialForm.Prompt(this, new Uri(u))) continue;
+                        skipUrl = true;
+                        break;
+                    }
+                    catch (Exception exIgnored1)
+                    {
+                        AppLog.Write("MainForm.Add (ignored): " + AppLog.Redact(exIgnored1.Message));
+                        break;
                     }
                 }
-                catch (Exception exIgnored1) { AppLog.Write("MainForm.Add (ignored): " + exIgnored1.Message); }
+                if (skipUrl) continue;
 
                 if (DownloadEngine.IsHttp(u))
                 {
@@ -670,8 +679,8 @@ namespace FastDM
                 {
                     MessageBox.Show(
                         this,
-                        "Could not scan this folder:\n" + uri + "\n\n" +
-                        ex.GetBaseException().Message,
+                        "Could not scan this folder:\n" + AppLog.Redact(uri.AbsoluteUri) + "\n\n" +
+                        AppLog.Redact(ex.GetBaseException().Message),
                         "FastDM",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
@@ -894,7 +903,8 @@ namespace FastDM
 
         async Task AddYtDlpAsync(
             string url,
-            string saveFolder)
+            string saveFolder,
+            bool ignoreCookies = false)
         {
             if (YtDlpLocator.Find() == null)
             {
@@ -908,7 +918,7 @@ namespace FastDM
                 return;
             }
 
-            using var pf = new YtPickerForm(url, saveFolder, settings.MaxBatchUrls);
+            using var pf = new YtPickerForm(url, saveFolder, settings.MaxBatchUrls, ignoreCookies);
 
             Theme.Apply(pf);
 
@@ -918,9 +928,17 @@ namespace FastDM
                 using var error = new YtDlpErrorForm(
                     pf.ErrorMessage,
                     YtDlpCookies.SelectSource(),
-                    UpdateChecker.IsPackaged);
+                    UpdateChecker.IsPackaged,
+                    !ignoreCookies);
                 Theme.Apply(error);
-                if (error.ShowDialog(this) == DialogResult.OK && error.OpenVideoSettings)
+                error.ShowDialog(this);
+                if (error.RetryWithoutCookies)
+                {
+                    YtDlpPreviewCache.Shared.Remove(url, ignoreCookies);
+                    await AddYtDlpAsync(url, saveFolder, true);
+                    return;
+                }
+                if (error.OpenVideoSettings)
                     ShowSettings("Advanced");
                 return;
             }
@@ -1142,39 +1160,32 @@ namespace FastDM
                         return;
 
                     Uri folder = u;
-
-                    if (DownloadEngine.IsHttp(url))
+                    bool isFolder = false;
+                    while (true)
                     {
-                        using var cts =
-                            new CancellationTokenSource(
-                                TimeSpan.FromSeconds(20));
-
-                        var (isFolder, resolved) =
-                            await DownloadEngine.DetectFolderAsync(
-                                u,
-                                cts.Token);
-
-                        if (!isFolder)
+                        try
                         {
-                            MessageBox.Show(
-                                this,
-                                "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
-                                "Playlist",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Information);
-
-                            return;
+                            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                            var detection = await DownloadEngine.DetectFolderAsync(u, cts.Token);
+                            isFolder = detection.IsFolder;
+                            folder = detection.Resolved;
+                            break;
                         }
-
-                        folder = resolved;
+                        catch (AuthRequiredException)
+                        {
+                            if (!CredentialForm.Prompt(this, u)) return;
+                        }
                     }
-                    else if (!u.AbsolutePath.EndsWith("/"))
+
+                    if (!isFolder)
                     {
-                        folder =
-                            new Uri(
-                                u.GetLeftPart(
-                                    UriPartial.Path) +
-                                "/");
+                        MessageBox.Show(
+                            this,
+                            "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
+                            "Playlist",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                        return;
                     }
 
                     AddFolder(
@@ -1185,8 +1196,7 @@ namespace FastDM
                 catch (Exception ex)
                 {
                     lblActive.Text =
-                        "Could not open the folder: " +
-                        ex.Message;
+                        "Could not open the folder: " + AppLog.Redact(ex.Message);
                 }
                 finally
                 {

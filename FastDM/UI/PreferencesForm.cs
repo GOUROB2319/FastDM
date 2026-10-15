@@ -313,10 +313,10 @@ namespace FastDM
         }
 
         // পাথ বাছাইয়ের সারি: [টেক্সটবক্স][...]
-        TextBox PathRow(string value, bool folder, string? filter)
+        TextBox PathRow(string value, bool folder, string? filter, bool allowClear = false)
         {
             var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 2, 0, 4) };
-            var txt = new TextBox { Width = 500, Text = value ?? "" };
+            var txt = new TextBox { Width = allowClear ? 420 : 500, Text = value ?? "" };
             var btn = new Button { Text = "Browse…", Width = 100, Height = 28 };
 
             btn.Click += (a, b) =>
@@ -335,6 +335,12 @@ namespace FastDM
 
             row.Controls.Add(txt);
             row.Controls.Add(btn);
+            if (allowClear)
+            {
+                var clear = new Button { Text = "Clear", Width = 64, Height = 28, AccessibleName = "Clear selected file path" };
+                clear.Click += (a, b) => txt.Clear();
+                row.Controls.Add(clear);
+            }
             flow.Controls.Add(row);
             return txt;
         }
@@ -760,7 +766,7 @@ namespace FastDM
 
             Hint("cookies.txt contains sign-in cookies. Do not share it or attach it to a support request. " +
                  "When set, this file is used instead of the browser choice above.");
-            txtCookieFile = PathRow(s.YtCookieFile, false, "Cookie files (*.txt)|*.txt|All files (*.*)|*.*");
+            txtCookieFile = PathRow(s.YtCookieFile, false, "Cookie files (*.txt)|*.txt|All files (*.*)|*.*", allowClear: true);
             commit.Add(() => s.YtCookieFile = txtCookieFile.Text.Trim());
 
             var cookieSourceStatus = new Label { AutoSize = true, MaximumSize = new Size(RowWidth, 0), Margin = new Padding(0, 2, 0, 8) };

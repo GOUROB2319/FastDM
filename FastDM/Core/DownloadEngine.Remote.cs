@@ -37,15 +37,31 @@ namespace FastDM
         }
 
         public static async Task<string> GetPageAsync(Uri uri, CancellationToken ct,
-                                                       IReadOnlyCollection<BridgeCookie>? cookies = null)
+                                                       IReadOnlyCollection<BridgeCookie>? cookies = null,
+                                                       int maxBytes = 2 * 1024 * 1024)
         {
             using var client = CreateCookieClient(uri.AbsoluteUri, cookies);
             using var req = new HttpRequestMessage(HttpMethod.Get, uri);
             ApplyAuth(req);
-            using var resp = await client.SendAsync(req, ct);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
-            return await resp.Content.ReadAsStringAsync(ct);
+            if (resp.Content.Headers.ContentLength is long length && length > maxBytes)
+                throw new InvalidDataException("The remote directory page exceeds FastDM's 2 MB safety limit.");
+            await using var source = await resp.Content.ReadAsStreamAsync(ct);
+            using var buffer = new MemoryStream(Math.Min(maxBytes, 64 * 1024));
+            var chunk = new byte[16 * 1024];
+            while (true)
+            {
+                int read = await source.ReadAsync(chunk.AsMemory(), ct);
+                if (read == 0) break;
+                if (buffer.Length + read > maxBytes)
+                    throw new InvalidDataException("The remote directory page exceeds FastDM's 2 MB safety limit.");
+                await buffer.WriteAsync(chunk.AsMemory(0, read), ct);
+            }
+            buffer.Position = 0;
+            using var reader = new StreamReader(buffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+            return await reader.ReadToEndAsync(ct);
         }
 
         // লিঙ্কটা ফোল্ডার কি না বোঝা
@@ -54,10 +70,48 @@ namespace FastDM
         {
             string path = Uri.UnescapeDataString(uri.AbsolutePath);
             if (path.EndsWith("/")) return (true, uri);              // শেষে / = ফোল্ডার
-            if (!IsHttp(uri.AbsoluteUri)) return (false, uri);       // ftp/sftp: / ছাড়া = ফাইল
-
             string last = path.Substring(path.LastIndexOf('/') + 1);
-            if (last.Contains('.')) return (false, uri);             // এক্সটেনশন আছে = ফাইল
+            string scheme = uri.Scheme.ToLowerInvariant();
+            if (scheme == "ftp")
+            {
+                try
+                {
+                    using var ftpClient = RemoteTransfer.CreateFtp(uri);
+                    await ftpClient.Connect(ct);
+                    string target = RemoteTransfer.PathOf(uri).TrimEnd('/');
+                    int slash = target.LastIndexOf('/');
+                    string parent = slash <= 0 ? "/" : target.Substring(0, slash);
+                    string name = target.Substring(slash + 1);
+                    var listing = await ftpClient.GetListing(parent, ct);
+                    bool isFolder = listing.Any(item => item.Type == FtpObjectType.Directory &&
+                        (item.FullName.TrimEnd('/').Equals(target, StringComparison.OrdinalIgnoreCase) ||
+                         item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+                    return (isFolder, uri);
+                }
+                catch (Exception ex) when (!(ex is OperationCanceledException) && RemoteTransfer.IsAuthError(ex))
+                {
+                    throw new AuthRequiredException();
+                }
+            }
+            if (scheme == "sftp")
+            {
+                try
+                {
+                    bool isFolder = await Task.Run(() =>
+                    {
+                        using var sftpClient = RemoteTransfer.CreateSftp(uri);
+                        sftpClient.Connect();
+                        return sftpClient.GetAttributes(RemoteTransfer.PathOf(uri)).IsDirectory;
+                    }, ct);
+                    return (isFolder, uri);
+                }
+                catch (Exception ex) when (!(ex is OperationCanceledException) && RemoteTransfer.IsAuthError(ex))
+                {
+                    throw new AuthRequiredException();
+                }
+            }
+            if (last.Contains('.')) return (false, uri);             // HTTP extension usually identifies a file.
+            if (!IsHttp(uri.AbsoluteUri)) return (false, uri);
 
             // এক্সটেনশনহীন http লিঙ্ক: সার্ভার / দিয়ে রিডাইরেক্ট করে HTML দিলে ফোল্ডার
             using var client = CreateCookieClient(uri.AbsoluteUri, cookies);

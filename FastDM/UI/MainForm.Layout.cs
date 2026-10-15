@@ -27,7 +27,7 @@ namespace FastDM
         {
             Text = "Fast DM — Download Manager";
             ClientSize = new Size(1100, 640);
-            MinimumSize = new Size(900, 480);
+            MinimumSize = new Size(520, 480);
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9.5f);
             AllowDrop = true;
@@ -215,15 +215,6 @@ namespace FastDM
 
             tools.Items.Add(
                 Btn(
-                    "Pause",
-                    "❚❚  ",
-                    "\uE769",
-                    false,
-                    (s, e) => PauseSelected(),
-                    false));
-
-            tools.Items.Add(
-                Btn(
                     "Pause All",
                     "❚❚  ",
                     "\uE769",
@@ -405,8 +396,12 @@ namespace FastDM
 
             var wanted = new List<ToolStripItem?>
             {
-                ByTip("Open File"), ByTip("Open Folder"), ByTip("Details"), ByTip("Schedule"),
-                doneMenu, ByTip("Pause All"), ByTip("Remove"), modeMenu, ByTip("Resume"), ByTip("Pause")
+                // Keep the file/folder actions visible as long as possible; if the window is
+                // narrower than their icon widths, ToolStrip's keyboard-accessible overflow
+                // remains the final fallback.
+                ByTip("Schedule"), doneMenu, ByTip("Pause All"), ByTip("Remove"), modeMenu,
+                ByTip("Resume"), ByTip("Details"), ByTip("Settings"), ByTip("Updates"),
+                ByTip("Open File"), ByTip("Open Folder")
             };
 
             return wanted.Where(i => i != null).Select(i => i!).ToList();

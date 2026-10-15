@@ -143,7 +143,7 @@ namespace FastDM
             {
                 if (!IsDisposed)
                 {
-                    string m = ex.GetBaseException().Message;
+                    string m = AppLog.Redact(ex.GetBaseException().Message);
                     lblTest.Text = "Failed: " + (m.Length > 60 ? m.Substring(0, 60) + "…" : m);
                 }
             }
@@ -161,14 +161,27 @@ namespace FastDM
                 return;
             }
 
+            string selectedUser = txtUser.Text.Trim();
+            if (selectedUser.Length > 0 && !SecretStore.Write("proxy", selectedUser, txtPass.Text))
+            {
+                MessageBox.Show(this,
+                    "Windows Credential Manager could not save the proxy password. The proxy settings were not applied.",
+                    "Proxy password was not saved", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (selectedUser.Length == 0 && !SecretStore.Delete("proxy"))
+            {
+                MessageBox.Show(this,
+                    "FastDM could not remove the saved proxy password. The proxy settings were not applied.",
+                    "Saved password could not be removed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             s.Proxy = CurrentMode;
             s.ProxyType = CurrentKind;
             s.ProxyHost = txtHost.Text.Trim();
             s.ProxyPort = (int)numPort.Value;
             s.ProxyUser = txtUser.Text.Trim();
-
-            if (s.ProxyUser.Length > 0) SecretStore.Write("proxy", s.ProxyUser, txtPass.Text);
-            else SecretStore.Delete("proxy");
 
             NetworkApply.ApplyAndReset(s);
             DialogResult = DialogResult.OK;

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
 using System.Text;
 using FastDM;
 
@@ -17,6 +18,13 @@ if (args.Length == 1 && args[0] == "--sleep")
 if (args.Length == 1 && args[0] == "--sleep-short")
 {
     await Task.Delay(TimeSpan.FromMilliseconds(700));
+    return 0;
+}
+if (args.Length == 3 && args[0] == "--wait-for-release")
+{
+    string barrier = args[1];
+    File.WriteAllText(Path.Combine(barrier, args[2]), "started");
+    while (!File.Exists(Path.Combine(barrier, "release"))) await Task.Delay(10);
     return 0;
 }
 
@@ -109,6 +117,11 @@ try
     await DownloadEngine.RunAsync(zero, 1, CancellationToken.None);
     Check("zero-byte response produces a zero-byte completed file", File.Exists(zero.SavePath) && new FileInfo(zero.SavePath).Length == 0);
 
+    var noRange = NewItem(server.Url("/no-range"), root, "no-range.bin");
+    await DownloadEngine.ProbeAsync(noRange, CancellationToken.None);
+    await DownloadEngine.RunAsync(noRange, 4, CancellationToken.None);
+    Check("server without range support downloads as one exact stream", !noRange.SupportsRange && File.ReadAllBytes(noRange.SavePath).SequenceEqual(payload));
+
     var cookieA = NewItem(server.Url("/cookie"), root, "cookie-a.txt");
     cookieA.Cookies = new List<BridgeCookie> { new() { Name = "session", Value = "A", Domain = "127.0.0.1", Path = "/" } };
     var cookieB = NewItem(server.Url("/cookie"), root, "cookie-b.txt");
@@ -120,6 +133,63 @@ try
         DownloadEngine.RunAsync(cookieA, 1, CancellationToken.None),
         DownloadEngine.RunAsync(cookieB, 1, CancellationToken.None));
     Check("parallel downloads to the same host retain their own browser session", File.ReadAllText(cookieA.SavePath) == "A" && File.ReadAllText(cookieB.SavePath) == "B");
+    using (var scopedClient = DownloadEngine.CreateCookieClient(server.Url("/redirect-host-cookie"), new[]
+    {
+        new BridgeCookie { Name = "session", Value = "private", Domain = "127.0.0.1", Path = "/" }
+    }))
+    using (var redirectedCookie = await scopedClient.GetAsync(server.Url("/redirect-host-cookie")))
+    {
+        string value = await redirectedCookie.Content.ReadAsStringAsync();
+        Check("redirect to a sibling host does not receive a host-only extension cookie", value == "missing");
+    }
+
+    var immediateListing = await RemoteLister.ListDirectoryAsync(new Uri(server.Url("/index/")), null, CancellationToken.None);
+    Check("HTTP directory browsing lists only immediate children and filters traversal links",
+        immediateListing.Children.Count == 2 && immediateListing.Children.Any(x => x.IsDir && x.Name == "sub") &&
+        immediateListing.Children.Any(x => !x.IsDir && x.Name == "file one.txt") && server.SubdirectoryRequests == 0);
+    var recursiveListing = await RemoteLister.ScanAsync(new Uri(server.Url("/index/")), null, CancellationToken.None);
+    Check("recursive enumeration occurs only after explicit scan and finds nested files",
+        recursiveListing.Children.Single(x => x.IsDir).Children.Any(x => x.Name == "deep.mp4") && server.SubdirectoryRequests == 1);
+    bool rejectedPage = false;
+    try { await RemoteLister.ListDirectoryAsync(new Uri(server.Url("/not-index/")), null, CancellationToken.None); }
+    catch (InvalidDataException) { rejectedPage = true; }
+    Check("unsupported HTTP pages are not silently treated as directory indexes", rejectedPage);
+    bool boundedListing = false;
+    try { await RemoteLister.ListDirectoryAsync(new Uri(server.Url("/index/huge/")), null, CancellationToken.None); }
+    catch (InvalidDataException) { boundedListing = true; }
+    Check("HTTP directory listings enforce the immediate-entry cap", boundedListing);
+    bool boundedPage = false;
+    try { await RemoteLister.ListDirectoryAsync(new Uri(server.Url("/index/oversize/")), null, CancellationToken.None); }
+    catch (InvalidDataException) { boundedPage = true; }
+    Check("HTTP directory browsing rejects oversized chunked pages", boundedPage);
+
+    var concurrentItems = Enumerable.Range(0, 4)
+        .Select(i => NewItem(server.Url("/slow-job/" + i), root, "concurrent-" + i + ".bin"))
+        .ToList();
+    foreach (var item in concurrentItems) await DownloadEngine.ProbeAsync(item, CancellationToken.None);
+    server.ResetSlowMetrics();
+    await RunQueueAsync(concurrentItems, 4);
+    Check("four independent slow transfers run concurrently at cap four", server.MaxSlowConcurrent >= 4 && concurrentItems.All(i => File.Exists(i.SavePath)));
+
+    var serializedItems = Enumerable.Range(0, 3)
+        .Select(i => NewItem(server.Url("/slow-job/serial-" + i), root, "serial-" + i + ".bin"))
+        .ToList();
+    foreach (var item in serializedItems) await DownloadEngine.ProbeAsync(item, CancellationToken.None);
+    server.ResetSlowMetrics();
+    await RunQueueAsync(serializedItems, 1);
+    Check("cap one serializes slow transfers and releases each slot", server.MaxSlowConcurrent == 1 && serializedItems.All(i => File.Exists(i.SavePath)));
+
+    string barrierDir = Path.Combine(root, "process-barrier");
+    Directory.CreateDirectory(barrierDir);
+    var processJobs = Enumerable.Range(0, 4).Select(i => YtDlpRunner.RunAsync(processHost,
+        new[] { "--wait-for-release", barrierDir, "child-" + i }, _ => { }, _ => { }, CancellationToken.None)).ToArray();
+    var barrierTimer = Stopwatch.StartNew();
+    while (Directory.GetFiles(barrierDir, "child-*").Length < 4 && barrierTimer.Elapsed < TimeSpan.FromSeconds(8))
+        await Task.Delay(20);
+    bool fourProcessesStarted = Directory.GetFiles(barrierDir, "child-*").Length == 4;
+    File.WriteAllText(Path.Combine(barrierDir, "release"), "go");
+    int[] processResults = await Task.WhenAll(processJobs);
+    Check("four yt-dlp child processes can occupy the process gate concurrently", fourProcessesStarted && processResults.All(x => x == 0));
 
     var resume = NewItem(server.Url("/slow"), root, "resume.bin");
     await DownloadEngine.ProbeAsync(resume, CancellationToken.None);
@@ -153,14 +223,38 @@ static DownloadItem NewItem(string url, string folder, string name) => new()
     FileName = name
 };
 
+static async Task RunQueueAsync(List<DownloadItem> queued, int maximum)
+{
+    var running = new List<Task>();
+    while (queued.Count > 0 || running.Count > 0)
+    {
+        int slots = DownloadQueuePolicy.AvailableSlots(running.Count, maximum);
+        while (slots-- > 0 && queued.Count > 0)
+        {
+            var item = queued[0];
+            queued.RemoveAt(0);
+            running.Add(DownloadEngine.RunAsync(item, 1, CancellationToken.None));
+        }
+        if (running.Count == 0) continue;
+        Task completed = await Task.WhenAny(running);
+        running.Remove(completed);
+        await completed;
+    }
+}
+
 sealed class LocalServer : IAsyncDisposable
 {
     readonly byte[] payload;
     readonly HttpListener listener = new();
     int retryRequests;
+    int activeSlow;
+    int maxSlow;
+    int subdirectoryRequests;
     Task? loop;
     CancellationTokenSource stopped = new();
     public int Port { get; private set; }
+    public int MaxSlowConcurrent => Volatile.Read(ref maxSlow);
+    public int SubdirectoryRequests => Volatile.Read(ref subdirectoryRequests);
     public string Url(string path) => $"http://127.0.0.1:{Port}{path}";
 
     public LocalServer(byte[] payload) => this.payload = payload;
@@ -172,6 +266,7 @@ sealed class LocalServer : IAsyncDisposable
         Port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
         listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
+        listener.Prefixes.Add($"http://localhost:{Port}/");
         listener.Start();
         loop = Task.Run(ServeAsync);
         return Task.CompletedTask;
@@ -184,8 +279,11 @@ sealed class LocalServer : IAsyncDisposable
             HttpListenerContext context;
             try { context = await listener.GetContextAsync(); }
             catch { break; }
-            try { await HandleAsync(context); }
-            catch { try { context.Response.Abort(); } catch { } }
+            _ = Task.Run(async () =>
+            {
+                try { await HandleAsync(context); }
+                catch { try { context.Response.Abort(); } catch { } }
+            });
         }
     }
 
@@ -194,10 +292,59 @@ sealed class LocalServer : IAsyncDisposable
         var req = context.Request;
         var res = context.Response;
         string path = req.Url?.AbsolutePath ?? "/";
+        bool trackedSlow = path.StartsWith("/slow-job/", StringComparison.Ordinal) && req.Headers["Range"] != "bytes=0-0";
+        if (trackedSlow)
+        {
+            int active = Interlocked.Increment(ref activeSlow);
+            int observed;
+            while (active > (observed = Volatile.Read(ref maxSlow)) &&
+                   Interlocked.CompareExchange(ref maxSlow, active, observed) != observed) { }
+        }
+        try
+        {
+            await HandleCoreAsync(context, path);
+        }
+        finally
+        {
+            if (trackedSlow) Interlocked.Decrement(ref activeSlow);
+        }
+    }
+
+    async Task HandleCoreAsync(HttpListenerContext context, string path)
+    {
+        var req = context.Request;
+        var res = context.Response;
+        if (path == "/index/" || path == "/index/sub/" || path == "/not-index/" || path == "/index/huge/" || path == "/index/oversize/")
+        {
+            if (path == "/index/sub/") Interlocked.Increment(ref subdirectoryRequests);
+            string page = path switch
+            {
+                "/index/" => "<html><title>Index of /index/</title><h1>Index of /index/</h1><a href='../escape.txt'>bad</a><a href='encoded%2Fseparator.txt'>bad2</a><a href='sub/'>sub/</a><a href='file%20one.txt'>file one.txt</a></html>",
+                "/index/sub/" => "<html><title>Index of /index/sub/</title><a href='deep.mp4'>deep.mp4</a></html>",
+                "/not-index/" => "<html><title>Welcome</title><a href='section/'>section</a><a href='about'>about</a></html>",
+                "/index/oversize/" => "<html><title>Index of /index/oversize/</title><body>" + new string('x', 2 * 1024 * 1024 + 128) + "</body></html>",
+                _ => "<html><title>Index of /index/huge/</title>" + string.Concat(Enumerable.Range(0, 1001).Select(i => "<a href='f" + i + ".bin'>f</a>")) + "</html>"
+            };
+            byte[] html = Encoding.UTF8.GetBytes(page);
+            res.ContentType = "text/html; charset=utf-8";
+            if (path == "/index/oversize/") res.SendChunked = true;
+            else res.ContentLength64 = html.Length;
+            await res.OutputStream.WriteAsync(html);
+            res.Close();
+            return;
+        }
         if (path == "/redirect")
         {
             res.StatusCode = 302;
             res.RedirectLocation = "/range";
+            res.ContentLength64 = 0;
+            res.Close();
+            return;
+        }
+        if (path == "/redirect-host-cookie")
+        {
+            res.StatusCode = 302;
+            res.RedirectLocation = "http://localhost:" + Port + "/cookie";
             res.ContentLength64 = 0;
             res.Close();
             return;
@@ -235,11 +382,11 @@ sealed class LocalServer : IAsyncDisposable
             res.Close();
             return;
         }
-        if (rangeHeader == null)
+        if (rangeHeader == null || path == "/no-range")
         {
             res.StatusCode = (int)HttpStatusCode.OK;
             res.ContentLength64 = payload.Length;
-            await WriteBytesAsync(res, payload, 0, payload.Length, slow: path == "/slow");
+            await WriteBytesAsync(res, payload, 0, payload.Length, slow: path == "/slow" || path.StartsWith("/slow-job/", StringComparison.Ordinal));
             res.Close();
             return;
         }
@@ -251,8 +398,14 @@ sealed class LocalServer : IAsyncDisposable
         res.StatusCode = (int)HttpStatusCode.PartialContent;
         res.Headers[HttpResponseHeader.ContentRange] = $"bytes {start}-{end}/{payload.Length}";
         res.ContentLength64 = end - start + 1;
-        await WriteBytesAsync(res, payload, (int)start, (int)(end - start + 1), slow: path == "/slow" && end > 0);
+        await WriteBytesAsync(res, payload, (int)start, (int)(end - start + 1), slow: (path == "/slow" || path.StartsWith("/slow-job/", StringComparison.Ordinal)) && end > 0);
         res.Close();
+    }
+
+    public void ResetSlowMetrics()
+    {
+        Volatile.Write(ref activeSlow, 0);
+        Volatile.Write(ref maxSlow, 0);
     }
 
     static async Task WriteBytesAsync(HttpListenerResponse response, byte[] data, int offset, int count, bool slow)

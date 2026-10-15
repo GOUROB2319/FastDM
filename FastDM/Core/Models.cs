@@ -36,7 +36,7 @@ namespace FastDM
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
         public int Connections { get; set; } = 8;       // প্রতি ফাইলে কয়টা কানেকশন
-        public int MaxSimultaneous { get; set; } = 3;   // একসাথে কয়টা ফাইল
+        public int MaxSimultaneous { get; set; } = 4;   // একসাথে কয়টা ফাইল
         public ThemeMode ThemeChoice { get; set; } = ThemeMode.System;   // System / Light / Dark
         public bool MinimizeToTray { get; set; } = false;
         public bool CloseToTray { get; set; } = false;

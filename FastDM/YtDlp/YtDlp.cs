@@ -30,6 +30,7 @@ namespace FastDM
         public bool UrlHadCredentials { get; private set; }
         public string? Format { get; set; }                 // yt-dlp -f সিলেক্টর
         public bool AudioOnly { get; set; }
+        public bool IgnoreCookies { get; set; }
         public string AudioFormat { get; set; } = "m4a";   // m4a | mp3
         public string? BaseName { get; set; }               // এক্সটেনশন ছাড়া ফাইলের নাম
         public long EstimatedBytes { get; set; }
@@ -115,7 +116,8 @@ namespace FastDM
     // ====================== প্রসেস চালানো ======================
     public static class YtDlpRunner
     {
-        static readonly SemaphoreSlim ProcessLimit = new SemaphoreSlim(2, 2);
+        const int ProcessCapacity = 4;
+        static readonly SemaphoreSlim ProcessLimit = new SemaphoreSlim(ProcessCapacity, ProcessCapacity);
         static readonly object ProcessStateGate = new object();
         static bool updatePending;
 
@@ -148,7 +150,7 @@ namespace FastDM
         }
 
         // সব কমান্ডে এক: ইউজার কনফিগ উপেক্ষা, JS রানটাইম, ffmpeg, প্রক্সি
-        public static List<string> CommonArgs()
+        public static List<string> CommonArgs(bool omitCookies = false)
         {
             var a = new List<string> { "--ignore-config", "--no-colors" };
             a.AddRange(YtDlpRetryPolicy.CopyArguments());
@@ -171,11 +173,10 @@ namespace FastDM
 
             // Login cookies for sites that ask "Sign in to confirm you're not a bot".
             // yt-dlp reads them itself, on this PC only; FastDM never stores them. A cookies.txt file wins over a browser.
-            var source = YtDlpCookies.SelectSource();
-            if (source.Kind is YtDlpCookieSourceKind.MissingCookieFile or YtDlpCookieSourceKind.InvalidCookieFile)
-                throw new InvalidOperationException(source.Error);
-            if (source.Kind == YtDlpCookieSourceKind.CookieFile) { a.Add("--cookies"); a.Add(source.FilePath!); }
-            else if (source.Kind == YtDlpCookieSourceKind.Browser) { a.Add("--cookies-from-browser"); a.Add(source.Browser!); }
+            var cookieSource = omitCookies
+                ? new YtDlpCookieSource { Kind = YtDlpCookieSourceKind.None }
+                : YtDlpCookies.SelectSource();
+            a.AddRange(YtDlpDiagnostics.CookieArguments(cookieSource, omitCookies));
             return a;
         }
 
@@ -200,19 +201,16 @@ namespace FastDM
                 updatePending = true;
             }
 
-            bool firstSlot = false, secondSlot = false;
+            int acquiredSlots = 0;
             try
             {
-                await ProcessLimit.WaitAsync(ct);
-                firstSlot = true;
-                await ProcessLimit.WaitAsync(ct);
-                secondSlot = true;
+                for (; acquiredSlots < ProcessCapacity; acquiredSlots++)
+                    await ProcessLimit.WaitAsync(ct);
                 return await RunProcessAsync(exe, args, onOut, onErr, ct, null);
             }
             finally
             {
-                if (secondSlot) ProcessLimit.Release();
-                if (firstSlot) ProcessLimit.Release();
+                while (acquiredSlots-- > 0) ProcessLimit.Release();
                 lock (ProcessStateGate) updatePending = false;
             }
         }
@@ -294,9 +292,9 @@ namespace FastDM
     {
         const int MaxMetadataBytes = 16 * 1024 * 1024;
 
-        public static async Task<YtInfo> LoadAsync(string url, CancellationToken ct, IProgress<string>? progress = null)
+        public static async Task<YtInfo> LoadAsync(string url, CancellationToken ct, IProgress<string>? progress = null, bool omitCookies = false)
         {
-            var args = YtDlpRunner.CommonArgs();
+            var args = YtDlpRunner.CommonArgs(omitCookies);
             args.AddRange(new[] { "-J", "--no-playlist" });
             var urlInput = YtDlpUrlInput.Create(url);
             args.AddRange(urlInput.Arguments);
@@ -313,9 +311,9 @@ namespace FastDM
             return info;
         }
 
-        public static async Task<YtPlaylistInfo> LoadPlaylistAsync(string url, CancellationToken ct, IProgress<string>? progress = null, int maxEntries = 100)
+        public static async Task<YtPlaylistInfo> LoadPlaylistAsync(string url, CancellationToken ct, IProgress<string>? progress = null, int maxEntries = 100, bool omitCookies = false)
         {
-            var args = YtDlpRunner.CommonArgs();
+            var args = YtDlpRunner.CommonArgs(omitCookies);
             maxEntries = Math.Clamp(maxEntries, 1, 1000);
             args.AddRange(new[] { "--yes-playlist", "--flat-playlist", "--playlist-end", maxEntries.ToString(CultureInfo.InvariantCulture), "-J" });
             var urlInput = YtDlpUrlInput.Create(url);
@@ -462,7 +460,7 @@ namespace FastDM
                 ? "%(title).150B.%(ext)s"
                 : Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
 
-            var args = YtDlpRunner.CommonArgs();
+            var args = YtDlpRunner.CommonArgs(spec.IgnoreCookies);
             args.AddRange(new[]
             {
                 "--no-playlist", "--newline", "--progress",
@@ -550,7 +548,7 @@ namespace FastDM
                 YtDlpRetryPolicy.ShouldRefreshInfoJson(YtDlpDiagnostics.Classify(diagnostic), diagnostic))
             {
                 YtDlpPreviewCache.DeleteInfoJson(activeInfoJson);
-                YtDlpPreviewCache.Shared.Remove(url);
+                YtDlpPreviewCache.Shared.Remove(url, spec.IgnoreCookies);
                 spec.InfoJsonPath = null;
                 errTail.Clear();
                 lastError = null;
@@ -565,7 +563,7 @@ namespace FastDM
 
             if (code != 0)
             {
-                YtDlpPreviewCache.Shared.Remove(url);
+                YtDlpPreviewCache.Shared.Remove(url, spec.IgnoreCookies);
                 throw new YtDlpProcessException(code, diagnostic);
             }
             string? found;
@@ -588,7 +586,7 @@ namespace FastDM
             it.StatusNote = YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…";
             if (found == null)
             {
-                YtDlpPreviewCache.Shared.Remove(url);
+                YtDlpPreviewCache.Shared.Remove(url, spec.IgnoreCookies);
                 throw new FileNotFoundException("The download finished but the output file was not found.");
             }
 
@@ -597,7 +595,7 @@ namespace FastDM
             {
                 try { if (outputInfo.Exists) outputInfo.Delete(); }
                 catch (Exception exIgnored7) { AppLog.Write("YtDlp could not remove empty output: " + exIgnored7.Message); }
-                YtDlpPreviewCache.Shared.Remove(url);
+                YtDlpPreviewCache.Shared.Remove(url, spec.IgnoreCookies);
                 throw new InvalidDataException("yt-dlp created an empty output file; the download is not complete.");
             }
 
@@ -607,7 +605,7 @@ namespace FastDM
             long size = outputInfo.Length;
             it.TotalBytes = size;
             it.Downloaded = size;
-            YtDlpPreviewCache.Shared.Remove(url);
+            YtDlpPreviewCache.Shared.Remove(url, spec.IgnoreCookies);
         }
 
         static string? FindOutput(string folder, string baseName)

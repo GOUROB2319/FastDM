@@ -1,61 +1,88 @@
-# FastDM পূর্ণ প্রকৌশল ও নিরাপত্তা অডিট
+# FastDM Full Engineering and Security Audit
 
-**তারিখ:** ২০২৬-১০-১৫
-**ওয়ার্কস্পেস:** `C:\dev\FastDM`
-**মাস্টার পরিকল্পনা:** [`CODEX_AUDIT_AND_REMEDIATION.md`](../CODEX_AUDIT_AND_REMEDIATION.md)
+**Audit date:** 2026-10-15
+**Workspace:** `C:\dev\FastDM`
+**Master plan:** [`CODEX_AUDIT_AND_REMEDIATION.md`](../CODEX_AUDIT_AND_REMEDIATION.md)
 
-## কাজের পরিধি ও সংরক্ষণ
+## Executive summary
 
-ডেস্কটপ অ্যাপ, ডাউনলোড ও yt-dlp ইঞ্জিন, YouTube preview/playlist flow, cookie ও credential boundary, browser extension ও local bridge, state/logging, UI lifecycle, diagnostics, package/version metadata, CI এবং test coverage পর্যালোচনা করা হয়েছে। শুরুতে branch ছিল `master`, `HEAD` ছিল `220a112`; worktree-তে ব্যবহারকারীর একটিমাত্র পরিবর্তন ছিল `FastDM.slnx` থেকে Debug x64-এর `BuildType` লাইন সরানো। ওই পরিবর্তন অক্ষত রাখা হয়েছে। কোনো reset, commit, push বা release করা হয়নি; package/build verification হয়েছে অস্থায়ী clean copy-তে।
+The workspace was inspected before edits. It was on branch `master` at `f92c7d6568813b36073105b8221d3da13dfe822a` with a clean worktree. No pre-existing user changes were present. The ignored local `FastDM/Tools/` directory and its binaries were preserved. No reset, commit, publish, install, or release was performed. Build and package artifacts created for the clean-workspace check were confined to a unique temporary copy and removed by that script.
 
-## যাচাইকৃত finding ও remediation
+The verified changes address the supplied YouTube cookie errors, per-download cookie isolation, URL credential and proxy handling, bridge request bounds, range response integrity, yt-dlp process/update scheduling, merge-stage reporting, remote directory navigation, four-way download scheduling, credential-save truthfulness, package checks, and regression coverage. The two screenshots represent different failures: Image 1 is a browser cookie-database copy failure; Image 2 is a site sign-in/bot-verification challenge. They now have separate classifications and user guidance. A cookie-free retry is offered only as an explicit user action and does not modify the configured cookie source.
 
-| গুরুত্ব | মূল কারণ / finding | পরিবর্তন ও প্রমাণ | অবস্থা |
-| --- | --- | --- | --- |
-| উচ্চ | একাধিক download-এর browser cookie একই shared request scope-এ পৌঁছাতে পারত; expiry ও host/path/secure scope-ও যাচাই দরকার ছিল। | প্রতি download-এ cookie scope, expiry ও domain/path/secure filtering; shared HTTP client cookie-free। unit ও loopback পরীক্ষা পৃথক session এবং একই host-এ concurrent download যাচাই করে। | **FIXED** |
-| উচ্চ | URL user-info credential state, backup, log, command line বা `fastdm://` fallback-এ থেকে যেতে পারত। | `UrlCredential` credential আলাদা করে, persisted/display URL থেকে user-info সরায়; state ও backup migration, URL/log redaction, protocol fallback sanitization যোগ হয়েছে। regression test encoded/Unicode credential, query preservation ও redaction যাচাই করে। | **FIXED** |
-| উচ্চ | Local bridge-এ body size, duration, concurrency, origin এবং request completion সীমা যথেষ্ট শক্ত ছিল না। | strict UTF-8 ও URL allow-list, body/time/concurrency bounds, explicit busy/rate-limit response, cancellation এবং extension-origin-bound pairing আছে। loopback test oversized/concurrent request, wrong origin, pairing cooldown ও response completion যাচাই করে। | **FIXED** |
-| উচ্চ | HTTP range response-এর status, `Content-Range` বা body length না মিললে ভুল/অসম্পূর্ণ bytes গ্রহণের ঝুঁকি ছিল; zero-byte output-ও complete ধরা যেত। | range/length validation, retry/cancel/resume এবং non-empty output promotion যাচাই করা হয়। loopback tests exact bytes, mismatch, redirect, 503, cancellation ও resume দেখে। | **FIXED** |
-| উচ্চ | yt-dlp update চলাকালে download process শুরু হতে পারত; retry আচরণও rate-limit-এ অতিরিক্ত request করতে পারত। | update exclusive process gate নেয়; active child শেষ না হওয়া পর্যন্ত অপেক্ষা করে এবং নতুন process gate-এর পেছনে থাকে। yt-dlp retries সীমাবদ্ধ; 429-এ `Retry-After` ছাড়া outer retry হয় না, header থাকলে সর্বোচ্চ একবার; transient network failure bounded retry পায়। integration/policy tests যোগ হয়েছে। | **FIXED; regression-tested** |
-| উচ্চ | yt-dlp metadata request/output ও stale signed media URL reuse অনির্দিষ্ট ছিল। | metadata child cancellation/timeout, 16 MB output cap এবং 2 মিনিটের user-local cache (প্রতি JSON 8 MB cap) যোগ হয়েছে। cache-এ cookie রাখা হয় না; consume/expiry/settings change-এ মুছে ফেলা হয়, stale file-ও পরিষ্কার হয়। cached extraction ব্যর্থ/expired হলে একবার info refresh হয়। | **FIXED; regression-tested** |
-| মাঝারি | সরাসরি YouTube video ও playlist add-এ preview দেরিতে বা আলাদা পথে আসত; format size ও merge progress বিভ্রান্তিকর হতে পারত। | একটি resizable preview তাৎক্ষণিক খোলে; title/channel/duration/thumbnail/format/আনুমানিক size async পূরণ হয়। playlist entries নির্বাচন, reported/unknown count, `MaxBatchUrls` cap এবং duplicate suppression আছে। unknown size স্পষ্ট; FFmpeg না থাকলে merge-নির্ভর format অকার্যকর। transfer, merge ও output verification আলাদা stage; merge-এ speed/ETA থাকে না। | **FIXED; parser/stage tests; UI manual verification বাকি** |
-| মাঝারি | একই video একাধিক clipboard/bridge event-এ duplicate job হতে পারত; selected details item মুছে গেলে stale থাকতে পারত। | video ID/cache key দিয়ে dedupe ও active-job suppression; item/history deletion-এ Details selection পরিষ্কার। integration ও selection code review করা হয়েছে। | **FIXED** |
-| মাঝারি | browser cookie DB locked, missing/malformed cookies, bot verification, visitor data, PO token, format, network, 429/5xx, missing FFmpeg ও merge error একসঙ্গে দেখানো হতো। | পৃথক failure category, actionable next step, redacted technical detail dialog যোগ হয়েছে। supplied screenshots-এর Chrome DB-copy failure এবং YouTube bot-verification case-কে আলাদা করে। CAPTCHA/auth bypass বা browser protection দুর্বল করা হয়নি। | **FIXED; unit-tested** |
-| মাঝারি | child process cancellation ও Unicode output নির্ভরযোগ্যভাবে শেষ নাও হতে পারত। | process tree terminate করে wait, UTF-8 output drain; Bengali output ও cancellation integration test করা হয়েছে। | **FIXED; integration-tested** |
-| মাঝারি | browser extension cookie expiration metadata bridge-এ হারিয়ে যেত এবং expired cookie পাঠানো যেত। | expiry ও scope metadata forward হয়; expired/unsupported URL cookie বাদ যায়। bridge/model tests আছে। | **FIXED** |
-| মাঝারি | tool discovery ambient `PATH` থেকে ভুল executable চালাতে পারত; proxy secret process arguments/log-এ পড়তে পারত। | app-local yt-dlp/FFmpeg resolve, restricted child `PATH`, URL stdin দিয়ে পাঠানো, authenticated proxy child environment-এ; diagnostic redaction tests আছে। | **MITIGATED** |
-| মাঝারি | extension ZIP overwrite হতে পারত; clean source checkout ও optional tool behavior যাচাইয়ের পথ অসম্পূর্ণ ছিল। | packer unique archive name নেয়; clean workspace script source-only app, metadata, MSIX (MSBuild থাকলে), .NET, integration ও extension test এবং extension pack চালায়। | **FIXED; locally verified** |
-| কম | nullable warning ও app/MSIX version drift regression আড়াল করতে পারত। | clean Release build-এ zero warning; package metadata check desktop `1.0.13` ও MSIX `1.0.13.0` মিলিয়ে যাচাই করেছে। | **FIXED; verified** |
-| মাঝারি | SFTP first-use host key নীরবে trust-on-first-use করে। | changed key প্রত্যাখ্যান হয়, তবে প্রথম trust-এর জন্য explicit user confirmation নেই। | **DEFERRED** |
+The source-only build, unsigned MSIX build, extension package, and automated suites passed. A release package is **not ready**: the release provenance gate correctly fails for the local FFmpeg/ffprobe executables and seven DLLs because their publisher/source and complete redistribution notices are unverified. Real FTP/SFTP servers, interactive UI accessibility, real browser profiles, signed Store installation, and successful live YouTube extraction were not verified.
 
-## Screenshot থেকে পাওয়া প্রমাণ
+## Baseline, scope, and safety
 
-- **Image #1:** Chrome cookie database copy ব্যর্থ হয়। UI/browser database lock diagnosis দেয় এবং browser/background process বন্ধ করা বা user-selected cookies.txt ব্যবহারের পরামর্শ দেয়। FastDM browser protection দুর্বল করে না বা browser process বন্ধ করে না।
-- **Image #2:** YouTube visitor verification/sign-in চায়। এটি cookie database error থেকে আলাদা দেখানো হয়। browser-এ verification শেষ করে user চাইলে supported cookie source নির্বাচন করতে পারেন; FastDM CAPTCHA, authentication বা DRM bypass করে না।
+Reviewed the desktop app and forms, download and remote-transfer engines, yt-dlp preview/download/update path, browser extension and local bridge, credential/cookie/proxy handling, persistence/logging, scheduling, package metadata, build/test scripts, documentation, and ignored local tools. The original audit report was stale: it recorded a different baseline (`220a112`) and a prior `FastDM.slnx` user diff. The actual current baseline is the clean `f92c7d6` worktree above; those historical statements have been replaced here.
 
-## যাচাইয়ের ফল
+The current changes are limited to app source, regression tests, audit/release documentation, and verification scripts. No binaries, cookies, credentials, generated packages, or local `Tools/` contents were added to Git. Git emitted line-ending conversion notices for LF-edited files; `git diff --check` reported no whitespace errors.
 
-| কমান্ড / artifact | ফল |
+## Findings and remediation
+
+| Severity | Files | Finding and root cause | Remediation and test evidence | Status |
+| --- | --- | --- | --- | --- |
+| High | `Core/DownloadCookieScope.cs`, `Core/DownloadEngine.cs`, `Bridge/BridgeServer.cs`, cookie scope tests, integration tests | Browser cookies could be reused outside their intended request/site scope, including sibling hosts. | Filter by scheme/host/domain/path/secure/expiry and attach per download. Unit and loopback redirect/concurrency tests cover host-only and domain cookies. | **FIXED; regression-tested** |
+| High | `Core/UrlCredential.cs`, `Core/StateStore.cs`, `Core/AppLog.cs`, `Bridge/ProtocolHandler.cs`, security tests | URL user-info could survive into persisted state, backups, display, logs, or protocol fallback. | Extract user-info into the credential store and remove it from stored/display URLs; migration and redaction preserve signed query strings. Unit and extension tests cover encoded credentials and fallback handling. | **FIXED; regression-tested** |
+| High | `Bridge/BridgeServer.cs`, `Bridge/BridgeAuth.cs`, `Bridge/BridgeModels.cs`, bridge tests | The loopback extension bridge needed strict request bounds and complete responses under overload. | Enforce origin/pairing checks, URL allow-list, body/time/concurrency limits, cancellation, and explicit busy/rate-limit responses; local HTTP bridge tests cover these paths. | **FIXED; regression-tested** |
+| High | `Core/DownloadEngine.cs`, `FastDM.IntegrationTests/Program.cs` | HTTP range responses with a wrong offset or byte count could be accepted; completion needed output validation. | Validate range status, `Content-Range`, and body length; loopback tests cover retry, cancel/resume, zero-byte and non-range responses. yt-dlp output is checked before completion. | **FIXED; regression-tested** |
+| High | `YtDlp/YtDlp.cs`, `YtDlp/YtDlpDiagnostics.cs`, `YtDlp/YtDlpMetadata.cs`, `UI/YtPickerForm.cs`, `UI/YtDlpErrorForm.cs`, yt-dlp tests | Browser cookie DB errors, invalid cookie files, and bot verification were conflated; cache entries could cross a cookie-free retry. | Separate missing/locked/permission-denied DB, invalid/missing cookie-file, and bot/sign-in categories. Explicit retry omits cookie args and uses a separate cache key. Unit tests cover both screenshots, Brave DB-not-found, permission/lock cases, and args. | **FIXED; regression-tested** |
+| High | `YtDlp/YtDlp.cs`, `YtDlp/YtDlpProxy.cs`, `YtDlp/YtDlpProcessEnvironment.cs`, `Core/AppLog.cs`, proxy/security tests | Proxy secrets or ambient executables could leak through child args/environment or be selected from `PATH`. | Pass authenticated proxy credentials in the child environment, URLs over redirected stdin, and use a restricted child `PATH`; redaction tests cover secrets. Higher-privilege process inspection can still see the environment. | **MITIGATED; regression-tested** |
+| Medium | `Network/RemoteLister.cs`, `Core/DownloadEngine.Remote.cs`, `UI/FolderDownloadForm.cs`, `UI/MainForm.Add.cs`, integration tests | Folder selection recursively scanned immediately; ordinary HTML with directory-looking links could be mistaken for an index; listings lacked adequate bounds. | List immediate children and navigate; recurse only on explicit scan/download. Enforce HTTP index recognition, same-origin/path checks, page-size, entry, depth, and node limits. HTTP fixtures cover lazy navigation, traversal, unsupported pages, nested scan, entry caps, and a chunked oversized response. | **FIXED for HTTP; FTP/SFTP code-reviewed, real servers unverified** |
+| Medium | `Core/DownloadEngine.Remote.cs`, `UI/MainForm.Add.cs`, `Network/RemoteLister.cs`, `UI/FolderDownloadForm.cs` | FTP/SFTP paths without a trailing slash were treated as files; playlist detection used an HTTP-only rule. | Probe FTP parent listings and SFTP attributes, including dotted directory names; prompt for credentials and validate folders across supported protocols. Build and project regressions pass; no live FTP/SFTP test server was available. | **IMPLEMENTED; FTP/SFTP manual verification deferred** |
+| Medium | `Core/DownloadQueuePolicy.cs`, `Core/Models.cs`, `UI/MainForm.Downloads.cs`, `YtDlp/YtDlp.cs`, concurrency/integration tests | yt-dlp updates could overlap downloads; process and queue capacities were below the requested four-way default. | A four-slot process gate lets four children run while updates obtain exclusive capacity. Queue policy starts only available work; default/High cap is four. Tests exercise four HTTP transfers, cap-one serialization, four yt-dlp children, and update exclusion. | **FIXED; regression-tested** |
+| Medium | `YtDlp/YtDlpMetadata.cs`, `YtDlp/YtDlpRetryPolicy.cs`, `UI/DetailsPanel.cs`, `UI/MainForm.List.cs`, `UI/MainForm.Downloads.cs`, stage tests | Late transfer progress could replace merge status, leaving misleading 100%, speed, ETA, or graph data. | Preserve merge/post-processing/output-verification stages across row, Details, and graph views; ignore late transfer callbacks and clear transfer metrics. Parser/stage tests pass. | **FIXED in code; visual UI check deferred** |
+| Medium | `Network/CredentialStore.cs`, `UI/FolderDownloadForm.cs`, `UI/NetworkForm.cs`, credential test stubs | Credential writes could fail while the UI implied they were saved. | Return write/delete success; explain session-only storage after failure and do not apply Network changes when secure persistence fails. Build and project regression suite pass. | **FIXED; regression-tested** |
+| Medium | `UI/MainForm.Layout.cs`, `UI/MainForm.cs`, `UI/PreferencesForm.cs` | Toolbar had a redundant standalone Pause control; narrow layouts could hide key actions early. | Remove standalone Pause while retaining Pause All and per-item pause; retain Open File/Open Folder longer in collapse order and lower minimum width. | **FIXED in code; interactive resize/accessibility checks deferred** |
+| Medium | `scripts/Test-ToolProvenance.ps1`, `docs/tool-bundle.lock.json`, `scripts/Test-PackageManifest.ps1`, `docs/TOOLS.md`, `docs/STORE_RELEASE_CHECKLIST.md` | Packaging could silently include ignored local tools with unclear origin and incomplete notices. | Add a hash/version/signature lock, local integrity check, strict release gate, Store checklist, and clean-source package check. The strict gate identifies the exact unverified FFmpeg bundle. | **MITIGATED; release blocked on provenance/notices** |
+| Medium | `Network/RemoteTransfer.cs`, `Network/NetworkConfig.cs` | SFTP host keys are trusted on first use without explicit user confirmation. | Changed keys are refused, but initial trust remains trust-on-first-use. An explicit confirmation needs a product decision and host-key UX. | **DEFERRED; see remaining risks** |
+
+## Screenshot diagnosis
+
+- **Image 1:** yt-dlp reports it could not copy Chrome's cookie database. This is classified as a browser database copy/lock failure, with advice to close browser/background processes or select another supported source. FastDM does not kill the browser or weaken cookie protection.
+- **Image 2:** yt-dlp reports “Sign in to confirm you're not a bot.” This is classified as bot/sign-in verification, separate from the database error. FastDM permits a user-selected supported cookie source but does not automate CAPTCHA or bypass access controls.
+- Automated classification and rendering logic were tested. The exact screenshots were not reproduced against a real browser profile. A live public-video smoke attempt returned upstream `This video is unavailable` (exit code 1); no successful extraction is claimed.
+
+## Tool provenance and release gate
+
+The ignored local tool snapshot is identified in [`tool-bundle.lock.json`](tool-bundle.lock.json). Default verification passed: yt-dlp `2026.08.19` matched the official release hash; Deno `2.9.7` matched its hash and had a valid Deno Land Authenticode signature. `qjs.exe` was absent. FFmpeg and ffprobe report `n8.1.3-14-g330caae0c1-20261003`; their hashes and seven DLL hashes match the local lock, but the binaries are unsigned and upstream origin, linked-library notices, source offer, and full redistribution terms remain unverified. Their LGPL runtime banner/build flags alone do not establish redistribution compliance.
+
+`Test-ToolProvenance.ps1 -ForRelease` exited 1, naming `ffmpeg.exe`, `ffprobe.exe`, `avcodec-62.dll`, `avdevice-62.dll`, `avfilter-11.dll`, `avformat-62.dll`, `avutil-60.dll`, `swresample-6.dll`, and `swscale-9.dll` as having unverified release provenance. Do not distribute the current local tool bundle until a reviewed source/build and complete notices are available.
+
+## Verification results
+
+Final verification was run after the last source change.
+
+| Command/check | Result |
 | --- | --- |
-| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only temporary copy-তে সব build, package ও test সফল; script শেষে শুধু সেই temporary copy মুছে ফেলা হয়েছে। |
-| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` (clean copy) | **PASS**; 0 warning, 0 error। |
-| package manifest/version check (clean copy) | **PASS**; app `1.0.13`, MSIX `1.0.13.0`; required assets যাচাই হয়েছে। yt-dlp, Deno, QJS, FFmpeg ও ffprobe optional tool clean copy-তে অনুপস্থিত ছিল। |
-| `dotnet run --project FastDM.Tests -c Release` (clean copy) | **PASS**; 292 checks, 0 failure। |
-| `dotnet run --project FastDM.IntegrationTests -c Release` (clean copy) | **PASS**; 12 process/loopback checks, 0 failure। |
-| `npm test` (clean copy) | **PASS**; 20 tests, 0 failure। |
-| `FastDM.Extension/tools/pack.ps1` (clean copy) | **PASS**; `FastDM-Extension-0.1.0.zip`, 33,273 bytes। |
-| Visual Studio 18 `MSBuild.exe FastDM.Package/FastDM.Package.wapproj` (clean copy) | **PASS**; `/p:GenerateTemporaryStoreCertificate=false` দিয়ে 73,240,889 byte unsigned `FastDM.Package_1.0.13.0_x64.msixbundle` এবং upload package তৈরি হয়েছে। Installation, signing, Store submission বা deployment করা হয়নি। |
-| `scripts/Test-Project.ps1` | Debug build-এ চলমান FastDM process `PID 7636` executable lock করায় blocked হয়েছিল। process বন্ধ করা হয়নি; clean copy-এর Release build ও পূর্ণ suite দিয়ে যাচাই করা হয়েছে। |
-| `git diff --check` | **PASS**; whitespace error নেই। Git line-ending conversion notices দেখিয়েছে edited C# ও Markdown ফাইলে; contents বদলানো বা error নয়। |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; Debug build, manifest/version/assets/tool-copy check, 310 .NET regression tests, 22 loopback/process integration checks, and 20 extension tests. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only Release build, metadata checks without ignored tools, unsigned MSIX bundle and extension ZIP in the temporary copy, plus the same .NET, integration, and extension suites. Temporary copy removed by the script. |
+| Clean-workspace MSIX | **PASS as an unsigned build only**; `FastDM.Package_1.0.13.0_x64.msixbundle`, 73,269,442 bytes. Not signed, installed, certified, or submitted. |
+| Clean-workspace extension pack | **PASS**; `FastDM-Extension-0.1.0.zip`, 33,273 bytes. |
+| `node --test FastDM.Extension/tests/bridge.test.mjs FastDM.Extension/tests/locales.test.mjs` | **PASS**; 18 tests. `npm test` in the project and clean-workspace scripts also covered cookie tests, for 20/20. |
+| `scripts/Test-ToolProvenance.ps1` | **PASS with warnings**; local hashes/versions checked; unverified FFmpeg provenance reported. |
+| `scripts/Test-ToolProvenance.ps1 -ForRelease` | **BLOCKED as intended**; exit 1 for the nine unverified FFmpeg/ffprobe files listed above. |
+| `dotnet list FastDM/FastDM.csproj package --vulnerable --include-transitive`; `dotnet list FastDM.Tests/FastDM.Tests.csproj package --vulnerable --include-transitive`; and `dotnet list FastDM.IntegrationTests/FastDM.IntegrationTests.csproj package --vulnerable --include-transitive` | **PASS**; NuGet reported no vulnerable packages for all three projects using the configured sources. The extension has no npm dependencies. |
+| `git diff --check` | **PASS**; no whitespace errors. Git printed line-ending conversion notices only. |
 
-## অবশিষ্ট সীমাবদ্ধতা
+The package manifest check reported desktop app `1.0.13` and MSIX `1.0.13.0`; the clean source checkout had no local video tools and still built. The unsigned MSIX build verifies packaging, not Store readiness or tool redistribution rights.
 
-- clean checkout-এ optional yt-dlp/Deno/QJS/FFmpeg/ffprobe নেই; তাই বাস্তব YouTube extraction, cookie login, FFmpeg merge/conversion চালানো হয়নি। Live site/network test-ও করা হয়নি।
-- preview dialog-এর manual Windows UI pass—DPI 100/125/150/200%, ছোট window, keyboard-only, screen reader, theme/translation—করা হয়নি। preview/parser/retry logic ও app compilation পরীক্ষিত; visual accessibility এখনো manual review চায়।
-- Chrome/Edge install ও end-to-end pairing, real browser cookie export/profile lock, `fastdm://` activation, SFTP/HLS/DASH server behavior বাস্তব environment-এ চালানো হয়নি।
-- signed URL query স্থানীয় download state-এ থাকতে পারে, কারণ server resume-এর জন্য তা দরকার হতে পারে; log ও diagnostic-এ query value redacted। authenticated proxy secret yt-dlp child চলাকালে environment-এ থাকে এবং উচ্চ privilege-সহ local process inspection-এ দেখা যেতে পারে।
-- clean MSIX unsigned; local FFmpeg/ffprobe-এর provenance যাচাই করা হয়নি। SFTP first-use trust behavior deferred। এই build signed/distribution-ready release নয়।
+## Remaining risks and manual verification
 
-## পরিবর্তিত ফাইলের পরিসর
+- Obtain and independently verify FFmpeg/ffprobe source, publisher/build provenance, linked-library licenses, notices, and source offer before a release. Re-run the strict provenance gate against a reviewed bundle.
+- Explicitly decide the SFTP first-use host-key UX. Changed fingerprints are rejected, but initial trust has no confirmation step.
+- Run the manual matrix in [`TESTING.md`](TESTING.md): 520/700/900 px and maximized toolbar/table layout, DPI/text scaling, themes, keyboard/screen reader/high contrast, merge success/failure/cancel with a reviewed FFmpeg build, actual FTP/SFTP navigation/auth/symlink/cancellation, browser extension install/pairing, browser cookie profiles, and signed Store install/upgrade/uninstall.
+- No real FTP or SFTP endpoint was available; automated remote directory tests use a loopback HTTP fixture. SFTP behavior was code-reviewed; first-key TOFU remains deferred.
+- Live YouTube extraction, signed-in cookie use, and screenshot reproduction remain unverified. Site behavior, account requirements, network, and current yt-dlp support can change independently of these local tests.
+- Store identity/listing and certification were not inspected in Partner Center. Microsoft's current [Store policy](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies) requires disclosure of non-integrated software dependencies; review it again at submission.
+- Signed package installation and Store submission were not performed.
 
-এই remediation-এ `FastDM/`-এর YouTube preview/engine/diagnostics/UI, `FastDM.Tests/`, `FastDM.IntegrationTests/`, `scripts/Test-CleanWorkspace.ps1`, `docs/TESTING.md` এবং এই report পরিবর্তিত হয়েছে; `FastDM.slnx`-এর পূর্ববর্তী user diff অক্ষত আছে। Master plan এই report দিয়ে প্রতিস্থাপিত নয়।
+## Changed files by area
+
+- **yt-dlp behavior and UI:** `FastDM/YtDlp/YtDlp.cs`, `YtDlpDiagnostics.cs`, `YtDlpMetadata.cs`, `YtDlpRetryPolicy.cs`; `FastDM/UI/YtPickerForm.cs`, `YtDlpErrorForm.cs`, `MainForm.Add.cs`, `MainForm.Downloads.cs`, `MainForm.List.cs`, `DetailsPanel.cs`.
+- **Remote browsing, credentials, scheduling, and settings:** `FastDM/Core/DownloadEngine.Remote.cs`, `Models.cs`, new `DownloadQueuePolicy.cs`; `FastDM/Network/RemoteLister.cs`, `CredentialStore.cs`; `FastDM/UI/FolderDownloadForm.cs`, `NetworkForm.cs`, `PreferencesForm.cs`, `MainForm.Layout.cs`.
+- **Bridge and regression coverage:** `FastDM/Bridge/BridgeServer.cs`; `FastDM.Tests/` and `FastDM.IntegrationTests/Program.cs`, including new `DownloadConcurrencyTests.cs`.
+- **Packaging and audit documentation:** `scripts/Test-PackageManifest.ps1`, new `scripts/Test-ToolProvenance.ps1`, new `docs/tool-bundle.lock.json`, `docs/TOOLS.md`, `docs/TESTING.md`, new `docs/STORE_RELEASE_CHECKLIST.md`, and this report.
+
+The master plan remains the source of task requirements; this report records the current implementation and verified outcomes.

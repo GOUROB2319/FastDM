@@ -67,11 +67,11 @@ namespace FastDM
             return ReadCred("FastDM:" + key, out user, out pass);
         }
 
-        public static void Set(Uri u, string user, string pass, bool remember)
+        public static bool Set(Uri u, string user, string pass, bool remember)
         {
             string key = KeyFor(u);
             lock (session) session[key] = new KeyValuePair<string, string>(user, pass);
-            if (remember) WriteCred("FastDM:" + key, user, pass);
+            return !remember || WriteCred("FastDM:" + key, user, pass);
         }
 
         // ---- Win32 Credential Manager ----
@@ -104,7 +104,7 @@ namespace FastDM
         [DllImport("advapi32.dll")]
         static extern void CredFree(IntPtr buffer);
 
-        static void WriteCred(string target, string user, string pass)
+        static bool WriteCred(string target, string user, string pass)
         {
             byte[] blob = Encoding.Unicode.GetBytes(pass ?? "");
             IntPtr mem = Marshal.AllocHGlobal(Math.Max(1, blob.Length));
@@ -120,9 +120,9 @@ namespace FastDM
                     CredentialBlob = mem,
                     Persist = CRED_PERSIST_LOCAL_MACHINE
                 };
-                CredWrite(ref c, 0);
+                return CredWrite(ref c, 0);
             }
-            catch (Exception exIgnored1) { AppLog.Write("CredentialStore (ignored): " + exIgnored1.Message); }
+            catch (Exception exIgnored1) { AppLog.Write("CredentialStore write failed: " + exIgnored1.Message); return false; }
             finally { try { SecretBuffer.Clear(mem, blob); } finally { Marshal.FreeHGlobal(mem); } }
         }
 
@@ -184,7 +184,7 @@ namespace FastDM
 
         static string Target(string key) => "FastDM:secret:" + key;
 
-        public static void Write(string key, string user, string pass)
+        public static bool Write(string key, string user, string pass)
         {
             byte[] blob = Encoding.Unicode.GetBytes(pass ?? "");
             IntPtr mem = Marshal.AllocHGlobal(Math.Max(1, blob.Length));
@@ -200,9 +200,9 @@ namespace FastDM
                     CredentialBlob = mem,
                     Persist = PERSIST_LOCAL_MACHINE
                 };
-                CredWrite(ref c, 0);
+                return CredWrite(ref c, 0);
             }
-            catch (Exception exIgnored2) { AppLog.Write("CredentialStore (ignored): " + exIgnored2.Message); }
+            catch (Exception exIgnored2) { AppLog.Write("SecretStore write failed: " + exIgnored2.Message); return false; }
             finally { try { SecretBuffer.Clear(mem, blob); } finally { Marshal.FreeHGlobal(mem); } }
         }
 
@@ -226,9 +226,14 @@ namespace FastDM
             catch { return false; }
         }
 
-        public static void Delete(string key)
+        public static bool Delete(string key)
         {
-            try { CredDelete(Target(key), TYPE_GENERIC, 0); } catch (Exception exIgnored3) { AppLog.Write("CredentialStore (ignored): " + exIgnored3.Message); }
+            try
+            {
+                if (CredDelete(Target(key), TYPE_GENERIC, 0)) return true;
+                return Marshal.GetLastWin32Error() == 1168; // ERROR_NOT_FOUND is already deleted.
+            }
+            catch (Exception exIgnored3) { AppLog.Write("SecretStore delete failed: " + exIgnored3.Message); return false; }
         }
     }
 }

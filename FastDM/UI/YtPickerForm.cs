@@ -35,6 +35,7 @@ namespace FastDM
         }) { Timeout = TimeSpan.FromSeconds(5), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
         readonly string url;
         readonly int maxPlaylistEntries;
+        readonly bool ignoreCookies;
         readonly CancellationTokenSource previewCts = new CancellationTokenSource();
         readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
         readonly PictureBox thumbnail;
@@ -53,10 +54,11 @@ namespace FastDM
         public string? ErrorMessage { get; private set; }
         public string SaveFolder => txtFolder.Text.Trim();
 
-        public YtPickerForm(string videoUrl, string defaultFolder, int maxPlaylistEntries = 100)
+        public YtPickerForm(string videoUrl, string defaultFolder, int maxPlaylistEntries = 100, bool ignoreCookies = false)
         {
             url = videoUrl;
             this.maxPlaylistEntries = Math.Clamp(maxPlaylistEntries, 1, 1000);
+            this.ignoreCookies = ignoreCookies;
             Text = "Video download preview";
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
@@ -244,10 +246,10 @@ namespace FastDM
                     if (!IsDisposed) lblStatus.Text = text;
                 });
 
-                bool cacheHit = YtDlpPreviewCache.Shared.TryGet(url, DateTimeOffset.UtcNow, out preview) && preview != null;
+                bool cacheHit = YtDlpPreviewCache.Shared.TryGet(url, DateTimeOffset.UtcNow, out preview, ignoreCookies) && preview != null;
                 if (cacheHit && preview?.Playlist is YtPlaylistInfo cachedPlaylist && cachedPlaylist.EntriesLimit > 0 && cachedPlaylist.EntriesLimit < maxPlaylistEntries)
                 {
-                    YtDlpPreviewCache.Shared.Remove(url);
+                    YtDlpPreviewCache.Shared.Remove(url, ignoreCookies);
                     preview = null;
                     cacheHit = false;
                 }
@@ -255,15 +257,15 @@ namespace FastDM
                 {
                     if (YtDlpMetadataParser.IsYouTubePlaylistUrl(url))
                     {
-                        playlist = await YtDlpInfo.LoadPlaylistAsync(url, previewCts.Token, progress, maxPlaylistEntries);
+                        playlist = await YtDlpInfo.LoadPlaylistAsync(url, previewCts.Token, progress, maxPlaylistEntries, ignoreCookies);
                         preview = new YtPreviewData { Playlist = playlist };
                     }
                     else
                     {
-                        info = await YtDlpInfo.LoadAsync(url, previewCts.Token, progress);
+                        info = await YtDlpInfo.LoadAsync(url, previewCts.Token, progress, ignoreCookies);
                         preview = new YtPreviewData { Video = info };
                     }
-                    YtDlpPreviewCache.Shared.Store(url, preview, DateTimeOffset.UtcNow);
+                    YtDlpPreviewCache.Shared.Store(url, preview, DateTimeOffset.UtcNow, ignoreCookies);
                 }
                 else
                 {
@@ -461,6 +463,7 @@ namespace FastDM
                         Format = quality.Format,
                         AudioOnly = quality.AudioOnly,
                         AudioFormat = quality.AudioFormat,
+                        IgnoreCookies = ignoreCookies,
                         NameFromTitle = true
                     });
                 }
@@ -473,7 +476,7 @@ namespace FastDM
             else if (info != null)
             {
                 string baseName = DownloadEngine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
-                var spec = new YtDlpSpec { Url = url, BaseName = baseName };
+                var spec = new YtDlpSpec { Url = url, BaseName = baseName, IgnoreCookies = ignoreCookies };
                 if (preview?.InfoJsonPath is string path && preview.ExpiresAt > DateTimeOffset.UtcNow)
                 {
                     spec.InfoJsonPath = path;

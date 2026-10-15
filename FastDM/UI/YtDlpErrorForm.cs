@@ -9,11 +9,13 @@ namespace FastDM
         readonly TextBox details;
         readonly CheckBox showDetails;
         public bool OpenVideoSettings { get; private set; }
+        public bool RetryWithoutCookies { get; private set; }
 
-        public YtDlpErrorForm(string error, YtDlpCookieSource source, bool packaged)
+        public YtDlpErrorForm(string error, YtDlpCookieSource source, bool packaged, bool canRetryWithoutCookies = true)
         {
             var kind = YtDlpDiagnostics.Classify(error, source);
             var description = YtDlpDiagnostics.Describe(kind, packaged);
+            bool offerNoCookieRetry = canRetryWithoutCookies && YtDlpDiagnostics.CanRetryWithoutCookies(kind);
             string safeError = AppLog.Redact(error);
 
             Text = "Video couldn't be accessed";
@@ -22,8 +24,8 @@ namespace FastDM
             MinimizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = new Font("Segoe UI", 9.5f);
-            ClientSize = new Size(620, 365);
-            MinimumSize = new Size(540, 340);
+            ClientSize = new Size(700, 390);
+            MinimumSize = new Size(560, 340);
 
             var layout = new TableLayoutPanel
             {
@@ -83,13 +85,14 @@ namespace FastDM
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.RightToLeft,
-                WrapContents = false,
+                WrapContents = true,
                 AutoSize = true,
                 Margin = new Padding(0, 8, 0, 0)
             };
             var close = new Button { Text = "Close", Size = new Size(92, 34), DialogResult = DialogResult.Cancel };
-            var open = new Button { Text = "Open video settings", Size = new Size(142, 34) };
-            var copy = new Button { Text = "Copy diagnostic details", Size = new Size(166, 34) };
+            var open = new Button { Text = "Open video settings", Size = new Size(150, 34) };
+            var copy = new Button { Text = "Copy diagnostic details", Size = new Size(170, 34) };
+            Button? retry = offerNoCookieRetry ? new Button { Text = "Retry without cookies", Size = new Size(160, 34) } : null;
             close.Click += (s, e) => Close();
             open.Click += (s, e) =>
             {
@@ -109,6 +112,16 @@ namespace FastDM
             buttons.Controls.Add(close);
             buttons.Controls.Add(open);
             buttons.Controls.Add(copy);
+            if (retry != null)
+            {
+                retry.Click += (s, e) =>
+                {
+                    RetryWithoutCookies = true;
+                    DialogResult = DialogResult.Retry;
+                    Close();
+                };
+                buttons.Controls.Add(retry);
+            }
             layout.Controls.Add(buttons, 0, 4);
 
             showDetails.CheckedChanged += (s, e) =>

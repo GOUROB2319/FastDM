@@ -61,6 +61,14 @@ namespace FastDM.Tests
                 string oversizedUnicode = new string('é', 4 * 1024 * 1024 + 1);
                 T.Check("preview info JSON is capped by UTF-8 bytes, including multibyte text", cache.CreateInfoJson(oversizedUnicode, now) == null);
                 T.Check("fresh preview is reused by normalized URL", cache.TryGet("https://youtu.be/abcdefghijk", now.AddSeconds(10), out var hit) && ReferenceEquals(hit, data));
+                var cookieFreeData = new YtPreviewData { Video = new YtInfo { Title = "Cookie-free" } };
+                cache.Store("https://youtu.be/abcdefghijk", cookieFreeData, now, ignoreCookies: true);
+                T.Check("configured-cookie and explicit cookie-free previews occupy separate cache entries",
+                    cache.TryGet("https://youtu.be/abcdefghijk", now, out var configuredHit) && ReferenceEquals(configuredHit, data) &&
+                    cache.TryGet("https://www.youtube.com/watch?v=abcdefghijk", now, out var cookieFreeHit, ignoreCookies: true) && ReferenceEquals(cookieFreeHit, cookieFreeData));
+                cache.Remove("https://youtu.be/abcdefghijk");
+                T.Check("removing the configured-cookie cache leaves the cookie-free retry preview intact",
+                    cache.TryGet("https://youtu.be/abcdefghijk", now, out _, ignoreCookies: true));
                 T.Check("expired preview is removed with its temporary info JSON", !cache.TryGet("https://youtu.be/abcdefghijk", now.AddMinutes(2), out _) && infoPath != null && !File.Exists(infoPath));
 
                 string outside = Path.Combine(root, "outside.json");
@@ -99,6 +107,8 @@ namespace FastDM.Tests
             T.Check("audio transfer keeps cumulative byte progress", parser.TryParseProgress("FDM|downloading|50|500|0|10|none|mp4a", out var audio) && audio.Stage == YtDlpStage.DownloadingAudio && audio.Downloaded == 1050);
             YtDlpStage merging = parser.ObserveMessage("[Merger] Merging formats into \"output.mp4\"");
             T.Check("merge and post-processing stages stop transfer speed and ETA", merging == YtDlpStage.Merging && !YtDlpRetryPolicy.IsTransferring(merging) && YtDlpRetryPolicy.StageLabel(merging) == "Merging video and audio");
+            T.Check("merge and verification are treated as processing rather than transfer", YtDlpRetryPolicy.IsProcessing(merging) && YtDlpRetryPolicy.IsProcessing(YtDlpStage.VerifyingOutput));
+            T.Check("late progress callbacks cannot move a merge back to downloading", !parser.TryParseProgress("FDM|downloading|200|1000|0|100|avc1|none", out _) && parser.Stage == YtDlpStage.Merging);
             T.Check("verification is a separate completion stage", YtDlpRetryPolicy.StageLabel(YtDlpStage.VerifyingOutput) == "Checking output file");
         }
     }

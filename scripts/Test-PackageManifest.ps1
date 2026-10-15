@@ -4,14 +4,35 @@ $appProject = Join-Path $root 'FastDM/FastDM.csproj'
 $packageProject = Join-Path $root 'FastDM.Package/FastDM.Package.wapproj'
 $manifestPath = Join-Path $root 'FastDM.Package/Package.appxmanifest'
 
+Write-Host 'Checking local tool hashes, versions and signatures against the audit lock...'
+& (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts/Test-ToolProvenance.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Local tool provenance check failed.' }
+
 [xml]$appXml = Get-Content -LiteralPath $appProject -Raw
 [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
 $wapText = Get-Content -LiteralPath $packageProject -Raw
+$extensionManifestPath = Join-Path $root 'FastDM.Extension/manifest.json'
+$extensionManifest = Get-Content -LiteralPath $extensionManifestPath -Raw -Encoding utf8 | ConvertFrom-Json
 $appVersion = $appXml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 $identityVersion = $manifest.Package.Identity.Version
 $expectedIdentityVersion = "$appVersion.0"
 if ($identityVersion -ne $expectedIdentityVersion) {
   throw "MSIX identity version '$identityVersion' does not match desktop version '$appVersion' (expected '$expectedIdentityVersion')."
+}
+if ([string]::IsNullOrWhiteSpace($manifest.Package.Identity.Name) -or [string]::IsNullOrWhiteSpace($manifest.Package.Identity.Publisher)) {
+  throw 'MSIX identity name and publisher must remain present and stable for Store upgrades.'
+}
+if ($manifest.Package.Properties.DisplayName -ne 'FastDM' -or
+    $manifest.Package.Applications.Application.Extensions.Extension.Protocol.Name -notcontains 'fastdm') {
+  throw 'MSIX display name or fastdm protocol registration is missing.'
+}
+if ($manifest.Package.Capabilities.Capability.Name -notcontains 'internetClient' -or
+    $manifest.Package.Capabilities.Capability.Name -notcontains 'runFullTrust') {
+  throw 'MSIX network/full-trust capability declarations do not match the desktop app.'
+}
+if ($extensionManifest.manifest_version -ne 3 -or $extensionManifest.name -ne '__MSG_extName__' -or
+    $extensionManifest.version -notmatch '^\d+\.\d+\.\d+$' -or $extensionManifest.default_locale -ne 'en') {
+  throw 'Browser extension manifest version, localization, or MV3 metadata is invalid.'
 }
 if ($wapText -notmatch [regex]::Escape('Package.appxmanifest') -or
     $wapText -notmatch [regex]::Escape('..\FastDM\FastDM.csproj')) {

@@ -324,7 +324,7 @@ namespace FastDM
                 return;
             }
 
-            if (add == null || !BridgeAuth.IsAllowedUrl(add.Url))
+            if (!BridgeAuth.IsAllowedUrl(add.Url))
             {
                 await send(400, new { error = "bad_url" });
                 return;

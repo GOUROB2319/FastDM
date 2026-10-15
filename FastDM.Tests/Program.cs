@@ -8,6 +8,7 @@ BatchImportTests.Run();
 YtDlpOutputTests.Run();
 FileCheckTests.Run();
 SecurityRegressionTests.Run();
+DownloadConcurrencyTests.Run();
 YtDlpProxyTests.Run();
 CookieScopeTests.Run();
 YtDlpDiagnosticsTests.Run();

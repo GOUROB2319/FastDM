@@ -131,7 +131,8 @@ namespace FastDM
             TextRenderer.DrawText(g, it.FileName ?? "", bold, new Rectangle(r.X, r.Y, r.Width, 26), p.Text, f);
 
             string size = it.TotalBytes > 0
-                ? Fmt(it.Downloaded) + " / " + Fmt(it.TotalBytes) + "  (" + it.Percent.ToString("0.0") + "%)"
+                ? Fmt(it.Downloaded) + " / " + Fmt(it.TotalBytes) +
+                  (it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage) ? "" : "  (" + it.Percent.ToString("0.0") + "%)")
                 : Fmt(it.Downloaded) + " / unknown";
 
             string etaText = Eta(it);
@@ -214,6 +215,13 @@ namespace FastDM
 
             var gr = new Rectangle(r.X, r.Y + 24, r.Width, 92);
             using (var b = new SolidBrush(p.RowAlt)) g.FillRectangle(b, gr);
+            if (it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage))
+            {
+                using (var pen = new Pen(p.Border)) g.DrawRectangle(pen, gr);
+                TextRenderer.DrawText(g, YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…",
+                    bold, gr, p.Text, f | TextFormatFlags.HorizontalCenter);
+                return;
+            }
             using (var pen = new Pen(p.Border))
             {
                 g.DrawRectangle(pen, gr);
@@ -262,7 +270,7 @@ namespace FastDM
 
                 var ybar = new Rectangle(r.X, r.Y + 26, r.Width, 18);
                 using (var b = new SolidBrush(p.Track)) g.FillRectangle(b, ybar);
-                int yw = (int)(ybar.Width * it.Percent / 100.0);
+                int yw = YtDlpRetryPolicy.IsProcessing(it.ProgressStage) ? 0 : (int)(ybar.Width * it.Percent / 100.0);
                 if (yw > 0)
                     using (var b = new SolidBrush(it.State == DlState.Completed ? Color.FromArgb(46, 204, 113) : p.Accent))
                         g.FillRectangle(b, ybar.X, ybar.Y, yw, ybar.Height);
