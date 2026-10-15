@@ -122,7 +122,7 @@ namespace FastDM
 
         string DefaultName()
         {
-            string n = Engine.Sanitize(info.Title ?? "").TrimEnd('.', ' ');
+            string n = DownloadEngine.Sanitize(info.Title ?? "").TrimEnd('.', ' ');
             if (n.Length > 120) n = n.Substring(0, 120).TrimEnd('.', ' ');
             return n.Length == 0 ? "video" : n;
         }
@@ -148,7 +148,7 @@ namespace FastDM
 
         void OnOk(object? sender, EventArgs e)
         {
-            string name = Engine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
+            string name = DownloadEngine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
             if (name.Length == 0) { MessageBox.Show(this, "Please enter a file name."); return; }
             if (txtFolder.Text.Trim().Length == 0) { MessageBox.Show(this, "Please choose a folder."); return; }
 

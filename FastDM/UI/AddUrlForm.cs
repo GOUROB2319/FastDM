@@ -1,22 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.IO.Pipes;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Microsoft.Win32;
-
 namespace FastDM
 {
     // ====================== Add URL ডায়ালগ ======================
@@ -204,6 +185,18 @@ namespace FastDM
             {
                 MessageBox.Show(this, ex.Message);
             }
+        }
+
+        private void InitializeComponent()
+        {
+            SuspendLayout();
+            // 
+            // AddUrlForm
+            // 
+            ClientSize = new Size(927, 423);
+            Name = "AddUrlForm";
+            ResumeLayout(false);
+
         }
 
         bool Check()

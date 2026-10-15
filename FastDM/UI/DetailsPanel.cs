@@ -141,7 +141,7 @@ namespace FastDM
                 new[] { "Size", size },
                 new[] { "Speed", it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "—" },
                 new[] { "ETA", etaText.Length > 0 ? etaText : "—" },
-                new[] { "Resume", it.Stream != null || it.YtDlp != null || it.SupportsRange || !Engine.IsHttp(it.Url ?? "http://") ? "Supported" : "Not supported" },
+                new[] { "Resume", it.Stream != null || it.YtDlp != null || it.SupportsRange || !DownloadEngine.IsHttp(it.Url ?? "http://") ? "Supported" : "Not supported" },
                 new[] { "Save to", it.Folder ?? "" },
                 new[] { "Link", it.Url ?? "" },
                 new[] { "Added", it.Added.ToString("dd MMM yyyy HH:mm") }

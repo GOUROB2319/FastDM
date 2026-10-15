@@ -11,6 +11,7 @@ using Renci.SshNet;
 namespace FastDM
 {
     public enum ProxyMode { None, System, Manual }
+
     public enum ProxyKind { Http, Socks5 }
 
     // ====================== স্পিড লিমিটার ======================
@@ -167,7 +168,7 @@ namespace FastDM
         public static void ApplyAndReset(AppSettings s)
         {
             Load(s);
-            Engine.ResetClient();
+            DownloadEngine.ResetClient();
         }
     }
 
@@ -197,165 +198,6 @@ namespace FastDM
             // Every SFTP connection goes through here, so the server's identity is checked in one place.
             client.HostKeyReceived += (s, e) => e.CanTrust = SshHostKeys.Verify(host, port, e.HostKeyName, e.HostKey);
             return client;
-        }
-    }
-
-    // SFTP server identity check, "trust on first use" like OpenSSH: the first time a server is seen its
-    // key fingerprint is saved; later connections must present the same key, otherwise the connection is
-    // refused (a changed key can mean someone is intercepting the connection).
-    // The server was legitimately reinstalled? Delete its line (or the whole file) at
-    // %LocalAppData%\FastDM\known_hosts.json and connect again.
-    public static class SshHostKeys
-    {
-        static readonly object gate = new object();
-        static Dictionary<string, string>? known;
-
-        public static string FilePath =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "FastDM", "known_hosts.json");
-
-        public static bool Verify(string host, int port, string? keyType, byte[]? keyBytes)
-        {
-            if (keyBytes == null || keyBytes.Length == 0) return false;
-
-            string id = host.Trim().ToLowerInvariant() + ":" + port;
-            string print = (keyType ?? "") + " SHA256:" +
-                           Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(keyBytes));
-
-            lock (gate)
-            {
-                known ??= Load();
-
-                if (known.TryGetValue(id, out var saved))
-                {
-                    if (string.Equals(saved, print, StringComparison.Ordinal)) return true;
-
-                    AppLog.Write("SFTP: REFUSED " + id + " - the server key changed (saved " + saved + ", now " + print + "). " +
-                                 "If the server was reinstalled, remove its line from " + FilePath + ".");
-                    return false;
-                }
-
-                known[id] = print;
-                Save();
-                AppLog.Write("SFTP: remembered the key of " + id + " (" + print + ")");
-                return true;
-            }
-        }
-
-        static Dictionary<string, string> Load()
-        {
-            try
-            {
-                if (File.Exists(FilePath))
-                    return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(FilePath))
-                           ?? new Dictionary<string, string>();
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("SFTP: could not read " + FilePath + ": " + ex.Message);
-            }
-            return new Dictionary<string, string>();
-        }
-
-        static void Save()
-        {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-                string tmp = FilePath + ".tmp";
-                File.WriteAllText(tmp, System.Text.Json.JsonSerializer.Serialize(known,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-                File.Move(tmp, FilePath, true);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("SFTP: could not save " + FilePath + ": " + ex.Message);
-            }
-        }
-    }
-
-    // ====================== Windows Credential Manager (সাধারণ সিক্রেট) ======================
-    static class SecretStore
-    {
-        const uint TYPE_GENERIC = 1;
-        const uint PERSIST_LOCAL_MACHINE = 2;
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        struct CRED
-        {
-            public uint Flags;
-            public uint Type;
-            public string TargetName;
-            public string Comment;
-            public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten;
-            public uint CredentialBlobSize;
-            public IntPtr CredentialBlob;
-            public uint Persist;
-            public uint AttributeCount;
-            public IntPtr Attributes;
-            public string TargetAlias;
-            public string UserName;
-        }
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CredWriteW")]
-        static extern bool CredWrite(ref CRED cred, uint flags);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CredReadW")]
-        static extern bool CredRead(string target, uint type, uint flags, out IntPtr cred);
-
-        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CredDeleteW")]
-        static extern bool CredDelete(string target, uint type, uint flags);
-
-        [DllImport("advapi32.dll")]
-        static extern void CredFree(IntPtr buffer);
-
-        static string Target(string key) => "FastDM:secret:" + key;
-
-        public static void Write(string key, string user, string pass)
-        {
-            byte[] blob = Encoding.Unicode.GetBytes(pass ?? "");
-            IntPtr mem = Marshal.AllocHGlobal(Math.Max(1, blob.Length));
-            try
-            {
-                if (blob.Length > 0) Marshal.Copy(blob, 0, mem, blob.Length);
-                var c = new CRED
-                {
-                    Type = TYPE_GENERIC,
-                    TargetName = Target(key),
-                    UserName = user,
-                    CredentialBlobSize = (uint)blob.Length,
-                    CredentialBlob = mem,
-                    Persist = PERSIST_LOCAL_MACHINE
-                };
-                CredWrite(ref c, 0);
-            }
-            catch { }
-            finally { Marshal.FreeHGlobal(mem); }
-        }
-
-        public static bool Read(string key, out string? user, out string? pass)
-        {
-            user = null; pass = null;
-            try
-            {
-                if (!CredRead(Target(key), TYPE_GENERIC, 0, out IntPtr p)) return false;
-                try
-                {
-                    var c = Marshal.PtrToStructure<CRED>(p);
-                    user = c.UserName;
-                    pass = c.CredentialBlobSize > 0
-                        ? Marshal.PtrToStringUni(c.CredentialBlob, (int)c.CredentialBlobSize / 2)
-                        : "";
-                    return true;
-                }
-                finally { CredFree(p); }
-            }
-            catch { return false; }
-        }
-
-        public static void Delete(string key)
-        {
-            try { CredDelete(Target(key), TYPE_GENERIC, 0); } catch { }
         }
     }
 }
