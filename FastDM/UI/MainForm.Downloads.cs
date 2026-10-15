@@ -19,7 +19,7 @@ using Microsoft.Win32;
 
 namespace FastDM
 {
-    // MainForm part: start/pause/resume/remove and the 1-second UI tick.
+    // MainForm part: start/pause/resume/remove, open/show-in-folder and the 1-second UI tick.
     public partial class MainForm
     {
         // ---------- টাইমার: কিউ + স্পিড ----------

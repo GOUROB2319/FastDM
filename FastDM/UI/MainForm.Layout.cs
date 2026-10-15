@@ -19,7 +19,7 @@ using Microsoft.Win32;
 
 namespace FastDM
 {
-    // MainForm part: window layout, toolbar, drawing and context menu.
+    // MainForm part: window layout, toolbar, sidebar, details panel, view options, drawing and context menu.
     public partial class MainForm
     {
         // ---------- UI ----------
@@ -875,6 +875,141 @@ namespace FastDM
             p.CloseFigure();
 
             return p;
+        }
+
+        void UpdateSideCounts()
+        {
+            for (int i = 0;
+                 i < sideCounts.Length;
+                 i++)
+            {
+                int idx = i;
+
+                sideCounts[i] =
+                    idx == DeletedFilter
+                        ? deleted.Count
+                        : items.Count(
+                            x => Match(idx, x));
+            }
+        }
+
+        // ---------- Sidebar ----------
+        void ToggleSidebar()
+        {
+            settings.SidebarOpen =
+                !settings.SidebarOpen;
+
+            UpdateSideCounts();
+
+            navTarget =
+                settings.SidebarOpen
+                    ? 200
+                    : 0;
+
+            if (settings.SidebarOpen)
+                sidebar.Visible = true;
+
+            navTimer.Start();
+
+            SaveState();
+        }
+
+        void StepSidebar()
+        {
+            const int step = 40;
+
+            int w =
+                sidebar.Width;
+
+            if (w < navTarget)
+            {
+                w =
+                    Math.Min(
+                        navTarget,
+                        w + step);
+            }
+            else if (w > navTarget)
+            {
+                w =
+                    Math.Max(
+                        navTarget,
+                        w - step);
+            }
+
+            sidebar.Width = w;
+
+            FitLastColumn();
+
+            if (w == navTarget)
+            {
+                navTimer.Stop();
+
+                if (w == 0)
+                    sidebar.Visible = false;
+                else
+                    sidebar.Invalidate();
+            }
+        }
+
+        void ToggleDetails()
+        {
+            settings.ShowDetails =
+                !settings.ShowDetails;
+
+            details.Visible =
+                settings.ShowDetails;
+
+            details.SetItem(
+                Sel().FirstOrDefault());
+
+            SaveState();
+        }
+
+        // "Compact view of downloads list": ছোট সারি
+        void ApplyCompactView()
+        {
+            if (lv?.SmallImageList == null)
+                return;
+
+            lv.SmallImageList.ImageSize =
+                new Size(
+                    1,
+                    settings.CompactView
+                        ? 26
+                        : 34);
+
+            lv.Invalidate();
+        }
+
+        // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে
+        void FitLastColumn()
+        {
+            if (lv == null ||
+                lv.Columns.Count == 0 ||
+                lv.ClientSize.Width <= 0)
+                return;
+
+            int used = 0;
+
+            for (int i = 0;
+                 i < lv.Columns.Count - 1;
+                 i++)
+            {
+                used +=
+                    lv.Columns[i].Width;
+            }
+
+            int w =
+                Math.Max(
+                    120,
+                    lv.ClientSize.Width - used);
+
+            var last =
+                lv.Columns[
+                    lv.Columns.Count - 1];
+
+            if (last.Width != w)
+                last.Width = w;
         }
     }
 }

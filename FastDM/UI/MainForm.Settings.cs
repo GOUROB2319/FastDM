@@ -19,7 +19,7 @@ using Microsoft.Win32;
 
 namespace FastDM
 {
-    // MainForm part: schedule, preferences, traffic mode and theme.
+    // MainForm part: schedule, after-all actions, preferences, traffic mode, startup and theme.
     public partial class MainForm
     {
         // ---------- শিডিউলার / "সব শেষ হলে" / ডিটেইলস ----------
@@ -59,20 +59,6 @@ namespace FastDM
             }
 
             MarkChanged();
-        }
-
-        void ToggleDetails()
-        {
-            settings.ShowDetails =
-                !settings.ShowDetails;
-
-            details.Visible =
-                settings.ShowDetails;
-
-            details.SetItem(
-                Sel().FirstOrDefault());
-
-            SaveState();
         }
 
         void BuildDoneMenu()
@@ -269,22 +255,6 @@ namespace FastDM
             }
         }
 
-        // "Compact view of downloads list": ছোট সারি
-        void ApplyCompactView()
-        {
-            if (lv?.SmallImageList == null)
-                return;
-
-            lv.SmallImageList.ImageSize =
-                new Size(
-                    1,
-                    settings.CompactView
-                        ? 26
-                        : 34);
-
-            lv.Invalidate();
-        }
-
         // ---------- ট্রাফিক মোড (Low / Medium / High) ----------
         void BuildModeMenu()
         {
@@ -475,37 +445,6 @@ namespace FastDM
                     }));
             }
             catch { }
-        }
-
-        // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে
-        void FitLastColumn()
-        {
-            if (lv == null ||
-                lv.Columns.Count == 0 ||
-                lv.ClientSize.Width <= 0)
-                return;
-
-            int used = 0;
-
-            for (int i = 0;
-                 i < lv.Columns.Count - 1;
-                 i++)
-            {
-                used +=
-                    lv.Columns[i].Width;
-            }
-
-            int w =
-                Math.Max(
-                    120,
-                    lv.ClientSize.Width - used);
-
-            var last =
-                lv.Columns[
-                    lv.Columns.Count - 1];
-
-            if (last.Width != w)
-                last.Width = w;
         }
     }
 }

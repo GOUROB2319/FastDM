@@ -19,7 +19,7 @@ using Microsoft.Win32;
 
 namespace FastDM
 {
-    // MainForm part: tray, sidebar, closing, notifications, drag-drop, clipboard.
+    // MainForm part: tray, closing, notifications, drag-drop, clipboard.
     public partial class MainForm
     {
         // ---------- সিস্টেম ট্রে ----------
@@ -193,80 +193,6 @@ namespace FastDM
                 it.Cts?.Cancel();
 
             SaveState();
-        }
-
-        void UpdateSideCounts()
-        {
-            for (int i = 0;
-                 i < sideCounts.Length;
-                 i++)
-            {
-                int idx = i;
-
-                sideCounts[i] =
-                    idx == DeletedFilter
-                        ? deleted.Count
-                        : items.Count(
-                            x => Match(idx, x));
-            }
-        }
-
-        // ---------- Sidebar ----------
-        void ToggleSidebar()
-        {
-            settings.SidebarOpen =
-                !settings.SidebarOpen;
-
-            UpdateSideCounts();
-
-            navTarget =
-                settings.SidebarOpen
-                    ? 200
-                    : 0;
-
-            if (settings.SidebarOpen)
-                sidebar.Visible = true;
-
-            navTimer.Start();
-
-            SaveState();
-        }
-
-        void StepSidebar()
-        {
-            const int step = 40;
-
-            int w =
-                sidebar.Width;
-
-            if (w < navTarget)
-            {
-                w =
-                    Math.Min(
-                        navTarget,
-                        w + step);
-            }
-            else if (w > navTarget)
-            {
-                w =
-                    Math.Max(
-                        navTarget,
-                        w - step);
-            }
-
-            sidebar.Width = w;
-
-            FitLastColumn();
-
-            if (w == navTarget)
-            {
-                navTimer.Stop();
-
-                if (w == 0)
-                    sidebar.Visible = false;
-                else
-                    sidebar.Invalidate();
-            }
         }
 
         void Cleanup()

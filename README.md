@@ -13,7 +13,7 @@ after the user approves a pairing request.
 | `FastDM/Network/` | Proxy, speed limit, saved credentials, FTP/SFTP transfer |
 | `FastDM/Media/` | HLS/DASH detection and download, playlist (.m3u8) builder |
 | `FastDM/YtDlp/` | yt-dlp process, cookies, site list and output parsing |
-| `FastDM/UI/` | Main window (`MainForm.cs` + one `MainForm.<Part>.cs` per feature), dialogs, theme and shared controls |
+| `FastDM/UI/` | Main window in 8 partial files: `MainForm.cs` (fields, constructor, state) + `Layout`, `List`, `Downloads`, `Add`, `Settings`, `Shell`, `Bridge`; plus dialogs, theme and shared controls |
 | `FastDM/Bridge/` | Local extension bridge, pairing, and `fastdm://` protocol handling |
 | `FastDM/Resources/` | Desktop app icon |
 | `FastDM.Package/` | Optional MSIX/Windows package project and its image assets |
