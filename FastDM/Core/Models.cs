@@ -267,6 +267,9 @@ namespace FastDM
         public string StatusNote { get; set; } = "";
 
         [JsonIgnore]
+        public YtDlpStage ProgressStage { get; set; } = YtDlpStage.None;
+
+        [JsonIgnore]
         public CancellationTokenSource? Cts { get; set; }
 
         [JsonIgnore]

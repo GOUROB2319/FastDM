@@ -165,6 +165,8 @@ namespace FastDM
             foreach (var d in sel)
                 deleted.Remove(d);
 
+            details?.SetItem(null);
+
             MarkChanged();
             SaveState();
         }
@@ -183,6 +185,8 @@ namespace FastDM
                 return;
 
             deleted.Clear();
+
+            details?.SetItem(null);
 
             MarkChanged();
             SaveState();
@@ -341,7 +345,8 @@ namespace FastDM
             SetIf(
                 l,
                 4,
-                it.State == DlState.Downloading
+                it.State == DlState.Downloading &&
+                (it.YtDlp == null || YtDlpRetryPolicy.IsTransferring(it.ProgressStage))
                     ? Fmt(it.Speed) + "/s"
                     : "");
 
@@ -355,10 +360,16 @@ namespace FastDM
                 6,
                 it.Added.ToString("dd MMM HH:mm"));
 
-            l.ToolTipText =
-                it.State == DlState.Error
-                    ? it.Error
-                    : it.Url;
+            if (it.State == DlState.Error && it.YtDlp != null)
+            {
+                var kind = YtDlpDiagnostics.Classify(it.Error);
+                var description = YtDlpDiagnostics.Describe(kind, UpdateChecker.IsPackaged);
+                l.ToolTipText = AppLog.Redact(description.Summary + "\n" + description.NextStep + "\n" + (it.Error ?? ""));
+            }
+            else
+            {
+                l.ToolTipText = it.State == DlState.Error ? AppLog.Redact(it.Error) : it.Url;
+            }
         }
 
         static string StateText(DlState s) =>
@@ -396,6 +407,8 @@ namespace FastDM
 
         static string Eta(DownloadItem it)
         {
+            if (it.YtDlp != null && !YtDlpRetryPolicy.IsTransferring(it.ProgressStage))
+                return "";
             if (it.State != DlState.Downloading ||
                 it.Speed < 1 ||
                 it.TotalBytes <= 0)

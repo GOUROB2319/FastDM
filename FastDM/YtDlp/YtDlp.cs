@@ -34,6 +34,12 @@ namespace FastDM
         public string? BaseName { get; set; }               // এক্সটেনশন ছাড়া ফাইলের নাম
         public long EstimatedBytes { get; set; }
         public bool NameFromTitle { get; set; }             // true: the file is named after the video title (used by batch imports); BaseName is not needed
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? InfoJsonPath { get; set; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public DateTimeOffset InfoJsonExpiresAt { get; set; }
     }
 
     // ====================== টুল খুঁজে বের করা ======================
@@ -85,6 +91,7 @@ namespace FastDM
         {
             browser = Normalize(s.YtCookieBrowser);
             cookieFile = (s.YtCookieFile ?? "").Trim().Trim('"');
+            YtDlpPreviewCache.Shared.Clear();
         }
 
         public static YtDlpCookieSource SelectSource() =>
@@ -108,6 +115,10 @@ namespace FastDM
     // ====================== প্রসেস চালানো ======================
     public static class YtDlpRunner
     {
+        static readonly SemaphoreSlim ProcessLimit = new SemaphoreSlim(2, 2);
+        static readonly object ProcessStateGate = new object();
+        static bool updatePending;
+
         static ProcessStartInfo Build(string exe, IEnumerable<string> args, bool redirectInput)
         {
             var psi = new ProcessStartInfo(exe)
@@ -140,6 +151,7 @@ namespace FastDM
         public static List<string> CommonArgs()
         {
             var a = new List<string> { "--ignore-config", "--no-colors" };
+            a.AddRange(YtDlpRetryPolicy.CopyArguments());
 
             string? qjs = YtDlpLocator.FindQuickJs();
             string? deno = YtDlpLocator.FindDeno();
@@ -170,6 +182,58 @@ namespace FastDM
         public static async Task<int> RunAsync(string exe, IEnumerable<string> args,
                                                Action<string> onOut, Action<string> onErr, CancellationToken ct,
                                                string? standardInput = null)
+        {
+            await WaitForProcessSlotAsync(ct);
+            try
+            {
+                return await RunProcessAsync(exe, args, onOut, onErr, ct, standardInput);
+            }
+            finally { ProcessLimit.Release(); }
+        }
+
+        public static async Task<int> RunExclusiveUpdateAsync(string exe, IEnumerable<string> args,
+                                                               Action<string> onOut, Action<string> onErr, CancellationToken ct)
+        {
+            lock (ProcessStateGate)
+            {
+                if (updatePending) throw new InvalidOperationException("A yt-dlp update is already in progress.");
+                updatePending = true;
+            }
+
+            bool firstSlot = false, secondSlot = false;
+            try
+            {
+                await ProcessLimit.WaitAsync(ct);
+                firstSlot = true;
+                await ProcessLimit.WaitAsync(ct);
+                secondSlot = true;
+                return await RunProcessAsync(exe, args, onOut, onErr, ct, null);
+            }
+            finally
+            {
+                if (secondSlot) ProcessLimit.Release();
+                if (firstSlot) ProcessLimit.Release();
+                lock (ProcessStateGate) updatePending = false;
+            }
+        }
+
+        static async Task WaitForProcessSlotAsync(CancellationToken ct)
+        {
+            while (true)
+            {
+                await ProcessLimit.WaitAsync(ct);
+                lock (ProcessStateGate)
+                {
+                    if (!updatePending) return;
+                }
+                ProcessLimit.Release();
+                await Task.Delay(100, ct);
+            }
+        }
+
+        static async Task<int> RunProcessAsync(string exe, IEnumerable<string> args,
+                                                Action<string> onOut, Action<string> onErr, CancellationToken ct,
+                                                string? standardInput)
         {
             using var p = new Process { StartInfo = Build(exe, args, standardInput != null) };
             p.OutputDataReceived += (s, e) => { if (e.Data != null) onOut?.Invoke(e.Data); };
@@ -225,45 +289,87 @@ namespace FastDM
         }
     }
 
-    // ====================== ভিডিওর তথ্য (-J) পড়ে কোয়ালিটি তালিকা বানানো ======================
-    public class YtVideoOpt
-    {
-        public string Label = "", Selector = "";
-        public long EstBytes;
-        public int Height;
-    }
-
-    public class YtInfo
-    {
-        public string Title = "video";
-        public string? Extractor, Uploader;
-        public double Duration;
-        public bool HasAudio;
-        public long BestAudioBytes;
-        public List<YtVideoOpt> Videos = new List<YtVideoOpt>();
-    }
-
+    // ====================== ভিডিও/প্লেলিস্টের তথ্য (-J) ======================
     public static class YtDlpInfo
     {
-        class HInfo { public long Bytes; public bool Combined; public int Fps; public string Ext = ""; public double Tbr; }
+        const int MaxMetadataBytes = 16 * 1024 * 1024;
 
-        public static async Task<YtInfo> LoadAsync(string url, CancellationToken ct)
+        public static async Task<YtInfo> LoadAsync(string url, CancellationToken ct, IProgress<string>? progress = null)
+        {
+            var args = YtDlpRunner.CommonArgs();
+            args.AddRange(new[] { "-J", "--no-playlist" });
+            var urlInput = YtDlpUrlInput.Create(url);
+            args.AddRange(urlInput.Arguments);
+            var (json, diagnostic) = await LoadJsonAsync("video", args, urlInput.StandardInput, ct, progress);
+            var info = YtDlpMetadataParser.ParseVideo(json);
+            info.RawInfoJson = json;
+            var warningKind = YtDlpDiagnostics.Classify(diagnostic);
+            if (info.Videos.Count == 0 && !info.HasAudio)
+            {
+                if (warningKind != YtDlpFailureKind.Generic && warningKind != YtDlpFailureKind.FormatUnavailable)
+                    throw new YtDlpProcessException(0, diagnostic);
+                throw new YtDlpProcessException(0, "ERROR: requested format is not available; yt-dlp returned no downloadable formats.");
+            }
+            return info;
+        }
+
+        public static async Task<YtPlaylistInfo> LoadPlaylistAsync(string url, CancellationToken ct, IProgress<string>? progress = null, int maxEntries = 100)
+        {
+            var args = YtDlpRunner.CommonArgs();
+            maxEntries = Math.Clamp(maxEntries, 1, 1000);
+            args.AddRange(new[] { "--yes-playlist", "--flat-playlist", "--playlist-end", maxEntries.ToString(CultureInfo.InvariantCulture), "-J" });
+            var urlInput = YtDlpUrlInput.Create(url);
+            args.AddRange(urlInput.Arguments);
+            var (json, diagnostic) = await LoadJsonAsync("playlist", args, urlInput.StandardInput, ct, progress);
+            var info = YtDlpMetadataParser.ParsePlaylist(json);
+            info.EntriesLimit = maxEntries;
+            if (info.Entries.Count == 0)
+            {
+                if (diagnostic.Length > 0 && YtDlpDiagnostics.Classify(diagnostic) != YtDlpFailureKind.Generic)
+                    throw new YtDlpProcessException(0, diagnostic);
+                throw new InvalidOperationException("yt-dlp returned no playlist entries.");
+            }
+            return info;
+        }
+
+        static async Task<(string Json, string Diagnostic)> LoadJsonAsync(string operation, List<string> args, string? standardInput,
+                                                                          CancellationToken ct, IProgress<string>? progress)
         {
             string? exe = YtDlpLocator.Find();
             if (exe == null) throw new FileNotFoundException("yt-dlp.exe was not found. Put it in the Tools folder.");
 
-            var args = YtDlpRunner.CommonArgs();
-            args.AddRange(new[] { "-J", "--no-playlist", "--no-warnings" });
-            var urlInput = YtDlpUrlInput.Create(url);
-            args.AddRange(urlInput.Arguments);
-
             var json = new StringBuilder();
             var err = new StringBuilder();
+            bool tooLarge = false;
+            int metadataBytes = 0;
+            int newlineBytes = Encoding.UTF8.GetByteCount(Environment.NewLine);
             var watch = Stopwatch.StartNew();
             int code = await YtDlpRunner.RunAsync(exe, args,
-                l => { lock (json) json.AppendLine(l); },
-                l => { lock (err) if (err.Length < 8000) err.AppendLine(l); }, ct,
-                urlInput.StandardInput);
+                line =>
+                {
+                    lock (json)
+                    {
+                        if (tooLarge) return;
+                        if (line.Length > MaxMetadataBytes)
+                        {
+                            tooLarge = true;
+                            return;
+                        }
+                        int lineBytes = Encoding.UTF8.GetByteCount(line);
+                        if (lineBytes <= MaxMetadataBytes - metadataBytes - newlineBytes)
+                        {
+                            json.AppendLine(line);
+                            metadataBytes += lineBytes + newlineBytes;
+                        }
+                        else tooLarge = true;
+                    }
+                },
+                line =>
+                {
+                    lock (err) if (err.Length < 32000) err.AppendLine(line);
+                    string label = YtDlpDiagnostics.ProgressLabel(line);
+                    if (label.Length > 0) progress?.Report(label);
+                }, ct, standardInput);
             watch.Stop();
 
             string runtime = YtDlpLocator.FindQuickJs() != null ? "quickjs" : YtDlpLocator.FindDeno() != null ? "deno" : "none";
@@ -274,93 +380,14 @@ namespace FastDM
                 YtDlpCookieSourceKind.Browser => cookieSource.Browser ?? "browser",
                 _ => "off"
             };
-            AppLog.Write("yt-dlp info: " + watch.Elapsed.TotalSeconds.ToString("0.0") + " s, exit " + code +
-                         ", js runtime " + runtime + ", cookies " + cookieLabel);
+            AppLog.Write("yt-dlp " + operation + " metadata: " + watch.Elapsed.TotalSeconds.ToString("0.0") +
+                         " s, exit " + code + ", js runtime " + runtime + ", cookies " + cookieLabel);
 
+            if (tooLarge)
+                throw new InvalidOperationException("The video or playlist metadata exceeded FastDM's 16 MB safety limit.");
             if (code != 0 || json.Length == 0)
-                throw new InvalidOperationException(YtDlpRunner.ExtractError(err.ToString()));
-
-            using var doc = JsonDocument.Parse(json.ToString());
-            return Parse(doc.RootElement);
-        }
-
-        static string? Str(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-        static double Num(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
-
-        static YtInfo Parse(JsonElement r)
-        {
-            var info = new YtInfo
-            {
-                Title = Str(r, "title") ?? "video",
-                Extractor = Str(r, "extractor_key") ?? Str(r, "extractor"),
-                Uploader = Str(r, "uploader") ?? Str(r, "channel"),
-                Duration = Num(r, "duration")
-            };
-
-            if (!r.TryGetProperty("formats", out var fmts) || fmts.ValueKind != JsonValueKind.Array)
-                return info;
-
-            var byHeight = new Dictionary<int, HInfo>();
-            long bestAudio = 0;
-            bool hasAudio = false;
-
-            foreach (var f in fmts.EnumerateArray())
-            {
-                string? v = Str(f, "vcodec"), a = Str(f, "acodec");
-                bool hasV = !string.IsNullOrEmpty(v) && v != "none";
-                bool hasA = !string.IsNullOrEmpty(a) && a != "none";
-                long size = (long)(Num(f, "filesize") > 0 ? Num(f, "filesize") : Num(f, "filesize_approx"));
-
-                if (hasA && !hasV)
-                {
-                    hasAudio = true;
-                    bestAudio = Math.Max(bestAudio, size);
-                }
-                if (!hasV) continue;
-
-                int h = (int)Num(f, "height");
-                if (h <= 0) continue;
-                double tbr = Num(f, "tbr");
-
-                if (!byHeight.TryGetValue(h, out var cur) || tbr > cur.Tbr)
-                {
-                    byHeight[h] = new HInfo
-                    {
-                        Bytes = size,
-                        Combined = hasA,
-                        Fps = (int)Num(f, "fps"),
-                        Ext = Str(f, "ext") ?? "",
-                        Tbr = tbr
-                    };
-                }
-            }
-
-            info.HasAudio = hasAudio;
-            info.BestAudioBytes = bestAudio;
-
-            info.Videos.Add(new YtVideoOpt { Label = "Best available", Selector = "bv*+ba/b", Height = 0 });
-            foreach (int h in byHeight.Keys.OrderByDescending(x => x))
-            {
-                var hi = byHeight[h];
-                long est = hi.Bytes + (hi.Combined ? 0 : bestAudio);
-                string label = h + "p" + (hi.Fps > 30 ? hi.Fps.ToString() : "") +
-                               (hi.Ext.Length > 0 ? "  •  " + hi.Ext : "") +
-                               (est > 0 ? "  •  ≈ " + Fmt(est) : "");
-                info.Videos.Add(new YtVideoOpt
-                {
-                    Label = label,
-                    Height = h,
-                    EstBytes = est,
-                    Selector = "bv*[height<=" + h + "][ext=mp4]+ba[ext=m4a]/bv*[height<=" + h + "]+ba/b[height<=" + h + "]"
-                });
-            }
-
-            // কোনো ভিডিও ফরম্যাট না থাকলে (শুধু অডিও সাইট) "Best available" বাদ
-            if (byHeight.Count == 0) info.Videos.Clear();
-            return info;
+                throw new YtDlpProcessException(code, err.ToString());
+            return (json.ToString(), err.ToString());
         }
 
         public static string Fmt(double b)
@@ -381,7 +408,7 @@ namespace FastDM
             if (exe == null) return "yt-dlp.exe was not found in the Tools folder.";
 
             var sb = new StringBuilder();
-            int code = await YtDlpRunner.RunAsync(exe, new[] { "--ignore-config", "-U" },
+            int code = await YtDlpRunner.RunExclusiveUpdateAsync(exe, new[] { "--ignore-config", "-U" },
                 l => { lock (sb) sb.AppendLine(l); }, l => { lock (sb) sb.AppendLine(l); }, ct);
             string s = sb.ToString().Trim();
             if (code != 0)
@@ -439,8 +466,7 @@ namespace FastDM
             args.AddRange(new[]
             {
                 "--no-playlist", "--newline", "--progress",
-                "--progress-template", "download:FDM|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s",
-                "--retries", "10", "--fragment-retries", "10",
+                "--progress-template", "download:FDM|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(info.vcodec)s|%(info.acodec)s",
                 "-N", Math.Clamp(connections, 1, 8).ToString(),
                 "-f", spec.Format ?? "bv*+ba/b",
                 "-o", template
@@ -468,55 +494,80 @@ namespace FastDM
             long limit = SpeedLimiter.BytesPerSec;
             if (limit > 0) args.AddRange(new[] { "--limit-rate", Math.Max(1, limit / 1024) + "K" });
 
-            var urlInput = YtDlpUrlInput.Create(spec.Url ?? it.Url);
-            args.AddRange(urlInput.Arguments);
+            string url = spec.Url ?? it.Url;
+            bool canUseInfoJson = !string.IsNullOrWhiteSpace(spec.InfoJsonPath) &&
+                spec.InfoJsonExpiresAt > DateTimeOffset.UtcNow && File.Exists(spec.InfoJsonPath);
+            string? activeInfoJson = canUseInfoJson ? spec.InfoJsonPath : null;
+            var urlInput = YtDlpUrlInput.Create(url);
+            var downloadArgs = new List<string>(args);
+            if (canUseInfoJson && activeInfoJson != null)
+                downloadArgs.AddRange(new[] { "--load-info-json", activeInfoJson });
+            else
+                downloadArgs.AddRange(urlInput.Arguments);
 
+            string? standardInput = canUseInfoJson ? null : urlInput.StandardInput;
             var gate = new object();
-            long offset = 0, lastDl = 0, lastTotal = 0;
-            string? lastError = null;
             var errTail = new StringBuilder();
+            var progress = new YtDlpProgressParser();
+            string? lastError = null;
 
             void OnLine(string line, bool isErr)
             {
                 lock (gate)
                 {
-                    if (line.StartsWith("FDM|"))
+                    if (progress.TryParseProgress(line, out var update))
                     {
-                        var p = line.Split('|');       // FDM|status|downloaded|total|estimate|speed
-                        if (p.Length >= 6)
+                        if (progress.Stage is not YtDlpStage.Merging and not YtDlpStage.PostProcessing)
                         {
-                            long dl = ParseNum(p[2]);
-                            long tot = ParseNum(p[3]);
-                            if (tot <= 0) tot = ParseNum(p[4]);
-
-                            // ভিডিওর পর অডিও শুরু হলে সংখ্যা আবার ছোট হয়: আগেরটা যোগ করে রাখি
-                            if (dl < lastDl) offset += lastTotal > 0 ? lastTotal : lastDl;
-                            lastDl = dl;
-                            lastTotal = tot > 0 ? tot : dl;
-
-                            it.Downloaded = offset + dl;
-                            long est = Math.Max(spec.EstimatedBytes, offset + lastTotal);
-                            if (est > 0) it.TotalBytes = est;
-                            it.StatusNote = "";
+                            it.ProgressStage = update.Stage;
+                            it.StatusNote = YtDlpRetryPolicy.StageLabel(update.Stage);
+                            it.Downloaded = update.Downloaded;
+                            long estimate = Math.Max(spec.EstimatedBytes, update.Total);
+                            if (estimate > 0) it.TotalBytes = estimate;
+                            it.Speed = update.Speed;
                         }
                         return;
                     }
 
-                    if (line.StartsWith("[Merger]") || line.StartsWith("[VideoRemuxer]")) it.StatusNote = "Merging…";
-                    else if (line.StartsWith("[ExtractAudio]")) it.StatusNote = "Converting audio…";
-
-                    if (line.StartsWith("ERROR:")) lastError = line.Substring(6).Trim();
+                    YtDlpStage observed = progress.ObserveMessage(line);
+                    if (observed is YtDlpStage.Merging or YtDlpStage.PostProcessing)
+                    {
+                        it.ProgressStage = observed;
+                        it.StatusNote = YtDlpRetryPolicy.StageLabel(observed) + "…";
+                        it.Speed = 0;
+                    }
+                    if (line.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase)) lastError = line.Substring(6).Trim();
                     if (isErr && errTail.Length < 4000) errTail.AppendLine(line);
                 }
             }
 
-            it.StatusNote = "Starting…";
-            int code = await YtDlpRunner.RunAsync(exe, args, l => OnLine(l, false), l => OnLine(l, true), ct,
-                urlInput.StandardInput);
+            it.ProgressStage = YtDlpStage.Starting;
+            it.StatusNote = YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…";
+            int code = await YtDlpRunner.RunAsync(exe, downloadArgs, l => OnLine(l, false), l => OnLine(l, true), ct, standardInput);
+            string diagnostic = errTail.Length > 0 ? errTail.ToString() : lastError ?? "";
+
+            if (code != 0 && canUseInfoJson &&
+                YtDlpRetryPolicy.ShouldRefreshInfoJson(YtDlpDiagnostics.Classify(diagnostic), diagnostic))
+            {
+                YtDlpPreviewCache.DeleteInfoJson(activeInfoJson);
+                YtDlpPreviewCache.Shared.Remove(url);
+                spec.InfoJsonPath = null;
+                errTail.Clear();
+                lastError = null;
+                progress = new YtDlpProgressParser();
+                it.ProgressStage = YtDlpStage.Retrying;
+                it.StatusNote = "Refreshing video details…";
+                downloadArgs = new List<string>(args);
+                downloadArgs.AddRange(urlInput.Arguments);
+                code = await YtDlpRunner.RunAsync(exe, downloadArgs, l => OnLine(l, false), l => OnLine(l, true), ct, urlInput.StandardInput);
+                diagnostic = errTail.Length > 0 ? errTail.ToString() : lastError ?? "";
+            }
 
             if (code != 0)
-                throw new InvalidOperationException(lastError ?? YtDlpRunner.ExtractError(errTail.ToString()));
-
+            {
+                YtDlpPreviewCache.Shared.Remove(url);
+                throw new YtDlpProcessException(code, diagnostic);
+            }
             string? found;
             if (fromTitle)
             {
@@ -533,13 +584,30 @@ namespace FastDM
                 found = FindOutput(it.Folder, baseName);
             }
 
-            if (found == null) throw new FileNotFoundException("The download finished but the output file was not found.");
+            it.ProgressStage = YtDlpStage.VerifyingOutput;
+            it.StatusNote = YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…";
+            if (found == null)
+            {
+                YtDlpPreviewCache.Shared.Remove(url);
+                throw new FileNotFoundException("The download finished but the output file was not found.");
+            }
+
+            var outputInfo = new FileInfo(found);
+            if (!outputInfo.Exists || outputInfo.Length <= 0)
+            {
+                try { if (outputInfo.Exists) outputInfo.Delete(); }
+                catch (Exception exIgnored7) { AppLog.Write("YtDlp could not remove empty output: " + exIgnored7.Message); }
+                YtDlpPreviewCache.Shared.Remove(url);
+                throw new InvalidDataException("yt-dlp created an empty output file; the download is not complete.");
+            }
 
             it.FileName = Path.GetFileName(found);
             it.StatusNote = "";
-            long size = new FileInfo(found).Length;
+            it.ProgressStage = YtDlpStage.None;
+            long size = outputInfo.Length;
             it.TotalBytes = size;
             it.Downloaded = size;
+            YtDlpPreviewCache.Shared.Remove(url);
         }
 
         static string? FindOutput(string folder, string baseName)

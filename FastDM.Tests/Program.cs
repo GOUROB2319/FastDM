@@ -11,6 +11,7 @@ SecurityRegressionTests.Run();
 YtDlpProxyTests.Run();
 CookieScopeTests.Run();
 YtDlpDiagnosticsTests.Run();
+YtDlpWorkflowTests.Run();
 HttpRangeValidationTests.Run();
 await BridgeServerTests.RunAsync();
 return T.Done();

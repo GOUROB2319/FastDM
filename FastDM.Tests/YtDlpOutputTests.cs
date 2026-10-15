@@ -33,6 +33,11 @@ namespace FastDM.Tests
                 File.WriteAllText(bangla, "done");
                 T.Check("the finished file is found, other pieces ignored", YtDlpOutput.FindFinal(dir) == bangla);
 
+                string empty = Path.Combine(dir, "empty.mp4");
+                File.WriteAllBytes(empty, Array.Empty<byte>());
+                File.SetLastWriteTimeUtc(empty, DateTime.UtcNow.AddMinutes(1));
+                T.Check("a newer empty output does not replace a finished non-empty file", YtDlpOutput.FindFinal(dir) == bangla);
+
                 string newer = Path.Combine(dir, "Second.m4a");
                 File.WriteAllText(newer, "x");
                 File.SetLastWriteTimeUtc(bangla, DateTime.UtcNow - TimeSpan.FromMinutes(5));

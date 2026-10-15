@@ -293,6 +293,8 @@ namespace FastDM
                 it.Speed = 0;
 
                 MarkChanged();
+                YtDlpFailureKind? ytFailureKind = null;
+                TimeSpan? ytRetryAfter = null;
 
                 try
                 {
@@ -334,6 +336,14 @@ namespace FastDM
                 {
                     it.State =
                         DlState.Error;
+
+                    if (it.YtDlp != null)
+                    {
+                        ytFailureKind = ex is YtDlpProcessException ytException
+                            ? ytException.FailureKind
+                            : YtDlpDiagnostics.Classify(ex.Message);
+                        ytRetryAfter = (ex as YtDlpProcessException)?.RetryAfter;
+                    }
 
                     it.Error =
                         ex.Message;
@@ -382,12 +392,17 @@ namespace FastDM
                     else if (it.State ==
                              DlState.Error)
                     {
-                        if (settings.AutoRetry &&
+                        bool retryableVideoFailure = it.YtDlp == null ||
+                            YtDlpRetryPolicy.ShouldAutoRetry(
+                                ytFailureKind ?? YtDlpDiagnostics.Classify(it.Error),
+                                it.RetryCount,
+                                ytRetryAfter);
+                        if (settings.AutoRetry && retryableVideoFailure &&
                             it.RetryCount <
                                 Math.Max(1, settings.MaxRetries))
                         {
                             it.RetryCount++;
-                            ScheduleRetry(it);
+                            ScheduleRetry(it, ytRetryAfter);
                         }
                         else
                         {
@@ -449,7 +464,8 @@ namespace FastDM
 
         // ব্যর্থ ডাউনলোড কিছুক্ষণ পর নিজে আবার চেষ্টা (৫, ১০, ১৫… সেকেন্ড, সর্বোচ্চ ৬০)
         async void ScheduleRetry(
-            DownloadItem it)
+            DownloadItem it,
+            TimeSpan? retryAfter = null)
         {
             try
             {
@@ -459,11 +475,8 @@ namespace FastDM
                     ": " +
                     it.FileName);
 
-                await Task.Delay(
-                    TimeSpan.FromSeconds(
-                        Math.Min(
-                            60,
-                            5 * it.RetryCount)));
+                TimeSpan delay = retryAfter ?? TimeSpan.FromSeconds(Math.Min(60, 5 * it.RetryCount));
+                await Task.Delay(delay);
 
                 if (items.Contains(it) &&
                     it.State ==
@@ -766,6 +779,8 @@ namespace FastDM
                     }
                 }
             }
+
+            details?.SetItem(null);
 
             MarkChanged();
             SaveState();

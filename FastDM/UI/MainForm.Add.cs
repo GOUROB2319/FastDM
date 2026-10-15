@@ -92,6 +92,17 @@ namespace FastDM
             string url,
             RequestContext ctx)
         {
+            if (!string.IsNullOrWhiteSpace(url) && YtDlpSites.IsSupported(url))
+            {
+                await ProcessUrlsAsync(
+                    new[] { url },
+                    "",
+                    settings.DefaultFolder,
+                    true,
+                    ctx);
+                return;
+            }
+
             using var dlg =
                 new AddUrlForm(
                     url,
@@ -175,6 +186,7 @@ namespace FastDM
 
             var ytItems =
                 new List<string>();
+            var ytSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var u in urls)
             {
@@ -182,7 +194,8 @@ namespace FastDM
                 // taken for a folder, and the folder check also wasted a web request on every YouTube link.
                 if (YtDlpSites.IsSupported(u))
                 {
-                    ytItems.Add(u);
+                    if (ytSeen.Add(YtDlpMetadataParser.CacheKey(u)))
+                        ytItems.Add(u);
                     continue;
                 }
 
@@ -366,10 +379,19 @@ namespace FastDM
 
             // yt-dlp
             foreach (var yu in ytItems)
-                await AddYtDlpAsync(
-                    yu,
-                    folder,
-                    startNow);
+            {
+                string key = YtDlpMetadataParser.CacheKey(yu);
+                bool alreadyActive = items.Any(i =>
+                    i.YtDlp != null &&
+                    StringComparer.OrdinalIgnoreCase.Equals(YtDlpMetadataParser.CacheKey(i.YtDlp.Url ?? i.Url ?? ""), key) &&
+                    i.State is DlState.Queued or DlState.Downloading or DlState.Paused);
+                if (alreadyActive)
+                {
+                    lblActive.Text = "This video is already queued or downloading.";
+                    continue;
+                }
+                await AddYtDlpAsync(yu, folder);
+            }
         }
 
         // Drag-and-drop of a list file
@@ -872,8 +894,7 @@ namespace FastDM
 
         async Task AddYtDlpAsync(
             string url,
-            string saveFolder,
-            bool startNow)
+            string saveFolder)
         {
             if (YtDlpLocator.Find() == null)
             {
@@ -887,124 +908,47 @@ namespace FastDM
                 return;
             }
 
-            string path =
-                new Uri(url)
-                    .AbsolutePath
-                    .ToLowerInvariant();
+            using var pf = new YtPickerForm(url, saveFolder, settings.MaxBatchUrls);
 
-            if (path.StartsWith(
-                    "/playlist"))
-            {
-                MessageBox.Show(
-                    this,
-                    "Playlist links are not supported yet.\nOpen a single video link instead.",
-                    "Video",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+            Theme.Apply(pf);
 
-                return;
-            }
-
-            lblActive.Text =
-                "Reading video info…";
-
-            UseWaitCursor = true;
-
-            var readWatch = Stopwatch.StartNew();
-
-            using var readTick =
-                new System.Windows.Forms.Timer { Interval = 1000 };
-
-            readTick.Tick += (s, e) =>
-                lblActive.Text =
-                    "Reading video info\u2026 " +
-                    (int)readWatch.Elapsed.TotalSeconds +
-                    " s";
-
-            readTick.Start();
-
-            YtInfo info;
-
-            try
-            {
-                using var cts =
-                    new CancellationTokenSource(
-                        TimeSpan.FromSeconds(90));
-
-                info =
-                    await YtDlpInfo.LoadAsync(
-                        url,
-                        cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                MessageBox.Show(
-                    this,
-                    "Reading the video info took too long.",
-                    "Video",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-
-                return;
-            }
-            catch (Exception ex)
+            var result = pf.ShowDialog(this);
+            if (result == DialogResult.Abort && !string.IsNullOrWhiteSpace(pf.ErrorMessage))
             {
                 using var error = new YtDlpErrorForm(
-                    ex.GetBaseException().Message,
+                    pf.ErrorMessage,
                     YtDlpCookies.SelectSource(),
                     UpdateChecker.IsPackaged);
                 Theme.Apply(error);
                 if (error.ShowDialog(this) == DialogResult.OK && error.OpenVideoSettings)
                     ShowSettings("Advanced");
-
                 return;
             }
-            finally
-            {
-                readTick.Stop();
-                UseWaitCursor = false;
-            }
-
-            using var pf =
-                new YtPickerForm(
-                    info,
-                    url,
-                    saveFolder);
-
-            Theme.Apply(pf);
-
-            if (pf.ShowDialog(this) !=
-                DialogResult.OK)
-                return;
+            if (result != DialogResult.OK && result != DialogResult.Yes) return;
 
             string folder =
                 pf.SaveFolder;
-
-            var spec = pf.Spec;
-            if (spec == null) return;
-            string ext =
-                spec.AudioOnly
-                    ? "." + pf.Spec.AudioFormat
-                    : ".mp4";
-
-            var it = new DownloadItem
+            bool downloadNow = result == DialogResult.OK;
+            var existing = new HashSet<string>(items
+                .Where(i => i.YtDlp != null && i.State is DlState.Queued or DlState.Downloading or DlState.Paused)
+                .Select(i => YtDlpMetadataParser.CacheKey(i.YtDlp!.Url ?? i.Url ?? "")), StringComparer.OrdinalIgnoreCase);
+            foreach (var spec in pf.Specs)
             {
-                Url = url,
-                Folder = folder,
-                FileName =
-                    UniqueName(
-                        folder,
-                        pf.Spec.BaseName +
-                        ext),
-                YtDlp = pf.Spec,
-                State =
-                    startNow
-                        ? DlState.Queued
-                        : DlState.Paused
-            };
-
-            items.Add(it);
-            selectNewId = it.Id;
+                string itemUrl = spec.Url ?? url;
+                if (!existing.Add(YtDlpMetadataParser.CacheKey(itemUrl))) continue;
+                string ext = spec.AudioOnly ? "." + spec.AudioFormat : ".mp4";
+                string name = DownloadEngine.Sanitize(spec.BaseName ?? "video") + ext;
+                var it = new DownloadItem
+                {
+                    Url = itemUrl,
+                    Folder = folder,
+                    FileName = UniqueName(folder, name),
+                    YtDlp = spec,
+                    State = downloadNow ? DlState.Queued : DlState.Paused
+                };
+                items.Add(it);
+                selectNewId = it.Id;
+            }
 
             MarkChanged();
             SaveState();

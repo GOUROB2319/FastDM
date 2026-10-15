@@ -26,7 +26,7 @@ namespace FastDM
                 if (!Directory.Exists(dir)) return null;
 
                 return Directory.GetFiles(dir)
-                    .Where(f => !Intermediate.IsMatch(Path.GetFileName(f)))
+                    .Where(f => !Intermediate.IsMatch(Path.GetFileName(f)) && new FileInfo(f).Length > 0)
                     .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
                     .FirstOrDefault();
             }

@@ -25,7 +25,7 @@ namespace FastDM.Tests
                 T.Check("browser selection is used when no file is configured", YtDlpDiagnostics.SelectCookieSource("", "edge").Browser == "edge");
 
                 T.Check("Chrome database copy failure is diagnosed separately", YtDlpDiagnostics.Classify("Could not copy Chrome cookie database.") == YtDlpFailureKind.BrowserDatabaseLocked);
-                T.Check("YouTube sign-in requirement is diagnosed separately", YtDlpDiagnostics.Classify("Sign in to confirm you’re not a bot.") == YtDlpFailureKind.LoginRequired);
+                T.Check("YouTube bot verification is diagnosed separately", YtDlpDiagnostics.Classify("Sign in to confirm you’re not a bot.") == YtDlpFailureKind.BotVerification);
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }

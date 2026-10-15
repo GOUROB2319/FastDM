@@ -290,12 +290,14 @@ namespace FastDM
             lastErrorNotify =
                 DateTime.UtcNow;
 
-            Notify(
-                "Download failed",
-                it.FileName +
-                "\n" +
-                (it.Error ?? ""),
-                ToolTipIcon.Error);
+            string message = it.FileName + "\n" + (it.Error ?? "");
+            if (it.YtDlp != null)
+            {
+                var kind = YtDlpDiagnostics.Classify(it.Error);
+                var description = YtDlpDiagnostics.Describe(kind, UpdateChecker.IsPackaged);
+                message = it.FileName + "\n" + description.Summary + "\n" + description.NextStep + "\n" + (it.Error ?? "");
+            }
+            Notify("Download failed", AppLog.Redact(message), ToolTipIcon.Error);
         }
 
         // ---------- ড্র্যাগ-ড্রপ + ক্লিপবোর্ড ----------

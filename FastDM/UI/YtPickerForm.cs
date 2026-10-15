@@ -1,175 +1,613 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace FastDM
 {
-    class YtPickerForm : Form
+    sealed class YtPickerForm : Form
     {
-        class OptItem
+        sealed class OptItem
         {
-            public string Text = string.Empty;
+            public string Text = "";
             public object? Tag;
             public override string ToString() => Text;
         }
 
-        readonly YtInfo info;
-        readonly string url;
-        readonly RadioButton rbVideo, rbAudio;
-        readonly ComboBox cmbVideo, cmbAudio;
-        readonly Label lblSize;
-        readonly TextBox txtName, txtFolder;
+        sealed class PlaylistItem
+        {
+            public YtPlaylistEntry Entry = null!;
+            public override string ToString()
+            {
+                string duration = Entry.Duration > 0 ? "  •  " + TimeSpan.FromSeconds(Entry.Duration).ToString(@"m\:ss") : "";
+                return Entry.Index + ". " + (Entry.Available ? Entry.Title : "Unavailable: " + Entry.Title) + duration;
+            }
+        }
 
-        public YtDlpSpec Spec { get; private set; } = null!;
+        static readonly HttpClient ThumbnailClient = new HttpClient(new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            ConnectTimeout = TimeSpan.FromSeconds(4)
+        }) { Timeout = TimeSpan.FromSeconds(5), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
+        readonly string url;
+        readonly int maxPlaylistEntries;
+        readonly CancellationTokenSource previewCts = new CancellationTokenSource();
+        readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
+        readonly PictureBox thumbnail;
+        readonly Panel singlePanel, playlistPanel;
+        readonly RadioButton rbVideo, rbAudio;
+        readonly ComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
+        readonly CheckedListBox playlistEntries;
+        readonly TextBox txtName, txtFolder;
+        readonly Button btnStart, btnLater;
+        YtInfo? info;
+        YtPlaylistInfo? playlist;
+        YtPreviewData? preview;
+        bool loading = true;
+
+        public List<YtDlpSpec> Specs { get; private set; } = new List<YtDlpSpec>();
+        public string? ErrorMessage { get; private set; }
         public string SaveFolder => txtFolder.Text.Trim();
 
-        public YtPickerForm(YtInfo videoInfo, string videoUrl, string defaultFolder)
+        public YtPickerForm(string videoUrl, string defaultFolder, int maxPlaylistEntries = 100)
         {
-            info = videoInfo;
             url = videoUrl;
-
-            Text = "Download video";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.maxPlaylistEntries = Math.Clamp(maxPlaylistEntries, 1, 1000);
+            Text = "Video download preview";
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(580, 480);
+            ShowInTaskbar = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
             Font = new Font("Segoe UI", 9.5f);
+            ClientSize = new Size(760, 650);
+            MinimumSize = new Size(660, 590);
 
-            // শিরোনাম + তথ্য
-            Controls.Add(new Label
+            var root = new TableLayoutPanel
             {
-                Text = info.Title,
-                Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
-                Location = new Point(16, 12),
-                Size = new Size(548, 44),
-                AutoEllipsis = true
-            });
-
-            string sub = "";
-            if (!string.IsNullOrEmpty(info.Extractor)) sub += info.Extractor;
-            if (!string.IsNullOrEmpty(info.Uploader)) sub += (sub.Length > 0 ? "  •  " : "") + info.Uploader;
-            if (info.Duration > 0)
-            {
-                var t = TimeSpan.FromSeconds(info.Duration);
-                string dur = t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
-                sub += (sub.Length > 0 ? "  •  " : "") + dur;
-            }
-            Controls.Add(new Label { Text = sub, Location = new Point(16, 58), Size = new Size(548, 20) });
-
-            // ভিডিও / অডিও মোড
-            rbVideo = new RadioButton { Text = "Video + audio (MP4)", Location = new Point(16, 92), AutoSize = true, Checked = true };
-            rbAudio = new RadioButton { Text = "Audio only", Location = new Point(220, 92), AutoSize = true };
-            Controls.Add(rbVideo);
-            Controls.Add(rbAudio);
-
-            Controls.Add(new Label { Text = "Quality", Location = new Point(16, 128), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(16, 150), Width = 548, DropDownStyle = ComboBoxStyle.DropDownList };
-            foreach (var v in info.Videos) cmbVideo.Items.Add(new OptItem { Text = v.Label, Tag = v });
-            if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;
-            cmbVideo.SelectedIndexChanged += (a, b) => UpdateSize();
-            Controls.Add(cmbVideo);
-
-            cmbAudio = new ComboBox { Location = new Point(16, 150), Width = 548, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
-            cmbAudio.Items.Add(new OptItem { Text = "M4A  •  best audio (no re-encode when the source is AAC)", Tag = "m4a" });
-            cmbAudio.Items.Add(new OptItem { Text = "MP3  •  converted (needs MP3 support in ffmpeg)", Tag = "mp3" });
-            cmbAudio.SelectedIndex = 0;
-            Controls.Add(cmbAudio);
-
-            lblSize = new Label { Location = new Point(16, 184), Size = new Size(548, 20) };
-            Controls.Add(lblSize);
-
-            rbAudio.CheckedChanged += (a, b) => ApplyMode();
-
-            // নাম ও ফোল্ডার
-            Controls.Add(new Label { Text = "File name", Location = new Point(16, 218), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 240), Width = 548, Text = DefaultName() };
-            Controls.Add(txtName);
-
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 276), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 298), Width = 456, Text = defaultFolder };
-            Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(480, 297), Size = new Size(84, 28) };
-            browse.Click += (a, b) =>
-            {
-                using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
-                if (fb.ShowDialog(this) == DialogResult.OK) txtFolder.Text = fb.SelectedPath;
+                Dock = DockStyle.Fill,
+                Padding = new Padding(14),
+                ColumnCount = 1,
+                RowCount = 6
             };
-            Controls.Add(browse);
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
 
-            // টুল না থাকলে সতর্কতা
-            string warn = "";
-            if (FfmpegLocator.Find() == null)
-                warn += "ffmpeg was not found: merging video+audio and audio conversion will not work.\n";
-            if (!YtDlpLocator.HasJsRuntime())
-                warn += "No JavaScript runtime (QuickJS or Deno) was found: some YouTube videos may fail to download.\n";
-            Controls.Add(new Label { Text = warn, Location = new Point(16, 340), Size = new Size(548, 52) });
-
-            var ok = new Button { Text = "Download", Location = new Point(344, 428), Size = new Size(110, 36) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(460, 428), Size = new Size(104, 36), DialogResult = DialogResult.Cancel };
-            ok.Click += OnOk;
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
-
-            if (info.Videos.Count == 0)
+            lblTitle = new Label
             {
-                rbVideo.Enabled = false;
-                rbAudio.Checked = true;
-            }
-            ApplyMode();
-            UpdateSize();
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                Font = new Font(Font, FontStyle.Bold),
+                Text = "Video download preview",
+                AccessibleName = "Video title"
+            };
+            root.Controls.Add(lblTitle, 0, 0);
+
+            var previewPanel = new Panel { Dock = DockStyle.Fill };
+            thumbnail = new PictureBox
+            {
+                Location = new Point(0, 2),
+                Size = new Size(144, 82),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BorderStyle = BorderStyle.FixedSingle,
+                AccessibleName = "Video thumbnail"
+            };
+            previewPanel.Controls.Add(thumbnail);
+            lblSource = new Label
+            {
+                Location = new Point(158, 2),
+                Size = new Size(540, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                AutoEllipsis = true,
+                Text = "Reading title, channel, duration, formats, and size…",
+                AccessibleName = "Video source and details"
+            };
+            previewPanel.Controls.Add(lblSource);
+            root.Controls.Add(previewPanel, 0, 1);
+
+            lblStatus = new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Text = "Opening video preview…",
+                AutoEllipsis = true,
+                AccessibleName = "Preview loading status"
+            };
+            root.Controls.Add(lblStatus, 0, 2);
+
+            var mainPanel = new Panel { Dock = DockStyle.Fill };
+            singlePanel = new Panel { Dock = DockStyle.Fill };
+            playlistPanel = new Panel { Dock = DockStyle.Fill, Visible = false };
+            mainPanel.Controls.Add(playlistPanel);
+            mainPanel.Controls.Add(singlePanel);
+            root.Controls.Add(mainPanel, 0, 3);
+
+            rbVideo = new RadioButton { Text = "Video + audio", Location = new Point(0, 4), AutoSize = true, Checked = true };
+            rbAudio = new RadioButton { Text = "Audio only", Location = new Point(160, 4), AutoSize = true };
+            rbAudio.CheckedChanged += (s, e) => UpdateSingleMode();
+            singlePanel.Controls.Add(rbVideo);
+            singlePanel.Controls.Add(rbAudio);
+            singlePanel.Controls.Add(new Label { Text = "Format and quality", Location = new Point(0, 38), AutoSize = true });
+            cmbVideo = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVideo.SelectedIndexChanged += (s, e) => UpdateSizeAndMerge();
+            singlePanel.Controls.Add(cmbVideo);
+            cmbAudio = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
+            cmbAudio.Items.Add(new OptItem { Text = "M4A — best available audio", Tag = "m4a" });
+            cmbAudio.Items.Add(new OptItem { Text = "MP3 — converted audio", Tag = "mp3" });
+            cmbAudio.SelectedIndex = 0;
+            singlePanel.Controls.Add(cmbAudio);
+            lblSize = new Label { Location = new Point(0, 96), Size = new Size(690, 24), AutoEllipsis = true };
+            singlePanel.Controls.Add(lblSize);
+            lblMerge = new Label { Location = new Point(0, 122), Size = new Size(690, 24), AutoEllipsis = true };
+            singlePanel.Controls.Add(lblMerge);
+
+            lblCount = new Label { Dock = DockStyle.Top, Height = 26, Text = "Loading playlist entries…", AutoEllipsis = true };
+            playlistPanel.Controls.Add(lblCount);
+            playlistEntries = new CheckedListBox
+            {
+                Dock = DockStyle.Fill,
+                CheckOnClick = true,
+                IntegralHeight = false,
+                AccessibleName = "Playlist videos"
+            };
+            playlistEntries.ItemCheck += OnPlaylistItemCheck;
+            playlistEntries.SelectedIndexChanged += (s, e) => UpdatePlaylistCount();
+            playlistPanel.Controls.Add(playlistEntries);
+            var playlistHelp = new Label
+            {
+                Dock = DockStyle.Bottom,
+                Height = 44,
+                Text = "Select the available videos to add. Playlist downloads use each video's title as its file name.",
+                AutoEllipsis = true
+            };
+            playlistPanel.Controls.Add(playlistHelp);
+
+            var options = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(0, 4, 0, 0) };
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+            options.Controls.Add(new Label { Text = "Playlist quality", AutoSize = true }, 0, 0);
+            cmbPlaylistQuality = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbPlaylistQuality.Items.AddRange(BatchQuality.Presets);
+            cmbPlaylistQuality.SelectedIndex = 0;
+            options.Controls.Add(cmbPlaylistQuality, 0, 1);
+            options.Controls.Add(new Label { Text = "File name (single video)", AutoSize = true }, 0, 2);
+            txtName = new TextBox { Dock = DockStyle.Fill, AccessibleName = "Output file name" };
+            options.Controls.Add(txtName, 0, 3);
+            root.Controls.Add(options, 0, 4);
+
+            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var folderRow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
+            folderRow.Controls.Add(new Label { Text = "Save to", AutoSize = true, Margin = new Padding(0, 7, 8, 0) });
+            txtFolder = new TextBox { Text = defaultFolder, Width = 520, Anchor = AnchorStyles.Left | AnchorStyles.Right, AccessibleName = "Save folder" };
+            folderRow.Controls.Add(txtFolder);
+            var browse = new Button { Text = "Browse…", AutoSize = true, Margin = new Padding(8, 0, 0, 0) };
+            browse.Click += (s, e) =>
+            {
+                using var dialog = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
+                if (dialog.ShowDialog(this) == DialogResult.OK) txtFolder.Text = dialog.SelectedPath;
+            };
+            folderRow.Controls.Add(browse);
+            footer.Controls.Add(folderRow, 0, 0);
+
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
+            var cancel = new Button { Text = "Cancel", Size = new Size(92, 34), DialogResult = DialogResult.Cancel };
+            cancel.Click += (s, e) =>
+            {
+                DialogResult = ErrorMessage == null ? DialogResult.Cancel : DialogResult.Abort;
+                Close();
+            };
+            btnLater = new Button { Text = "Download Later", Size = new Size(128, 34), Enabled = false };
+            btnStart = new Button { Text = "Start download", Size = new Size(128, 34), Enabled = false };
+            btnStart.Click += (s, e) => Accept(false);
+            btnLater.Click += (s, e) => Accept(true);
+            buttons.Controls.Add(cancel);
+            buttons.Controls.Add(btnLater);
+            buttons.Controls.Add(btnStart);
+            footer.Controls.Add(buttons, 0, 1);
+            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.Controls.Add(footer, 0, 5);
+
+            Controls.Add(root);
+            AcceptButton = btnStart;
+            CancelButton = cancel;
+            FormClosing += (s, e) =>
+            {
+                previewCts.Cancel();
+                if (ErrorMessage != null && DialogResult == DialogResult.None)
+                    DialogResult = DialogResult.Abort;
+            };
+            FormClosed += (s, e) =>
+            {
+                thumbnail.Image?.Dispose();
+                previewCts.Dispose();
+            };
+            Shown += async (s, e) => await LoadPreviewAsync();
         }
 
-        string DefaultName()
+        async Task LoadPreviewAsync()
         {
-            string n = DownloadEngine.Sanitize(info.Title ?? "").TrimEnd('.', ' ');
-            if (n.Length > 120) n = n.Substring(0, 120).TrimEnd('.', ' ');
-            return n.Length == 0 ? "video" : n;
+            try
+            {
+                previewCts.CancelAfter(TimeSpan.FromSeconds(90));
+                var progress = new Progress<string>(text =>
+                {
+                    if (!IsDisposed) lblStatus.Text = text;
+                });
+
+                bool cacheHit = YtDlpPreviewCache.Shared.TryGet(url, DateTimeOffset.UtcNow, out preview) && preview != null;
+                if (cacheHit && preview?.Playlist is YtPlaylistInfo cachedPlaylist && cachedPlaylist.EntriesLimit > 0 && cachedPlaylist.EntriesLimit < maxPlaylistEntries)
+                {
+                    YtDlpPreviewCache.Shared.Remove(url);
+                    preview = null;
+                    cacheHit = false;
+                }
+                if (!cacheHit || preview == null)
+                {
+                    if (YtDlpMetadataParser.IsYouTubePlaylistUrl(url))
+                    {
+                        playlist = await YtDlpInfo.LoadPlaylistAsync(url, previewCts.Token, progress, maxPlaylistEntries);
+                        preview = new YtPreviewData { Playlist = playlist };
+                    }
+                    else
+                    {
+                        info = await YtDlpInfo.LoadAsync(url, previewCts.Token, progress);
+                        preview = new YtPreviewData { Video = info };
+                    }
+                    YtDlpPreviewCache.Shared.Store(url, preview, DateTimeOffset.UtcNow);
+                }
+                else
+                {
+                    info = preview.Video;
+                    playlist = preview.Playlist;
+                }
+
+                previewCts.CancelAfter(Timeout.InfiniteTimeSpan);
+                if (IsDisposed) return;
+                loading = false;
+                RenderPreview();
+                bool canAccept = playlist != null
+                    ? playlist.AvailableCount > 0
+                    : cmbVideo.Items.Count > 0 || rbAudio.Enabled;
+                if (canAccept)
+                {
+                    btnStart.Enabled = true;
+                    btnLater.Enabled = true;
+                    lblStatus.Text = playlist != null
+                        ? "Preview ready. Playlist sizes are unknown until each video is analyzed."
+                        : "Preview ready. Choose a format and destination.";
+                }
+                else
+                {
+                    ErrorMessage = FfmpegLocator.Find() == null
+                        ? "No available video format can be saved without FFmpeg. Install a trusted FFmpeg build beside FastDM, then reopen the preview."
+                        : "yt-dlp returned no downloadable video or audio formats.";
+                    lblStatus.Text = ErrorMessage;
+                    Text = "No compatible video format";
+                }
+                if (info?.Thumbnail is string imageUrl) _ = LoadThumbnailAsync(imageUrl, previewCts.Token);
+            }
+            catch (OperationCanceledException) when (previewCts.IsCancellationRequested)
+            {
+                if (IsDisposed || Disposing) return;
+                loading = false;
+                ErrorMessage = "Reading video information timed out or was cancelled.";
+                lblStatus.Text = ErrorMessage;
+                btnStart.Enabled = false;
+                btnLater.Enabled = false;
+                Text = "Video preview could not be loaded";
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+                loading = false;
+                string message = ex.GetBaseException().Message;
+                ErrorMessage = ex is YtDlpProcessException processException && !string.IsNullOrWhiteSpace(processException.DiagnosticText)
+                    ? processException.DiagnosticText
+                    : message;
+                lblStatus.Text = AppLog.Redact(message);
+                btnStart.Enabled = false;
+                btnLater.Enabled = false;
+                Text = "Video preview could not be loaded";
+            }
         }
 
-        void ApplyMode()
+        void RenderPreview()
+        {
+            if (preview?.Playlist is YtPlaylistInfo pl)
+            {
+                playlist = pl;
+                lblTitle.Text = pl.Title;
+                lblSource.Text = SourceLine(pl.Extractor, pl.Uploader, 0) + Environment.NewLine +
+                    "Playlist entries: " + pl.CountDescription + Environment.NewLine +
+                    "Save folder: " + txtFolder.Text;
+                singlePanel.Visible = false;
+                playlistPanel.Visible = true;
+                txtName.Enabled = false;
+                cmbPlaylistQuality.Enabled = true;
+                playlistEntries.Items.Clear();
+                foreach (var entry in pl.Entries)
+                {
+                    bool check = entry.Available && playlistEntries.CheckedItems.Count < maxPlaylistEntries;
+                    playlistEntries.Items.Add(new PlaylistItem { Entry = entry }, check);
+                }
+                bool hasFfmpeg = FfmpegLocator.Find() != null;
+                if (!hasFfmpeg)
+                {
+                    for (int i = cmbPlaylistQuality.Items.Count - 1; i >= 0; i--)
+                        if (cmbPlaylistQuality.Items[i] is BatchQuality quality && quality.AudioOnly)
+                            cmbPlaylistQuality.Items.RemoveAt(i);
+                    lblStatus.Text = "Playlist sizes are not known yet. FFmpeg is unavailable; audio conversion presets are hidden.";
+                }
+                else
+                {
+                    lblStatus.Text = "Playlist sizes are not known yet; each video's size depends on its selected format.";
+                }
+                UpdatePlaylistCount();
+            }
+            else if (preview?.Video is YtInfo video)
+            {
+                info = video;
+                lblTitle.Text = video.Title;
+                lblSource.Text = SourceLine(video.Extractor, video.Uploader, video.Duration) + Environment.NewLine +
+                    "Available formats: " + video.Videos.Count + " video quality option(s)";
+                singlePanel.Visible = true;
+                playlistPanel.Visible = false;
+                txtName.Enabled = true;
+                txtName.Text = DefaultName(video.Title);
+                FillVideoFormats(video);
+                bool hasFfmpeg = FfmpegLocator.Find() != null;
+                rbAudio.Enabled = hasFfmpeg && video.HasAudio;
+                if (!rbAudio.Enabled) rbAudio.Checked = false;
+                rbVideo.Enabled = cmbVideo.Items.Count > 0;
+                if (!rbVideo.Enabled)
+                {
+                    rbVideo.Checked = false;
+                    if (rbAudio.Enabled) rbAudio.Checked = true;
+                }
+                UpdateSingleMode();
+            }
+        }
+
+        void FillVideoFormats(YtInfo video)
+        {
+            bool hasFfmpeg = FfmpegLocator.Find() != null;
+            cmbVideo.Items.Clear();
+            foreach (var option in video.Videos)
+            {
+                string? selector = option.GetSelector(hasFfmpeg);
+                if (selector == null) continue;
+                string label = option.Label;
+                if (!hasFfmpeg && option.RequiresMerge) label += "  •  no-merge format";
+                cmbVideo.Items.Add(new OptItem { Text = label, Tag = option });
+            }
+            if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;
+            if (!hasFfmpeg)
+                lblMerge.Text = "FFmpeg is unavailable. Only formats that do not need audio/video merging are offered.";
+        }
+
+        void UpdateSingleMode()
         {
             bool audio = rbAudio.Checked;
             cmbVideo.Visible = !audio;
             cmbAudio.Visible = audio;
-            UpdateSize();
+            UpdateSizeAndMerge();
         }
 
-        void UpdateSize()
+        void UpdateSizeAndMerge()
         {
+            if (info == null) return;
             if (rbAudio.Checked)
             {
-                lblSize.Text = info.BestAudioBytes > 0 ? "Estimated source size: ≈ " + YtDlpInfo.Fmt(info.BestAudioBytes) : "";
+                lblSize.Text = info.BestAudioBytes > 0
+                    ? "Estimated source size: about " + YtDlpInfo.Fmt(info.BestAudioBytes)
+                    : "Estimated size: unknown";
+                lblMerge.Text = "Audio extraction uses FFmpeg. MP3 conversion re-encodes the source audio.";
                 return;
             }
-            var v = (cmbVideo.SelectedItem as OptItem)?.Tag as YtVideoOpt;
-            lblSize.Text = v != null && v.EstBytes > 0 ? "Estimated size: ≈ " + YtDlpInfo.Fmt(v.EstBytes) : "";
+            var option = (cmbVideo.SelectedItem as OptItem)?.Tag as YtVideoOpt;
+            lblSize.Text = option != null && option.EstBytes > 0
+                ? "Estimated download size: about " + YtDlpInfo.Fmt(option.EstBytes)
+                : "Estimated download size: unknown";
+            lblMerge.Text = option?.RequiresMerge == true && FfmpegLocator.Find() != null
+                ? "This format downloads separate video and audio streams, then merges them with FFmpeg."
+                : FfmpegLocator.Find() == null
+                    ? "FFmpeg is unavailable; this format does not require a merge."
+                    : "This format is available as one stream; no merge is expected.";
         }
 
-        void OnOk(object? sender, EventArgs e)
+        void OnPlaylistItemCheck(object? sender, ItemCheckEventArgs e)
         {
-            string name = DownloadEngine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
-            if (name.Length == 0) { MessageBox.Show(this, "Please enter a file name."); return; }
-            if (txtFolder.Text.Trim().Length == 0) { MessageBox.Show(this, "Please choose a folder."); return; }
-
-            var spec = new YtDlpSpec { Url = url, BaseName = name };
-
-            if (rbAudio.Checked)
+            if (e.NewValue == CheckState.Checked && playlistEntries.Items[e.Index] is PlaylistItem item && !item.Entry.Available)
+                e.NewValue = CheckState.Unchecked;
+            else if (e.NewValue == CheckState.Checked && e.CurrentValue != CheckState.Checked && playlistEntries.CheckedItems.Count >= maxPlaylistEntries)
             {
-                spec.AudioOnly = true;
-                spec.Format = "ba/b";
-                spec.AudioFormat = (cmbAudio.SelectedItem as OptItem)?.Tag as string ?? "m4a";
-                spec.EstimatedBytes = info.BestAudioBytes;
+                e.NewValue = CheckState.Unchecked;
+                lblStatus.Text = "The playlist selection limit is " + maxPlaylistEntries + ". Change Maximum URLs in Preferences to select more.";
             }
-            else
+            if (IsHandleCreated && !IsDisposed) BeginInvoke(new Action(UpdatePlaylistCount));
+        }
+
+        void UpdatePlaylistCount()
+        {
+            if (playlist == null) return;
+            int selected = playlistEntries.CheckedItems.Cast<PlaylistItem>().Count(x => x.Entry.Available);
+            lblCount.Text = playlist.CountDescription + "  •  " + selected + " selected (limit " + maxPlaylistEntries + ")";
+        }
+
+        void Accept(bool later)
+        {
+            if (loading || !ValidateOutput()) return;
+            var result = new List<YtDlpSpec>();
+            if (playlist != null)
             {
-                var v = (cmbVideo.SelectedItem as OptItem)?.Tag as YtVideoOpt;
-                spec.Format = v?.Selector ?? "bv*+ba/b";
-                spec.EstimatedBytes = v?.EstBytes ?? 0;
+                var quality = cmbPlaylistQuality.SelectedItem as BatchQuality ?? BatchQuality.Presets[0];
+                foreach (PlaylistItem item in playlistEntries.CheckedItems.Cast<PlaylistItem>().Take(maxPlaylistEntries))
+                {
+                    if (!item.Entry.Available || string.IsNullOrWhiteSpace(item.Entry.Url)) continue;
+                    result.Add(new YtDlpSpec
+                    {
+                        Url = item.Entry.Url,
+                        BaseName = DownloadEngine.Sanitize(item.Entry.Title),
+                        Format = quality.Format,
+                        AudioOnly = quality.AudioOnly,
+                        AudioFormat = quality.AudioFormat,
+                        NameFromTitle = true
+                    });
+                }
+                if (result.Count == 0)
+                {
+                    MessageBox.Show(this, "Select at least one available video.", "Video playlist");
+                    return;
+                }
+            }
+            else if (info != null)
+            {
+                string baseName = DownloadEngine.Sanitize(txtName.Text.Trim()).TrimEnd('.', ' ');
+                var spec = new YtDlpSpec { Url = url, BaseName = baseName };
+                if (preview?.InfoJsonPath is string path && preview.ExpiresAt > DateTimeOffset.UtcNow)
+                {
+                    spec.InfoJsonPath = path;
+                    spec.InfoJsonExpiresAt = preview.ExpiresAt;
+                }
+                if (rbAudio.Checked)
+                {
+                    spec.AudioOnly = true;
+                    spec.Format = "ba/b";
+                    spec.AudioFormat = (cmbAudio.SelectedItem as OptItem)?.Tag as string ?? "m4a";
+                    spec.EstimatedBytes = info.BestAudioBytes;
+                }
+                else
+                {
+                    var option = (cmbVideo.SelectedItem as OptItem)?.Tag as YtVideoOpt;
+                    spec.Format = option?.GetSelector(FfmpegLocator.Find() != null) ?? "bv*+ba/b";
+                    spec.EstimatedBytes = option?.EstBytes ?? 0;
+                }
+                result.Add(spec);
             }
 
-            Spec = spec;
-            DialogResult = DialogResult.OK;
+            Specs = result;
+            DialogResult = later ? DialogResult.Yes : DialogResult.OK;
+            Close();
+        }
+
+        bool ValidateOutput()
+        {
+            if (string.IsNullOrWhiteSpace(txtFolder.Text))
+            {
+                MessageBox.Show(this, "Choose a folder for the download.", "Video");
+                return false;
+            }
+            if (playlist == null && string.IsNullOrWhiteSpace(txtName.Text))
+            {
+                MessageBox.Show(this, "Enter a file name.", "Video");
+                txtName.Focus();
+                return false;
+            }
+            return true;
+        }
+
+        async Task LoadThumbnailAsync(string imageUrl, CancellationToken ct)
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                ct = timeout.Token;
+                if (!TryTrustedThumbnailUri(imageUrl, out var current)) return;
+                HttpResponseMessage? response = null;
+                for (int redirect = 0; redirect <= 3; redirect++)
+                {
+                    response = await ThumbnailClient.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
+                    if (!IsRedirect(response.StatusCode)) break;
+                    Uri? next = response.Headers.Location == null ? null : response.Headers.Location.IsAbsoluteUri
+                        ? response.Headers.Location
+                        : new Uri(current, response.Headers.Location);
+                    response.Dispose();
+                    response = null;
+                    if (next == null || !TryTrustedThumbnailUri(next.AbsoluteUri, out current)) return;
+                }
+                if (response == null) return;
+                using (response)
+                {
+                    if (!response.IsSuccessStatusCode || response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true) return;
+                if (response.Content.Headers.ContentLength > 2 * 1024 * 1024) return;
+                using var stream = await response.Content.ReadAsStreamAsync(ct);
+                using var memory = new MemoryStream();
+                var buffer = new byte[8192];
+                int total = 0;
+                while (true)
+                {
+                    int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+                    if (count == 0) break;
+                    total += count;
+                    if (total > 2 * 1024 * 1024) return;
+                    memory.Write(buffer, 0, count);
+                }
+                memory.Position = 0;
+                using var image = Image.FromStream(memory);
+                if (image.Width <= 0 || image.Height <= 0 || image.Width > 4096 || image.Height > 4096 || (long)image.Width * image.Height > 16_000_000)
+                    return;
+                var copy = new Bitmap(image);
+                if (IsDisposed) { copy.Dispose(); return; }
+                var old = thumbnail.Image;
+                thumbnail.Image = copy;
+                old?.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Video preview thumbnail unavailable: " + ex.Message);
+            }
+        }
+
+        static bool TryTrustedThumbnailUri(string value, out Uri uri)
+        {
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps ||
+                !string.IsNullOrEmpty(parsed.UserInfo))
+            {
+                uri = null!;
+                return false;
+            }
+            uri = parsed;
+            string host = parsed.IdnHost;
+            return host.Equals("ytimg.com", StringComparison.OrdinalIgnoreCase) ||
+                host.EndsWith(".ytimg.com", StringComparison.OrdinalIgnoreCase) ||
+                host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsRedirect(System.Net.HttpStatusCode status) =>
+            status is System.Net.HttpStatusCode.Moved or System.Net.HttpStatusCode.Redirect or
+                System.Net.HttpStatusCode.RedirectMethod or System.Net.HttpStatusCode.TemporaryRedirect or
+                System.Net.HttpStatusCode.PermanentRedirect;
+
+        string SourceLine(string? extractor, string? uploader, double duration)
+        {
+            string result = "Source: " + (extractor ?? new Uri(url).Host);
+            if (!string.IsNullOrWhiteSpace(uploader)) result += "  •  Channel: " + uploader;
+            if (duration > 0)
+            {
+                var time = TimeSpan.FromSeconds(duration);
+                result += "  •  Duration: " + (time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss"));
+            }
+            return result;
+        }
+
+        static string DefaultName(string title)
+        {
+            string name = DownloadEngine.Sanitize(title ?? "").TrimEnd('.', ' ');
+            if (name.Length > 120) name = name.Substring(0, 120).TrimEnd('.', ' ');
+            return name.Length == 0 ? "video" : name;
         }
     }
 }

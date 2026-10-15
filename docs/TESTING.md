@@ -159,18 +159,20 @@ Its menu lists the three modes with their speed and simultaneous downloads, and
 
 The Store check needs the signed MSIX installed; a plain Visual Studio *Debug* run is "portable".
 
-## 3f. YouTube cookies (yt-dlp) and text encoding
+## 3f. YouTube cookie selection and diagnosis
 
 | Check | Expected |
 | --- | --- |
-| Text encoding | Toolbar, Add dialog and status bar show `…`, `—`, `→` and the toolbar icons correctly, with no garbled characters. |
-| Preferences → Advanced → Video sites | A "Use cookies from browser" box with None / Microsoft Edge / Google Chrome / Mozilla Firefox / Brave. Default is None. |
-| Save, close, reopen Preferences | The chosen browser is still selected. Reset puts it back to None. |
-| Preferences → Advanced → Video sites → Cookies file | A Browse box for a `cookies.txt` file. When a file is set, yt-dlp gets `--cookies <file>` and the browser choice is ignored. Clear the box to go back to the browser choice. |
-| YouTube link, cookies None | If YouTube asks you to sign in, the error box explains to choose a browser in Preferences. |
-| YouTube link, Edge selected, Edge fully closed | The quality picker opens (no sign-in error). If Edge blocks cookie access, the error box suggests Firefox. |
-| Same, Firefox selected | The quality picker opens when you are logged in to YouTube in Firefox. |
-| Hand-edit `state.json`: `"YtCookieBrowser": "--exec calc"` | The value is ignored (treated as None); nothing extra is passed to yt-dlp. |
+| Preferences → Advanced → Video sites | Cookie source shows None, a selected browser, or cookies.txt. A missing or malformed file is called out before a request runs. |
+| Select a browser, save, close and reopen Preferences | The browser remains selected. Reset changes it to None. Browser cookies are read only when the user selects a browser source. |
+| Select a valid Netscape cookies.txt file | It becomes the active source and takes priority over the browser. Clear the path to return to the browser selection. Never attach or share this file. |
+| Select a missing, empty, or malformed cookies.txt file | The source indicator and error identify the file problem without printing its path or contents. |
+| Reproduce Image #1 with Chrome/Edge closed, if the local browser profile still rejects access | The error identifies a browser cookie-database copy/lock problem and suggests closing background browser processes or choosing another supported source. FastDM must not weaken browser cookie protection or kill the browser. |
+| Reproduce Image #2 with a YouTube request that requires verification | The error identifies a browser verification/sign-in requirement and offers the optional user-selected cookie source. FastDM must not bypass CAPTCHA or authentication. |
+| Use a malformed/private/unavailable link or a network failure | The error does not incorrectly recommend cookies when the classified failure is format, access, DNS, rate limit, proxy, or network related. |
+| Copy technical details from the error dialog | Query values, credentials, cookies, proxy secrets, and private paths are redacted. No diagnostic is sent to a remote service. |
+
+Automated tests do not read a real browser profile or cookies.txt file. Use a disposable test profile if manually testing cookie access; never add its cookie file to the repository or logs.
 
 ## 3g. Extension origin binding
 
@@ -197,34 +199,32 @@ Your download list and settings live in `%APPDATA%\FastDM` (press Win+R, type th
 | Put `"SchemaVersion": 99,` as the first line inside the `{ }` of `state.json`, start FastDM | A warning says the settings come from a newer version; `state.json.from-v99` is created once; FastDM still works. |
 | Add a download, wait more than 15 minutes with FastDM open | `state.json.bak` becomes newer and the previous one becomes `state.json.bak2`. |
 
-## 3i. Video links, selection and details panel
+## 3i. Video preview, download stages, and selection recovery
 
 | Check | Expected |
 | --- | --- |
-| Drop a YouTube link into FastDM | While it reads the video, the bottom bar counts seconds ("Reading video info… 12 s"), then the quality picker opens. |
-| Preferences → Advanced → turn on **Enable logging**, add a YouTube link, then **Open log folder** | The newest log has a line like `yt-dlp info: 14.2 s, exit 0, js runtime quickjs, cookies off`. Send me this line if the wait is long. |
-| Drop a Facebook reel link that ends with `/` | The video picker opens (not the "Download Folder" window). If it fails, the message shows the real yt-dlp error: send me that text. |
-| Drop an Instagram reel link that ends with `/` | Same as above. |
-| Drop a plain folder link such as `https://server/movies/` | Still opens the "Download Folder" window. |
-| Switch to the **Light** theme, open Settings and click each item in the left menu (Traffic Limits and the others) | The selected item's text stays white and readable (it used to turn dark on the dark menu). |
-| Click in the download list and press **Ctrl+A** | Every row becomes selected. **Delete** then offers to remove all of them. |
-| Add a new download (link, folder or video) | The new download is selected and the bottom panel shows its details, without clicking. |
-| Select a download and hover over **Save to** in the bottom panel | The path turns accent-coloured, is underlined and the cursor becomes a hand. |
-| Click **Save to** (finished download) | Explorer opens with the file selected. |
-| Click **Save to** (download still running) | Explorer opens the folder. If the folder does not exist yet, a message says so. |
-| Click **Link** (an https link) | The page opens in the default browser, for example the YouTube video. |
-| Select an FTP or SFTP download | **Link** stays plain text (not clickable). |
-| Make the window narrower and wider (also try Windows scaling 125% and 150%) | Every toolbar button stays on one row, including **Updates**. When space runs out, the least used buttons (Open File, Open Folder, Details, Schedule, When done…) lose their text and show only the icon; hovering shows the name. |
-| Change the mode (Low / Medium / High) | The toolbar re-fits; nothing jumps into the overflow menu. |
+| Add a YouTube watch URL or short URL, including one with `&list=...` | One single-video preview opens immediately. Title, channel/source, duration, thumbnail, format choices, estimated or unknown size, file name, and save folder fill in asynchronously. |
+| Add a YouTube playlist URL without a video ID | The same preview window lists available entries, reports the listed/reported count or unknown total, and lets you select entries and quality. Only the configured maximum URL count can be selected. |
+| Cancel while metadata is loading | The dialog closes promptly and cancels the yt-dlp child process. No download item is added. |
+| Choose **Download Later** | The selected item or playlist entries are added paused. **Start download** queues them immediately. |
+| Add the same YouTube video twice through browser/clipboard events | Only one active or queued job is added; a watch URL with a playlist parameter remains one video. |
+| Preview a format with known size and one without size metadata | The dialog labels sizes as estimates and says “unknown” when no size estimate is available; it never presents an estimate as exact. |
+| Run without FFmpeg installed | Formats requiring a video/audio merge and audio conversion are unavailable. A compatible single-stream format remains selectable when yt-dlp reports one. |
+| Download a format requiring FFmpeg | During merge/post-processing, the list and Details panel show that stage; transfer speed and ETA are blank. Completion appears only after a non-empty output file is found. |
+| Trigger a 429 response with and without a `Retry-After` header | yt-dlp's attempts remain bounded. FastDM does not retry a rate limit again without a server delay; with a delay it waits and performs at most one outer retry. |
+| Select a video, then remove it or clear Deleted history | Details clear immediately and never remain bound to the removed item. |
+| Run an updater request while a video process is active | The update waits until active yt-dlp children finish; new yt-dlp jobs wait until the update releases the process gate. |
+| Resize the preview at 100%, 125%, 150%, and 200% scaling; use Tab, Space, Enter, and Escape | Controls remain visible, selectable, and keyboard operable. Cancel works during metadata loading. |
 
-### Importing a list of links (text file)
+A live YouTube check is optional and network-dependent. Use a public video without account cookies first. If the site requests verification, complete it in the browser and only then opt in to a supported signed-in browser or a user-exported cookies.txt file. Do not attempt to bypass verification, DRM, or access restrictions. Automated tests use fixtures and local processes only.
+### Importing multiple links from a text file (batch workflow)
 
 | Check | Expected |
 | --- | --- |
 | Add URL -> **Open text file...** and pick a .txt with about 10 YouTube links (some with `&list=...`), 2 folder links and a few lines of comments (`# ...`) | The **Import links** window opens. Comments and blank lines are skipped. Each line shows its type. YouTube links with a playlist part are listed as one video with a note. |
 | Same file, but add a `youtube.com/playlist?...` line and a line of plain text | Both are listed greyed out and cannot be ticked (playlist / not a link). |
 | Repeat one link twice | The repeat is listed, not ticked, with the note "same link as an earlier line". |
-| Pick quality **Up to 720p** and press **Start downloading** | One download per ticked video (never more than the number of lines). They are named after the video title when each one finishes; until then the name looks like `youtube.com dQw4w9WgXcQ.mp4`. The video list is NOT read first, so adding is instant. |
+| Pick quality **Up to 720p** and press **Start downloading** | One download per ticked video (never more than the number of lines). Batch entries queue without an individual preview and are named after the video title when each one finishes. Adding one video URL directly through **Add URL** uses the unified asynchronous preview instead. |
 | A folder link with "Download whole folders automatically" ticked | The folder is scanned (bottom bar shows progress) and every file goes into `<Save to>\<folder name>`, keeping its sub-folders. No window per folder. |
 | Same, with that box unticked | The usual "Download Folder" window opens for each folder. |
 | Pick **Audio only (M4A)** | The downloads become .m4a files. |
@@ -293,6 +293,7 @@ powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1
 
 This copies tracked and non-ignored source files to a uniquely named directory
 under the operating system's temporary folder, leaving ignored local tools,
-build outputs, and caches behind. It builds the desktop app and runs the .NET,
-loopback integration, and extension tests there, then removes only that
-temporary copy.
+build outputs, and caches behind. It builds the desktop app, checks package
+metadata, builds the MSIX package when Visual Studio MSBuild is available,
+runs the .NET, loopback integration, and extension tests, and packs the
+extension there. It then removes only that temporary copy.

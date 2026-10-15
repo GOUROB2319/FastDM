@@ -14,6 +14,11 @@ if (args.Length == 1 && args[0] == "--sleep")
     await Task.Delay(TimeSpan.FromSeconds(30));
     return 0;
 }
+if (args.Length == 1 && args[0] == "--sleep-short")
+{
+    await Task.Delay(TimeSpan.FromMilliseconds(700));
+    return 0;
+}
 
 var failures = 0;
 void Check(string name, bool ok)
@@ -47,6 +52,20 @@ try
         catch (OperationCanceledException) { processCancelled = true; }
     }
     Check("yt-dlp runner terminates a cancelled child process", processCancelled);
+
+    var activeChild = YtDlpRunner.RunAsync(processHost, new[] { "--sleep-short" }, _ => { }, _ => { }, CancellationToken.None);
+    await Task.Delay(80);
+    var exclusiveOutput = new StringBuilder();
+    var exclusiveUpdate = YtDlpRunner.RunExclusiveUpdateAsync(processHost, new[] { "--emit-unicode" },
+        line => { lock (exclusiveOutput) exclusiveOutput.AppendLine(line); }, _ => { }, CancellationToken.None);
+    await Task.Delay(80);
+    bool updateWaited = !exclusiveUpdate.IsCompleted;
+    var queuedOutput = new StringBuilder();
+    var queuedChild = YtDlpRunner.RunAsync(processHost, new[] { "--emit-unicode" },
+        line => { lock (queuedOutput) queuedOutput.AppendLine(line); }, _ => { }, CancellationToken.None);
+    int[] childResults = await Task.WhenAll(activeChild, exclusiveUpdate, queuedChild);
+    Check("exclusive yt-dlp update waits for active children and serializes new processes",
+        updateWaited && childResults.All(x => x == 0) && exclusiveOutput.Length > 0 && queuedOutput.Length > 0);
 
     byte[] payload = Enumerable.Range(0, 1_300_000).Select(i => (byte)(i % 251)).ToArray();
     await using var server = new LocalServer(payload);

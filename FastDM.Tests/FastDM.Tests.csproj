@@ -34,6 +34,8 @@
 		<Compile Include="..\FastDM\Core\HttpRangeValidation.cs" Link="Linked\HttpRangeValidation.cs" />
 		<Compile Include="..\FastDM\Core\UrlCredential.cs" Link="Linked\UrlCredential.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpDiagnostics.cs" Link="Linked\YtDlpDiagnostics.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpMetadata.cs" Link="Linked\YtDlpMetadata.cs" />
+		<Compile Include="..\FastDM\YtDlp\YtDlpRetryPolicy.cs" Link="Linked\YtDlpRetryPolicy.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpProxy.cs" Link="Linked\YtDlpProxy.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpUrlInput.cs" Link="Linked\YtDlpUrlInput.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />

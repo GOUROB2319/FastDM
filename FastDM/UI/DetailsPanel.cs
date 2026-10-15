@@ -135,11 +135,18 @@ namespace FastDM
                 : Fmt(it.Downloaded) + " / unknown";
 
             string etaText = Eta(it);
+            string status = it.DeletedAt.HasValue
+                ? "Deleted: " + (it.DeletedReason ?? "")
+                : it.State == DlState.Completed
+                    ? "Complete"
+                    : it.YtDlp != null && it.State == DlState.Downloading && it.ProgressStage != YtDlpStage.None
+                        ? YtDlpRetryPolicy.StageLabel(it.ProgressStage)
+                        : it.State.ToString();
             var rows = new System.Collections.Generic.List<string[]>
             {
-                new[] { "Status", it.DeletedAt.HasValue ? "Deleted: " + (it.DeletedReason ?? "") : it.State == DlState.Completed ? "Complete" : it.State.ToString() },
+                new[] { "Status", status },
                 new[] { "Size", size },
-                new[] { "Speed", it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "—" },
+                new[] { "Speed", it.State == DlState.Downloading && (it.YtDlp == null || YtDlpRetryPolicy.IsTransferring(it.ProgressStage)) ? Fmt(it.Speed) + "/s" : "—" },
                 new[] { "ETA", etaText.Length > 0 ? etaText : "—" },
                 new[] { "Resume", it.Stream != null || it.YtDlp != null || it.SupportsRange || !DownloadEngine.IsHttp(it.Url ?? "http://") ? "Supported" : "Not supported" },
                 new[] { "Save to", it.Folder ?? "" },
@@ -147,7 +154,15 @@ namespace FastDM
                 new[] { "Added", it.Added.ToString("dd MMM yyyy HH:mm") }
             };
             if (it.State == DlState.Error && !string.IsNullOrEmpty(it.Error))
-                rows.Insert(1, new[] { "Error", it.Error });
+            {
+                string error = AppLog.Redact(it.Error);
+                if (it.YtDlp != null)
+                {
+                    var kind = YtDlpDiagnostics.Classify(error);
+                    error = YtDlpDiagnostics.Describe(kind, UpdateChecker.IsPackaged).Summary + "  " + error;
+                }
+                rows.Insert(1, new[] { "Error", error });
+            }
             else if (!string.IsNullOrEmpty(it.Error))
                 rows.Insert(1, new[] { "Note", it.Error });
 
@@ -193,7 +208,7 @@ namespace FastDM
 
             TextRenderer.DrawText(g, "Speed (last 60 s)", Font, new Rectangle(r.X, r.Y, r.Width / 2, 20),
                 p.SubText, f | TextFormatFlags.Left);
-            string now = it.State == DlState.Downloading ? Fmt(it.Speed) + "/s" : "—";
+            string now = it.State == DlState.Downloading && (it.YtDlp == null || YtDlpRetryPolicy.IsTransferring(it.ProgressStage)) ? Fmt(it.Speed) + "/s" : "—";
             TextRenderer.DrawText(g, now, bold, new Rectangle(r.X + r.Width / 2, r.Y - 2, r.Width / 2, 24),
                 p.Text, f | TextFormatFlags.Right);
 
@@ -323,6 +338,7 @@ namespace FastDM
 
         static string Eta(DownloadItem it)
         {
+            if (it.YtDlp != null && !YtDlpRetryPolicy.IsTransferring(it.ProgressStage)) return "";
             if (it.State != DlState.Downloading || it.Speed < 1 || it.TotalBytes <= 0) return "";
             var t = TimeSpan.FromSeconds((it.TotalBytes - it.Downloaded) / it.Speed);
             if (t.TotalHours >= 1) return (int)t.TotalHours + "h " + t.Minutes + "m";
