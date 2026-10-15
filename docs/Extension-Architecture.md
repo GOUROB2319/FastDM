@@ -107,7 +107,7 @@ FastDM/
     BridgeAuth.cs               # পেয়ারিং, টোকেন, Origin/Host চেক
     BridgeModels.cs             # AddRequest, TaskInfo ইত্যাদি
     ProtocolHandler.cs          # fastdm:// আর্গুমেন্ট পার্সিং
-  (MainForm.cs-এ ছোট বদল: ProcessUrlsAsync বের করা, HandleExternalAdd)
+  (MainForm.Add.cs / MainForm.Bridge.cs-এ ছোট বদল: ProcessUrlsAsync বের করা, HandleExternalAdd)
   (Package.appxmanifest-এ uap:Protocol যোগ)
 ```
 (পরের ধাপে `Cloud/ICloudProvider.cs`, `Cloud/GoogleDriveProvider.cs` ইত্যাদি, আর `Playlist/M3uBuilder.cs`)

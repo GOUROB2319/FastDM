@@ -13,7 +13,7 @@ after the user approves a pairing request.
 | `FastDM/Network/` | Proxy, speed limit, saved credentials, FTP/SFTP transfer |
 | `FastDM/Media/` | HLS/DASH detection and download, playlist (.m3u8) builder |
 | `FastDM/YtDlp/` | yt-dlp process, cookies, site list and output parsing |
-| `FastDM/UI/` | Main window, dialogs, theme and shared controls |
+| `FastDM/UI/` | Main window (`MainForm.cs` + one `MainForm.<Part>.cs` per feature), dialogs, theme and shared controls |
 | `FastDM/Bridge/` | Local extension bridge, pairing, and `fastdm://` protocol handling |
 | `FastDM/Resources/` | Desktop app icon |
 | `FastDM.Package/` | Optional MSIX/Windows package project and its image assets |
@@ -25,6 +25,15 @@ after the user approves a pairing request.
 | `FastDM.Extension/tools/` | Extension packaging script |
 | `docs/` | Design and architecture notes |
 | `scripts/` | Repeatable local build/test commands |
+
+## Code conventions
+
+- One namespace (`FastDM`); the folder tells the area, the file name tells the main type inside it.
+- A file is named after its main type (`CredentialStore.cs`, `RemoteLister.cs`). Small helper types
+  stay in the file of the type that owns them.
+- A big class is split with `partial` as `Type.Part.cs` (`MainForm.Add.cs`, `DownloadEngine.Remote.cs`).
+  All fields and the constructor stay in the main file (`MainForm.cs`).
+- The static class `Engine` is called `DownloadEngine`, like `StreamEngine` and `YtDlpEngine`.
 
 The privacy policy is at [`docs/Privacy.md`](docs/Privacy.md).
 
