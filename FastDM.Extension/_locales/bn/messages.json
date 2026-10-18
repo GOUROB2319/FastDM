@@ -5,6 +5,9 @@
   "extDescription": {
     "message": "ব্রাউজার থেকে লিঙ্ক, ভিডিও আর ফাইল FastDM ডেস্কটপ অ্যাপে পাঠান।"
   },
+  "popupTitle": {
+    "message": "FastDM"
+  },
   "menuDownloadLink": {
     "message": "FastDM দিয়ে ডাউনলোড"
   },
@@ -45,10 +48,10 @@
     "message": "সেটিংস"
   },
   "btnPause": {
-    "message": "পজ"
+    "message": "থামান"
   },
   "btnResume": {
-    "message": "চালু"
+    "message": "চালিয়ে যান"
   },
   "btnForget": {
     "message": "এই ব্রাউজারের সংযোগ বিচ্ছিন্ন করুন"
@@ -90,7 +93,7 @@
     "message": "ডাউনলোড হচ্ছে"
   },
   "statePaused": {
-    "message": "পজ করা"
+    "message": "থামানো"
   },
   "stateComplete": {
     "message": "সম্পূর্ণ"

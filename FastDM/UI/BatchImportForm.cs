@@ -56,32 +56,53 @@ namespace FastDM
             MinimumSize = new Size(700, 500);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            Controls.Add(new Label
+            var body = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(Theme.Scale(this, DialogLayout.StandardMargin)),
+                Margin = Padding.Empty,
+                ColumnCount = 1,
+                RowCount = 7
+            };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            body.Controls.Add(new Label
             {
                 Text = "Check the list, then choose what to download",
                 Font = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold),
-                Location = new Point(16, 12),
-                AutoSize = true
-            });
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8))
+            }, 0, 0);
 
-            Controls.Add(new Label
+            var summary = new Label
             {
                 Text = BatchImport.Summarize(rows),
-                Location = new Point(16, 42),
-                Size = new Size(828, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            });
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 1200), 0),
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 10)),
+                AccessibleName = "Import summary"
+            };
+            body.Controls.Add(summary, 0, 1);
 
             list = new ListView
             {
-                Location = new Point(16, 84),
-                Size = new Size(828, 320),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Dock = DockStyle.Fill,
+                MinimumSize = new Size(Theme.Scale(this, 320), Theme.Scale(this, 160)),
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8)),
                 View = View.Details,
                 FullRowSelect = true,
                 CheckBoxes = true,
                 HideSelection = false,
-                MultiSelect = true
+                MultiSelect = true,
+                AccessibleName = "Import links",
+                AccessibleDescription = "Select the links to import. Unsupported playlist and non-link rows cannot be selected."
             };
 
             list.Columns.Add("Line", 52);
@@ -118,78 +139,144 @@ namespace FastDM
                     e.NewValue = e.CurrentValue;
                 }
             };
-
             list.ItemChecked += (s, e) => UpdateCount();
-            Controls.Add(list);
+            body.Controls.Add(list, 0, 2);
 
-            var all = new Button { Text = "Select all", Location = new Point(16, 412), Size = new Size(96, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var none = new Button { Text = "Select none", Location = new Point(118, 412), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var videos = new Button { Text = "Videos only", Location = new Point(224, 412), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var selectionRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8)),
+                ColumnCount = 4,
+                RowCount = 1
+            };
+            selectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 104)));
+            selectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 108)));
+            selectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 112)));
+            selectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
+            var all = DialogLayout.CreateButton(this, "Select all");
+            var none = DialogLayout.CreateButton(this, "Select none");
+            var videos = DialogLayout.CreateButton(this, "Videos only");
+            all.Margin = new Padding(0, Theme.Scale(this, 2), Theme.Scale(this, 6), Theme.Scale(this, 2));
+            none.Margin = new Padding(0, Theme.Scale(this, 2), Theme.Scale(this, 6), Theme.Scale(this, 2));
+            videos.Margin = new Padding(0, Theme.Scale(this, 2), Theme.Scale(this, 6), Theme.Scale(this, 2));
             all.Click += (s, e) => TickWhere(r => CanTick(r));
             none.Click += (s, e) => TickWhere(r => false);
             videos.Click += (s, e) => TickWhere(r => r.Kind == BatchKind.Video && !r.Duplicate && !r.AlreadyListed);
 
-            Controls.Add(all);
-            Controls.Add(none);
-            Controls.Add(videos);
+            lblCount = new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
+                Margin = new Padding(Theme.Scale(this, 8), 0, 0, 0),
+                AccessibleName = "Selected link count"
+            };
+            selectionRow.Controls.Add(all, 0, 0);
+            selectionRow.Controls.Add(none, 1, 0);
+            selectionRow.Controls.Add(videos, 2, 0);
+            selectionRow.Controls.Add(lblCount, 3, 0);
+            body.Controls.Add(selectionRow, 0, 3);
 
-            lblCount = new Label { Location = new Point(336, 418), Size = new Size(508, 22), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
-            Controls.Add(lblCount);
-
-            Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 460), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
-
+            var qualityRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8)),
+                ColumnCount = 3,
+                RowCount = 1
+            };
+            qualityRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 112)));
+            qualityRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 260)));
+            qualityRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            qualityRow.Controls.Add(new Label
+            {
+                Text = "Video quality",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
             cmbQuality = new ComboBox
             {
-                Location = new Point(120, 456),
-                Width = 260,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                AccessibleName = "Video quality"
             };
             cmbQuality.Items.AddRange(BatchQuality.Presets);
             cmbQuality.SelectedIndex = 0;
-            Controls.Add(cmbQuality);
+            qualityRow.Controls.Add(cmbQuality, 1, 0);
+            body.Controls.Add(qualityRow, 0, 4);
 
             chkFolders = new CheckBox
             {
                 Text = "Download whole folders automatically (no window for each folder)",
-                Location = new Point(16, 492),
                 AutoSize = true,
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-                Checked = true
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8)),
+                Checked = true,
+                AccessibleName = "Download whole folders automatically"
             };
-            Controls.Add(chkFolders);
+            body.Controls.Add(chkFolders, 0, 5);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 530), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
+            var folderRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Margin = Padding.Empty,
+                ColumnCount = 3,
+                RowCount = 1
+            };
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 64)));
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 112)));
+            folderRow.Controls.Add(new Label
+            {
+                Text = "Save to",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
 
-            txtFolder = new TextBox { Location = new Point(80, 526), Size = new Size(650, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
-            Controls.Add(txtFolder);
+            txtFolder = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Text = defaultFolder,
+                AccessibleName = "Save folder"
+            };
+            folderRow.Controls.Add(txtFolder, 1, 0);
 
-            var browse = new Button { Text = "Browse...", Location = new Point(740, 525), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var browse = DialogLayout.CreateButton(this, "Browse…");
+            browse.Dock = DockStyle.Fill;
+            browse.Margin = new Padding(Theme.Scale(this, 6), 0, 0, 0);
             browse.Click += (s, e) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
                 if (fb.ShowDialog(this) == DialogResult.OK)
                     txtFolder.Text = fb.SelectedPath;
             };
-            Controls.Add(browse);
+            folderRow.Controls.Add(browse, 2, 0);
+            body.Controls.Add(folderRow, 0, 6);
 
-            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 574), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            btnLater = new Button { Text = "Download Later", Location = new Point(588, 574), Size = new Size(140, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(734, 574), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-
+            btnStart = DialogLayout.CreateButton(this, "Start download");
+            btnLater = DialogLayout.CreateButton(this, "Download Later");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
             btnStart.Click += (s, e) => Finish(DialogResult.OK);
             btnLater.Click += (s, e) => Finish(DialogResult.Yes);
 
-            Controls.Add(btnStart);
-            Controls.Add(btnLater);
-            Controls.Add(cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, btnLater, btnStart);
+            Controls.Add(DialogLayout.CreateShell(this, body, footer));
 
             AcceptButton = btnStart;
             CancelButton = cancel;
+            Resize += (s, e) =>
+            {
+                summary.MaximumSize = new Size(Math.Max(Theme.Scale(this, 240), body.ClientSize.Width), 0);
+                FitBatchColumns();
+            };
 
             UpdateCount();
             FitBatchColumns();
+            Shown += (s, e) => list.Focus();
         }
 
         void FitBatchColumns()

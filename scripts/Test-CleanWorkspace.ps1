@@ -40,7 +40,9 @@ try {
     }
     if ($msbuildPath -and (Test-Path -LiteralPath $msbuildPath)) {
       Write-Host 'Building the MSIX project in the isolated workspace...'
-      & $msbuildPath 'FastDM.Package/FastDM.Package.wapproj' /m /p:Configuration=Release /p:Platform=x64 /p:GenerateTemporaryStoreCertificate=false /v:minimal
+      # The isolated clean-workspace check validates packaging but does not possess the maintainer's signing certificate.
+      # Disable signing only for this disposable verification build; never modify the real package project or release settings.
+      & $msbuildPath 'FastDM.Package/FastDM.Package.wapproj' /m /p:Configuration=Release /p:Platform=x64 /p:GenerateTemporaryStoreCertificate=false /p:AppxPackageSigningEnabled=false /p:PackageCertificateThumbprint= /v:minimal
       if ($LASTEXITCODE -ne 0) { throw "Clean workspace MSIX build failed with exit code $LASTEXITCODE." }
       $bundle = Get-ChildItem -LiteralPath 'FastDM.Package/AppPackages' -Filter '*.msixbundle' -Recurse -File | Select-Object -First 1
       if (-not $bundle) { throw 'MSIX build succeeded but did not create an .msixbundle.' }

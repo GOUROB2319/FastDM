@@ -343,3 +343,52 @@ These checks require a Windows interactive desktop and representative servers. A
 | Store package | Follow [`STORE_RELEASE_CHECKLIST.md`](STORE_RELEASE_CHECKLIST.md), including install/upgrade/uninstall, identity, privacy and Partner Center listing review. |
 
 Record each manual outcome and Windows/tool version before release. The Add URL, preview, folder-picker, dialog accessibility, and second-pass responsive UI checks above were not executed in the automated run. Popup/options state behavior has automated logic tests, but no live browser rendering check was run. No live browser cookie or FTP/SFTP server matrix was executed for this audit.
+
+
+## 10. Third-pass UI/UX manual verification
+
+These checks are separate from automated build and contrast tests. Run them on Windows with FastDM built from the candidate commit. Record the Windows version, monitor scale, text scale, theme and result before treating the visual work as verified.
+
+### Keyboard and unsaved-change checks
+
+| Check | Expected |
+| --- | --- |
+| Press Ctrl+N in the main window with a URL in the clipboard | Add URL opens with clipboard text prefilled, using the existing Add URL flow. With no text available, the dialog opens empty. |
+| Focus the download list, select a downloading item and press Space | Selected active/queued downloads pause. The key does not type into a search/input field. |
+| Focus the download list, select a paused/error item and press Space | Selected paused/error downloads resume. |
+| Focus the download list and press Ctrl+V with URL text on the clipboard | Add URL opens with the clipboard text. |
+| Focus a TextBox, editable ComboBox or other text-entry control and press Ctrl+V, Space or Enter | Normal text editing/control behavior is preserved; FastDM does not steal the key. |
+| Hover the relevant toolbar actions | Tooltips identify Ctrl+N, Space, Del and Ctrl+F. The context menu shows Space beside the pause/resume action applicable to the selection and Del beside Remove. |
+| Open Preferences, Network and Scheduler; make no changes; close with Cancel/Esc/X | No discard prompt appears. |
+| Change a value in each of those dialogs, then press Cancel/Esc/X and choose Keep editing | The dialog stays open and preserves the in-progress edit. |
+| Change a value, then choose Discard | The dialog closes without committing staged edits. Confirm Reset/startup OS-state synchronization does not create a false dirty prompt. |
+| Save a changed dialog | It closes without a discard prompt and existing Save behavior remains intact. |
+
+### Screenshot capture list
+
+Capture PNGs into docs/ui-screenshots/third-pass/. The filenames below are the required names; the screenshots have not been created by this automated run. For every pair, use Windows display scaling at 100% and 150%, preserve readable text, and do not crop away the title, edges, scrollbar, footer or relevant status.
+
+| Screen/state | Exact filenames |
+| --- | --- |
+| Main window, empty downloads, Light | main-empty-light-100.png, main-empty-light-150.png |
+| Main window, empty downloads, Dark | main-empty-dark-100.png, main-empty-dark-150.png |
+| Main window, three representative downloads, Light | main-three-downloads-light-100.png, main-three-downloads-light-150.png |
+| Main window, three representative downloads, Dark | main-three-downloads-dark-100.png, main-three-downloads-dark-150.png |
+| Video preview with format dropdown open | video-preview-dropdown-open-100.png, video-preview-dropdown-open-150.png |
+| Folder dialog with partial-folder selection | folder-partial-selection-100.png, folder-partial-selection-150.png |
+| Network dialog after a failed connection test; full result visible | network-failed-test-100.png, network-failed-test-150.png |
+| Scheduler | scheduler-100.png, scheduler-150.png |
+| Preferences | preferences-100.png, preferences-150.png |
+| Batch Import | batch-import-100.png, batch-import-150.png |
+| Extension popup, Connected | extension-popup-connected-100.png, extension-popup-connected-150.png |
+| Extension popup, Disconnected | extension-popup-disconnected-100.png, extension-popup-disconnected-150.png |
+| Extension Options tab | extension-options-100.png, extension-options-150.png |
+
+For the main-window screenshots, include the sidebar and Details Panel in the state that best demonstrates the layout. Ensure the three-download capture includes active, paused and completed/error states if possible. For the folder capture, show partial selection (selected descendants with a partially selected parent); for Network, keep the complete redacted failure text in view.
+
+### What automated tests do not prove
+
+- ThemeContrastTests checks configured color pairs mathematically; it does not prove native Windows control borders are rendered as intended.
+- The extension contrast test parses CSS token definitions and primary/error token usage; it does not render Chromium pages.
+- Build/test success does not verify layout at 100/150% DPI or 150% Windows text scaling, or confirm screen-reader announcements.
+- Do not mark the screenshots above as captured until a maintainer has saved and reviewed them.

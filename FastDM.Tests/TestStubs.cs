@@ -1,5 +1,9 @@
 namespace FastDM
 {
+    // Theme contrast tests compile Theme.cs without referencing the self-contained app executable.
+    internal sealed class ValidationInputFrame : System.Windows.Forms.Panel { }
+    internal sealed class ValidationMessageLabel : System.Windows.Forms.Label { }
+
     public enum ProxyMode { None, System, Manual }
     public enum ProxyKind { Http, Socks5 }
 

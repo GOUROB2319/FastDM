@@ -98,6 +98,7 @@ namespace FastDM
         ToolStripDropDownButton settingsMenu = null!;
 
         TextBox searchBox = null!;
+        readonly ToolTip keyboardShortcuts = new ToolTip();
 
         System.Windows.Forms.Timer navTimer = null!;
 

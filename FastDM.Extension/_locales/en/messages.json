@@ -5,6 +5,9 @@
   "extDescription": {
     "message": "Send links, videos and files from your browser to the FastDM desktop app."
   },
+  "popupTitle": {
+    "message": "FastDM"
+  },
   "menuDownloadLink": {
     "message": "Download with FastDM"
   },

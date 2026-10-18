@@ -25,6 +25,8 @@ namespace FastDM
         readonly List<Action<int>> responsiveRows = new List<Action<int>>();
 
         bool navBusy;
+        bool dirty;
+        bool suppressDirty;
 
         const int RowWidth = 640;
 
@@ -130,7 +132,11 @@ namespace FastDM
                 Restyle();
                 nav.SelectedIndex = Math.Max(0, SectionIndex(startSection));
                 RefreshStartupAsync();
+                if (startSection == null) DialogLayout.FocusFirstEditable(content);
             };
+
+            DialogLayout.TrackDirty(this, () => { if (!suppressDirty) dirty = true; });
+            FormClosing += (a, e) => DialogLayout.GuardUnsavedChanges(this, dirty, e);
         }
 
         void UpdateResponsiveWidth()
@@ -447,7 +453,9 @@ namespace FastDM
 
                     if (IsDisposed) return;
 
-                    chkStartup.Checked = st == StartupState.On;
+                    suppressDirty = true;
+                    try { chkStartup.Checked = st == StartupState.On; }
+                    finally { suppressDirty = false; }
 
                     switch (st)
                     {
@@ -908,6 +916,7 @@ namespace FastDM
                     return;
 
                 s.ResetPreferences();
+                dirty = false;
                 DialogResult = DialogResult.OK;
                 Close();
             });
@@ -968,6 +977,7 @@ namespace FastDM
             foreach (var c in commit)
                 c();
 
+            dirty = false;
             DialogResult = DialogResult.OK;
         }
     }

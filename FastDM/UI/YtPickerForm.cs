@@ -176,24 +176,55 @@ namespace FastDM
             mainPanel.Controls.Add(singlePanel);
             root.Controls.Add(mainPanel, 0, 3);
 
-            rbVideo = new RadioButton { Text = "Video + audio", Location = new Point(0, 4), AutoSize = true, Checked = true };
-            rbAudio = new RadioButton { Text = "Audio only", Location = new Point(160, 4), AutoSize = true };
+            var singleLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                ColumnCount = 1,
+                RowCount = 5
+            };
+            singleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            for (int i = 0; i < 5; i++) singleLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            var mediaTypeRow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                Margin = Padding.Empty
+            };
+            rbVideo = new RadioButton { Text = "Video + audio", AutoSize = true, Checked = true, Margin = new Padding(0, 0, Theme.Scale(this, 16), Theme.Scale(this, 4)) };
+            rbAudio = new RadioButton { Text = "Audio only", AutoSize = true, Margin = new Padding(0, 0, 0, Theme.Scale(this, 4)) };
             rbAudio.CheckedChanged += (s, e) => UpdateSingleMode();
-            singlePanel.Controls.Add(rbVideo);
-            singlePanel.Controls.Add(rbAudio);
-            singlePanel.Controls.Add(new Label { Text = "Format and quality", Location = new Point(0, 38), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            mediaTypeRow.Controls.Add(rbVideo);
+            mediaTypeRow.Controls.Add(rbAudio);
+            singleLayout.Controls.Add(mediaTypeRow, 0, 0);
+
+            singleLayout.Controls.Add(new Label
+            {
+                Text = "Format and quality",
+                AutoSize = true,
+                Margin = new Padding(0, Theme.Scale(this, 6), 0, Theme.Scale(this, 4))
+            }, 0, 1);
+
+            cmbVideo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Video format and quality" };
             cmbVideo.SelectedIndexChanged += (s, e) => UpdateSizeAndMerge();
-            singlePanel.Controls.Add(cmbVideo);
-            cmbAudio = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
+            singleLayout.Controls.Add(cmbVideo, 0, 2);
+
+            cmbAudio = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, AccessibleName = "Audio format" };
             cmbAudio.Items.Add(new OptItem { Text = "M4A — best available audio", Tag = "m4a" });
             cmbAudio.Items.Add(new OptItem { Text = "MP3 — converted audio", Tag = "mp3" });
             cmbAudio.SelectedIndex = 0;
-            singlePanel.Controls.Add(cmbAudio);
-            lblSize = new Label { Location = new Point(0, 96), Size = new Size(690, 24), AutoEllipsis = true };
-            singlePanel.Controls.Add(lblSize);
-            lblMerge = new Label { Location = new Point(0, 122), Size = new Size(690, 24), AutoEllipsis = true, Font = mergeFont, ForeColor = Theme.P.SubText };
-            singlePanel.Controls.Add(lblMerge);
+            singleLayout.Controls.Add(cmbAudio, 0, 2);
+
+            lblSize = new Label { AutoSize = true, MaximumSize = new Size(Theme.Scale(this, 700), 0), Margin = new Padding(0, Theme.Scale(this, 6), 0, Theme.Scale(this, 2)) };
+            singleLayout.Controls.Add(lblSize, 0, 3);
+            lblMerge = new Label { AutoSize = true, MaximumSize = new Size(Theme.Scale(this, 700), 0), Margin = new Padding(0, Theme.Scale(this, 2), 0, Theme.Scale(this, 4)), Font = mergeFont, ForeColor = Theme.P.SubText };
+            singleLayout.Controls.Add(lblMerge, 0, 4);
+            singlePanel.Controls.Add(singleLayout);
 
             lblCount = new Label { Dock = DockStyle.Top, Height = 26, Text = "Loading playlist entries…", AutoEllipsis = true };
             playlistPanel.Controls.Add(lblCount);
@@ -277,7 +308,11 @@ namespace FastDM
             root.Controls.Add(footer, 0, 5);
 
             Controls.Add(root);
-            Resize += (s, e) => UpdateComboDropdownWidths();
+            Resize += (s, e) =>
+            {
+                UpdateComboDropdownWidths();
+                UpdateSingleTextWidths();
+            };
             SetOptionsMode(isPlaylist: false, hasPreview: false);
             SetPreviewControlsEnabled(false);
             AcceptButton = btnStart;
@@ -526,6 +561,14 @@ namespace FastDM
             options.RowStyles[3].Height = hasPreview && !isPlaylist ? Theme.Scale(this, 34) : 0;
             options.PerformLayout();
             UpdateComboDropdownWidths();
+        }
+
+        void UpdateSingleTextWidths()
+        {
+            if (singlePanel == null || lblSize == null || lblMerge == null) return;
+            int width = Math.Max(Theme.Scale(this, 220), singlePanel.ClientSize.Width - Theme.Scale(this, 8));
+            lblSize.MaximumSize = new Size(width, 0);
+            lblMerge.MaximumSize = new Size(width, 0);
         }
 
         void UpdateComboDropdownWidths()

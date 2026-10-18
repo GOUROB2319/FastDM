@@ -2,6 +2,9 @@
 export const t = (key, fallback = '') => chrome.i18n.getMessage(key) || fallback || key;
 
 export function applyI18n(root = document) {
+  if (root === document && document.documentElement) {
+    document.documentElement.lang = chrome.i18n.getUILanguage() || "en";
+  }
   root.querySelectorAll('[data-i18n]').forEach((el) => {
     el.textContent = t(el.dataset.i18n, el.textContent);
   });

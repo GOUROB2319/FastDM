@@ -132,8 +132,10 @@ namespace FastDM
             {
                 Dock = DockStyle.Fill,
                 PlaceholderText = "Filter by name or URL",
-                AccessibleName = "Search downloads"
+                AccessibleName = "Search downloads",
+                AccessibleDescription = "Search downloads by name or URL. Press Ctrl+F to focus this field."
             };
+            keyboardShortcuts.SetToolTip(searchBox, "Search (Ctrl+F)");
             searchBox.TextChanged += (s, e) => RebuildList();
             searchBox.KeyDown += (s, e) =>
             {
@@ -173,7 +175,7 @@ namespace FastDM
                 Image = Icons.Make("\uE896", Theme.P.Accent, Theme.Scale(this, 36)),
                 ImageAlign = ContentAlignment.MiddleCenter,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Theme.P.Accent,
+                ForeColor = Theme.P.AccentText,
                 BackColor = Theme.P.Window
             };
             emptyTitle = new Label
@@ -501,7 +503,13 @@ namespace FastDM
                     ? text
                     : fallbackPrefix + text)
             {
-                ToolTipText = text,
+                ToolTipText = text switch
+                {
+                    "Add URL" => "Add URL (Ctrl+N)",
+                    "Resume" or "Pause" => "Pause/Resume (Space)",
+                    "Remove" => "Remove (Del)",
+                    _ => text
+                },
 
                 // সব button-এ একইভাবে icon + text
                 DisplayStyle = icons
@@ -584,7 +592,10 @@ namespace FastDM
             ToolStripItem? ByTip(string tip) =>
                 tools.Items
                      .Cast<ToolStripItem>()
-                     .FirstOrDefault(i => i.ToolTipText == tip);
+                     .FirstOrDefault(i =>
+                         string.Equals(i.ToolTipText, tip, StringComparison.Ordinal) ||
+                         string.Equals((i.Text ?? string.Empty).Trim(), tip, StringComparison.Ordinal) ||
+                         (!string.IsNullOrEmpty(i.ToolTipText) && i.ToolTipText.StartsWith(tip + " (", StringComparison.Ordinal)));
 
             var wanted = new List<ToolStripItem?>
             {
@@ -721,8 +732,8 @@ namespace FastDM
                 return item;
             }
 
-            AddItem("Resume", "resume", "\uE768", (s, e) => ResumeSelected());
-            AddItem("Pause", "pause", "\uE769", (s, e) => PauseSelected());
+            var resume = AddItem("Resume", "resume", "\uE768", (s, e) => ResumeSelected());
+            var pause = AddItem("Pause", "pause", "\uE769", (s, e) => PauseSelected());
             AddItem("Start now (ignore schedule)", "start-now", "\uE73A", (s, e) => StartNowSelected());
 
             m.Items.Add(
@@ -756,6 +767,7 @@ namespace FastDM
 
             var remove = AddItem("Remove", "remove", "\uE74D", (s, e) => RemoveSelected());
             remove.ShortcutKeys = Keys.Delete;
+            remove.ShortcutKeyDisplayString = "Del";
 
             m.Items.Add(new ToolStripSeparator());
             var selectAll = AddItem("Select all", "select-all", "\uE8B3", (s, e) => SelectAllRows());
@@ -769,6 +781,13 @@ namespace FastDM
             m.Opening += (s, e) =>
             {
                 bool inDeleted = filter == DeletedFilter;
+                var selectedForShortcut = Sel();
+                bool spacePauses = selectedForShortcut.Any(i => i.State is DlState.Downloading or DlState.Queued);
+                bool spaceResumes = !spacePauses && selectedForShortcut.Any(i => i.State is DlState.Paused or DlState.Error);
+                pause.ShortcutKeyDisplayString = !inDeleted && spacePauses ? "Space" : string.Empty;
+                resume.ShortcutKeyDisplayString = !inDeleted && spaceResumes ? "Space" : string.Empty;
+                pause.AccessibleDescription = "Pause selected downloads. Keyboard shortcut: Space when the download list has focus.";
+                resume.AccessibleDescription = "Resume selected downloads. Keyboard shortcut: Space when the download list has focus.";
 
                 foreach (ToolStripItem i in m.Items)
                 {
@@ -1134,12 +1153,72 @@ namespace FastDM
             }
         }
 
+        bool IsTextInputFocused() => ContainsTextInputFocus(this);
+
+        static bool ContainsTextInputFocus(Control parent)
+        {
+            foreach (Control control in parent.Controls)
+            {
+                if (control.Focused && (control is TextBoxBase or ComboBox or NumericUpDown))
+                    return true;
+                if (control.HasChildren && ContainsTextInputFocus(control))
+                    return true;
+            }
+            return false;
+        }
+
         void OnMainKeyDown(object? sender, KeyEventArgs e)
         {
+            bool textInputFocused = IsTextInputFocused();
+
             if (e.Control && e.KeyCode == Keys.F)
             {
                 searchBox.Focus();
                 searchBox.SelectAll();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (!textInputFocused && e.Control && e.KeyCode == Keys.N)
+            {
+                string clipboardText = "";
+                try
+                {
+                    if (Clipboard.ContainsText()) clipboardText = Clipboard.GetText().Trim();
+                }
+                catch (Exception exIgnored) { AppLog.Write("MainForm Ctrl+N clipboard (ignored): " + exIgnored.Message); }
+                ShowAddDialog(clipboardText);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (!textInputFocused && lv.Focused && e.Control && e.KeyCode == Keys.V)
+            {
+                try
+                {
+                    if (Clipboard.ContainsText())
+                    {
+                        ShowAddDialog(Clipboard.GetText().Trim());
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                    }
+                }
+                catch (Exception exIgnored) { AppLog.Write("MainForm Ctrl+V clipboard (ignored): " + exIgnored.Message); }
+                return;
+            }
+
+            if (!textInputFocused && lv.Focused && e.KeyCode == Keys.Space)
+            {
+                var selected = Sel();
+                if (selected.Count > 0)
+                {
+                    if (selected.Any(it => it.State is DlState.Downloading or DlState.Queued))
+                        PauseSelected();
+                    else
+                        ResumeSelected();
+                }
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 return;

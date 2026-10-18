@@ -30,69 +30,84 @@ namespace FastDM
         {
             Theme.ConfigureForm(this);
             o = options;
-
             Text = (o.Kind == "hls" ? "HLS" : "DASH") + " stream — choose quality";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(560, 440);
-            MinimumSize = new Size(480, 400);
+            MaximizeBox = true;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(600, 500);
+            MinimumSize = new Size(500, 430);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 14), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(16, 36), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            var fields = DialogLayout.CreateTwoColumnFields(this, labelWidth: 120);
+
+            cmbVideo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Video quality" };
             foreach (var v in o.Videos) cmbVideo.Items.Add(new OptItem { Text = v.Label, Tag = v });
             if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;
             cmbVideo.SelectedIndexChanged += (a, b) => RefreshAudio();
-            Controls.Add(cmbVideo);
+            DialogLayout.AddFieldRow(fields, "Video quality", cmbVideo);
 
-            Controls.Add(new Label { Text = "Audio track", Location = new Point(16, 74), AutoSize = true });
-            cmbAudio = new ComboBox { Location = new Point(16, 96), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
-            Controls.Add(cmbAudio);
+            cmbAudio = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Audio track" };
+            DialogLayout.AddFieldRow(fields, "Audio track", cmbAudio);
 
-            chkAudioOnly = new CheckBox { Text = "Audio only (save as .m4a)", Location = new Point(16, 134), AutoSize = true };
+            chkAudioOnly = new CheckBox { Text = "Audio only (save as .m4a)", AutoSize = true };
             chkAudioOnly.CheckedChanged += (a, b) => cmbVideo.Enabled = !chkAudioOnly.Checked && o.Videos.Count > 0;
-            Controls.Add(chkAudioOnly);
+            DialogLayout.AddFieldRow(fields, "", chkAudioOnly);
 
-            Controls.Add(new Label { Text = "File name", Location = new Point(16, 172), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 194), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = DefaultName() };
-            Controls.Add(txtName);
+            txtName = new TextBox { Text = DefaultName(), AccessibleName = "File name" };
+            DialogLayout.AddFieldRow(fields, "File name", txtName);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 230), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 252), Width = 436, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
-            Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(460, 251), Size = new Size(84, 28), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            txtFolder = new TextBox { Text = defaultFolder, AccessibleName = "Save folder", Dock = DockStyle.Fill };
+            var folderRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                ColumnCount = 2,
+                RowCount = 1
+            };
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 120)));
+            var browse = DialogLayout.CreateButton(this, "Browse…");
+            browse.Dock = DockStyle.Fill;
+            browse.Margin = Padding.Empty;
             browse.Click += (a, b) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
                 if (fb.ShowDialog(this) == DialogResult.OK) txtFolder.Text = fb.SelectedPath;
             };
-            Controls.Add(browse);
+            folderRow.Controls.Add(txtFolder, 0, 0);
+            folderRow.Controls.Add(browse, 1, 0);
+            DialogLayout.AddFieldRow(fields, "Save to", folderRow);
 
             bool hasFfmpeg = FfmpegLocator.Find() != null;
-            Controls.Add(new Label
+            var ffmpegNote = new Label
             {
                 Text = hasFfmpeg
                     ? "ffmpeg found: the result will be one MP4 file (streams are copied, nothing is re-encoded)."
                     : "ffmpeg was not found: audio and video will be saved as separate files.",
-                Location = new Point(16, 296),
-                Size = new Size(528, 44),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            });
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                ForeColor = Theme.P.SubText
+            };
+            DialogLayout.AddFullRow(fields, ffmpegNote);
 
-            Controls.Add(new Label
+            var drmNote = new Label
             {
                 Text = "DRM-protected streams cannot be downloaded.",
-                Location = new Point(16, 344),
-                Size = new Size(528, 22),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            });
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                ForeColor = Theme.P.SubText
+            };
+            DialogLayout.AddFullRow(fields, drmNote);
 
-            var ok = new Button { Text = "Download", Location = new Point(330, 388), Size = new Size(110, 36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(446, 388), Size = new Size(98, 36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
+            var ok = DialogLayout.CreateButton(this, "Download");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, ok);
+            Controls.Add(DialogLayout.CreateShell(this, fields, footer));
             ok.Click += OnOk;
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            AcceptButton = ok;
+            CancelButton = cancel;
 
             if (o.Videos.Count == 0)
             {
@@ -101,6 +116,17 @@ namespace FastDM
                 chkAudioOnly.Enabled = false;
             }
             RefreshAudio();
+            Shown += (a, b) =>
+            {
+                if (cmbVideo.Enabled) cmbVideo.Focus();
+                else txtName.Focus();
+            };
+            Resize += (a, b) =>
+            {
+                int width = Math.Max(Theme.Scale(this, 160), fields.ClientSize.Width - Theme.Scale(this, 150));
+                ffmpegNote.MaximumSize = new Size(width, 0);
+                drmNote.MaximumSize = new Size(width, 0);
+            };
         }
 
         string DefaultName()
@@ -197,30 +223,52 @@ namespace FastDM
             Text = "Videos found on this page";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(620, 360);
-            MinimumSize = new Size(480, 300);
+            MaximizeBox = true;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(660, 420);
+            MinimumSize = new Size(500, 320);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            Controls.Add(new Label
+            var body = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(Theme.Scale(this, DialogLayout.StandardMargin)),
+                Margin = Padding.Empty,
+                ColumnCount = 1,
+                RowCount = 2
+            };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            body.Controls.Add(new Label
             {
                 Text = "Several videos were found. Choose the one to download:",
-                Location = new Point(16, 14),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                AutoSize = true
-            });
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 10))
+            }, 0, 0);
 
-            list = new ListBox { Location = new Point(16, 40), Size = new Size(588, 260), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, HorizontalScrollbar = true };
-            foreach (var c in candidates) list.Items.Add(c);
+            list = new ListBox
+            {
+                Dock = DockStyle.Fill,
+                HorizontalScrollbar = true,
+                AccessibleName = "Videos found on this page",
+                AccessibleDescription = "Select a video, then choose Next. Double-click a video to continue."
+            };
+            foreach (var candidate in candidates) list.Items.Add(candidate);
             if (list.Items.Count > 0) list.SelectedIndex = 0;
             list.DoubleClick += (a, b) => Accept();
-            Controls.Add(list);
+            body.Controls.Add(list, 0, 1);
 
-            var ok = new Button { Text = "Next", Location = new Point(404, 312), Size = new Size(100, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(510, 312), Size = new Size(94, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-            ok.Click += (a, b) => Accept();
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            var next = DialogLayout.CreateButton(this, "Next");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, next);
+            Controls.Add(DialogLayout.CreateShell(this, body, footer));
+            next.Click += (a, b) => Accept();
+            AcceptButton = next;
+            CancelButton = cancel;
+            Shown += (a, b) => list.Focus();
         }
 
         void Accept()
