@@ -11,7 +11,8 @@
 	-->
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>FastDM.Tests</RootNamespace>
@@ -41,6 +42,8 @@
 		<Compile Include="..\FastDM\YtDlp\YtDlpUrlInput.cs" Link="Linked\YtDlpUrlInput.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />
 		<Compile Include="..\FastDM\UI\DownloadDisplayName.cs" Link="Linked\DownloadDisplayName.cs" />
+		<Compile Include="..\FastDM\UI\Theme.cs" Link="Linked\Theme.cs" />
+		<Compile Include="..\FastDM\UI\Controls.cs" Link="Linked\Controls.cs" />
 		<Compile Include="..\FastDM\UI\DownloadColumnLayout.cs" Link="Linked\DownloadColumnLayout.cs" />
 		<Compile Include="..\FastDM\UI\AddUrlValidation.cs" Link="Linked\AddUrlValidation.cs" />
 	</ItemGroup>
