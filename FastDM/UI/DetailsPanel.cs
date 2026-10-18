@@ -423,7 +423,7 @@ namespace FastDM
 
                 if (isSave || isLink)
                 {
-                    vc = p.AccentText;
+                    vc = p.Accent;
                     int textW = TextRenderer.MeasureText(g, row[1], Font, new Size(valueRect.Width, lh), f).Width;
                     var hit = new Rectangle(valueRect.X, valueRect.Y, Math.Min(valueRect.Width, textW), lh);
                     if (isSave) saveRect = hit; else linkRect = hit;

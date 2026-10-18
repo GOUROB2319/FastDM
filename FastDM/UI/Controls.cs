@@ -138,7 +138,7 @@ namespace FastDM
             var bounds = ClientRectangle;
             bounds.Width--;
             bounds.Height--;
-            using var pen = new Pen(invalid ? Theme.P.Error : Theme.P.InputBorder);
+            using var pen = new Pen(invalid ? Theme.P.Error : Theme.P.Border);
             e.Graphics.DrawRectangle(pen, bounds);
         }
     }

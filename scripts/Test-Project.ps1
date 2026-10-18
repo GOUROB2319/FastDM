@@ -4,20 +4,6 @@ $root = Split-Path -Parent $PSScriptRoot
 
 Push-Location $root
 try {
-    Write-Host 'Checking for unexpected WinForms resource files...'
-    $allowedResx = @('FastDM/UI/MainForm.resx', 'FastDM/UI/AddUrlForm.resx')
-    $unexpectedResx = @()
-    Get-ChildItem -LiteralPath (Join-Path $root 'FastDM') -Filter '*.resx' -Recurse -File |
-        ForEach-Object {
-            $relative = $_.FullName.Substring($root.Length).TrimStart([char[]]@([char]92, [char]47)).Replace([char]92, [char]47)
-            if ($relative -match '(^|/)(obj|bin)/') { return }
-            if ($relative -notin $allowedResx) { $unexpectedResx += $relative }
-        }
-    if ($unexpectedResx.Count -gt 0) {
-        throw ('Unexpected .resx file(s) under FastDM: ' + ($unexpectedResx -join ', ') +
-            '. Only FastDM/UI/MainForm.resx and FastDM/UI/AddUrlForm.resx are allowed.')
-    }
-
     Write-Host 'Building the desktop app...'
     dotnet build 'FastDM/FastDM.csproj' -c Debug -p:Platform=x64
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

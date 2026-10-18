@@ -42,10 +42,12 @@
 		<Compile Include="..\FastDM\YtDlp\YtDlpUrlInput.cs" Link="Linked\YtDlpUrlInput.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />
 		<Compile Include="..\FastDM\UI\DownloadDisplayName.cs" Link="Linked\DownloadDisplayName.cs" />
-		<Compile Include="..\FastDM\UI\Theme.cs" Link="Linked\Theme.cs" />
-		<Compile Include="..\FastDM\UI\Controls.cs" Link="Linked\Controls.cs" />
 		<Compile Include="..\FastDM\UI\DownloadColumnLayout.cs" Link="Linked\DownloadColumnLayout.cs" />
 		<Compile Include="..\FastDM\UI\AddUrlValidation.cs" Link="Linked\AddUrlValidation.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FastDM\FastDM.csproj" />
 	</ItemGroup>
 
 </Project>
