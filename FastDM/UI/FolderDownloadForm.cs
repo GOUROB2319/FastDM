@@ -69,7 +69,7 @@ namespace FastDM
             };
             DialogLayout.AddFullRow(fields, chkRemember);
 
-            var ok = DialogLayout.CreateButton(this, "OK");
+            var ok = DialogLayout.CreateButton(this, "Sign in");
             var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
             var footer = DialogLayout.CreateFooter(this, cancel, ok);
             Controls.Add(DialogLayout.CreateShell(this, fields, footer));
@@ -136,65 +136,114 @@ namespace FastDM
             MinimumSize = new Size(560, 520);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            // লিঙ্ক
-            Controls.Add(new Label { Text = "Folder link", Location = new Point(16, 12), AutoSize = true });
-            Controls.Add(new TextBox
+            // Responsive header groups; the remote tree and bottom status area keep their existing anchors.
+            var header = new TableLayoutPanel
             {
-                Location = new Point(16, 32),
-                Size = new Size(628, 26),
+                Location = new Point(16, 12),
+                Size = new Size(628, 236),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty,
+                ColumnCount = 4,
+                RowCount = 6
+            };
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+            for (int i = 0; i < 6; i++) header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            var linkLabel = new Label
+            {
+                Text = "Folder link",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 2, 6, 2)
+            };
+            var link = new TextBox
+            {
+                Dock = DockStyle.Fill,
                 ReadOnly = true,
-                Text = AppLog.Redact(Uri.UnescapeDataString(rootUri.GetLeftPart(UriPartial.Path)))
-            });
+                Text = AppLog.Redact(Uri.UnescapeDataString(rootUri.GetLeftPart(UriPartial.Path))),
+                AccessibleName = "Folder link"
+            };
+            header.Controls.Add(linkLabel, 0, 0);
+            header.Controls.Add(link, 1, 0);
+            header.SetColumnSpan(link, 3);
 
-            // ফোল্ডারের নাম + একসাথে কয়টা ফাইল
-            Controls.Add(new Label { Text = "Folder name", Location = new Point(16, 66), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 86), Size = new Size(320, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = DefaultName() };
-            Controls.Add(txtName);
+            header.Controls.Add(new Label
+            {
+                Text = "Folder name",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 2, 6, 2)
+            }, 0, 1);
+            txtName = new TextBox { Dock = DockStyle.Fill, Text = DefaultName(), AccessibleName = "Folder name" };
+            header.Controls.Add(txtName, 1, 1);
 
-            Controls.Add(new Label { Text = "Simultaneous files", Location = new Point(352, 66), AutoSize = true });
+            header.Controls.Add(new Label
+            {
+                Text = "Simultaneous files",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 2, 6, 2)
+            }, 2, 1);
             numSim = new NumericUpDown
             {
-                Location = new Point(352, 86),
-                Width = 120,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Dock = DockStyle.Fill,
                 Minimum = 1,
                 Maximum = 10,
-                Value = Math.Clamp(simultaneous, 1, 10)
+                Value = Math.Clamp(simultaneous, 1, 10),
+                AccessibleName = "Simultaneous files"
             };
-            Controls.Add(numSim);
+            header.Controls.Add(numSim, 3, 1);
 
-            // সেভ লোকেশন
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 120), AutoSize = true });
-            txtLocation = new TextBox { Location = new Point(16, 140), Size = new Size(528, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = defaultLocation };
-            Controls.Add(txtLocation);
-            var browse = new Button { Text = "Browse…", Location = new Point(552, 139), Size = new Size(92, 28), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            header.Controls.Add(new Label
+            {
+                Text = "Save to",
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 2, 6, 2)
+            }, 0, 2);
+            txtLocation = new TextBox { Dock = DockStyle.Fill, Text = defaultLocation, AccessibleName = "Save folder" };
+            header.Controls.Add(txtLocation, 1, 2);
+            header.SetColumnSpan(txtLocation, 2);
+            var browse = new Button { Text = "Browse…", Dock = DockStyle.Fill, Margin = new Padding(Theme.Scale(this, 6), 2, 0, 2) };
             browse.Click += (s, e) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtLocation.Text };
                 if (fb.ShowDialog(this) == DialogResult.OK) txtLocation.Text = fb.SelectedPath;
             };
-            Controls.Add(browse);
+            header.Controls.Add(browse, 3, 2);
 
-            // এক্সটেনশন ফিল্টার
-            Controls.Add(new Label
+            var filterHelp = new Label
             {
                 Text = "Only these extensions (e.g. mkv, mp4) — leave empty for all files",
-                Location = new Point(16, 176),
-                AutoSize = true
-            });
-            txtFilter = new TextBox { Location = new Point(16, 196), Size = new Size(628, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            txtFilter.TextChanged += (s, e) => ApplyFilter();
-            Controls.Add(txtFilter);
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                MaximumSize = new Size(Theme.Scale(this, 620), 0),
+                Margin = new Padding(0, Theme.Scale(this, 4), 0, Theme.Scale(this, 2))
+            };
+            header.Controls.Add(filterHelp, 0, 3);
+            header.SetColumnSpan(filterHelp, 4);
 
-            btnBack = new Button { Text = "← Back", Location = new Point(16, 228), Size = new Size(82, 27), Enabled = false };
+            txtFilter = new TextBox { Dock = DockStyle.Fill, AccessibleName = "File extension filter" };
+            txtFilter.TextChanged += (s, e) => ApplyFilter();
+            header.Controls.Add(txtFilter, 0, 4);
+            header.SetColumnSpan(txtFilter, 4);
+
+            btnBack = new Button { Text = "← Back", Dock = DockStyle.Fill, Enabled = false, Margin = new Padding(0, 2, Theme.Scale(this, 4), 2) };
             btnBack.Click += async (s, e) =>
             {
                 if (history.Count == 0) return;
                 Uri previous = history.Pop();
                 await NavigateAsync(previous, rememberCurrent: false);
             };
-            btnUp = new Button { Text = "↑ Up", Location = new Point(104, 228), Size = new Size(70, 27) };
+            btnUp = new Button { Text = "↑ Up", Dock = DockStyle.Fill, Margin = new Padding(0, 2, Theme.Scale(this, 4), 2) };
             btnUp.Click += async (s, e) =>
             {
                 Uri? parent = ParentUri(currentUri);
@@ -202,18 +251,30 @@ namespace FastDM
             };
             breadcrumb = new FlowLayoutPanel
             {
-                Location = new Point(184, 229),
-                Size = new Size(460, 25),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Dock = DockStyle.Fill,
                 AutoScroll = true,
                 WrapContents = false,
                 FlowDirection = FlowDirection.LeftToRight,
+                Margin = Padding.Empty,
                 AccessibleName = "Current folder path",
                 AccessibleDescription = "Folder path. Activate a segment to navigate to it."
             };
-            Controls.Add(btnBack);
-            Controls.Add(btnUp);
-            Controls.Add(breadcrumb);
+            var navigation = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                ColumnCount = 3,
+                RowCount = 1
+            };
+            navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
+            navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+            navigation.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            navigation.Controls.Add(btnBack, 0, 0);
+            navigation.Controls.Add(btnUp, 1, 0);
+            navigation.Controls.Add(breadcrumb, 2, 0);
+            header.Controls.Add(navigation, 0, 5);
+            header.SetColumnSpan(navigation, 4);
+            Controls.Add(header);
             RebuildBreadcrumb();
 
             // ট্রি ভিউ

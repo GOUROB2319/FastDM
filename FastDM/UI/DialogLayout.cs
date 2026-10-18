@@ -91,13 +91,17 @@ namespace FastDM
                     Theme.Scale(owner, StandardMargin), Theme.Scale(owner, 8)),
                 BackColor = Theme.P.Window
             };
+            int sharedMinWidth = Theme.Scale(owner, StandardButtonMinWidth);
+            int sharedWidth = buttons
+                .Select(button => Math.Max(sharedMinWidth, TextRenderer.MeasureText(button.Text, owner.Font).Width + Theme.Scale(owner, 28)))
+                .DefaultIfEmpty(sharedMinWidth)
+                .Max();
+
             foreach (var button in buttons)
             {
-                int minWidth = Theme.Scale(owner, StandardButtonMinWidth);
                 int height = Theme.Scale(owner, StandardButtonHeight);
-                button.MinimumSize = new Size(minWidth, height);
-                button.Height = height;
-                button.Width = Math.Max(button.Width, TextRenderer.MeasureText(button.Text, owner.Font).Width + Theme.Scale(owner, 28));
+                button.MinimumSize = new Size(sharedWidth, height);
+                button.Size = new Size(sharedWidth, height);
                 button.Margin = new Padding(Theme.Scale(owner, 6), 0, 0, 0);
                 footer.Controls.Add(button);
             }
