@@ -166,7 +166,7 @@ The GitHub Actions run for implementation commit 25e49e403487d1ead0adfad6fd89b84
 - Package manifest/version checks passed in that run.
 - The contrast numbers are automated mathematical checks only.
 
-The amended workflow additionally invokes scripts/Test-Project.ps1, node --test FastDM.Extension/tests, and scripts/Test-CleanWorkspace.ps1; their outcome must be taken from the CI run for the amended workflow rather than inferred from the earlier successful run.
+The amended workflow additionally invokes scripts/Test-Project.ps1 and scripts/Test-CleanWorkspace.ps1. Node 22 treated the literal directory form node --test FastDM.Extension/tests as a module path and could not discover the tests; the CI command was changed to node --test FastDM.Extension/tests/*.test.mjs so the test runner receives every test file explicitly. The amended workflow result will be recorded once that run completes.
 
 ### Limitations and checks not performed
 

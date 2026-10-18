@@ -63,4 +63,4 @@ jobs:
         run: npm test
 
       - name: Run the complete extension test directory
-        run: node --test FastDM.Extension/tests
+        run: node --test FastDM.Extension/tests/*.test.mjs
