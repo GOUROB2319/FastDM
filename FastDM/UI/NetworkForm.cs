@@ -6,7 +6,7 @@ using System.Windows.Forms;
 
 namespace FastDM
 {
-    // প্রক্সি সেটিং ডায়ালগ (গতির সীমা এখন Preferences → Traffic Limits-এ)
+    // Proxy preferences dialog. Networking and settings application behavior remain unchanged.
     class NetworkForm : Form
     {
         readonly AppSettings s;
@@ -16,7 +16,9 @@ namespace FastDM
         readonly TextBox txtHost, txtUser, txtPass;
         readonly Label lblTest;
         readonly Button btnTest;
+        readonly ToolTip tips = new ToolTip();
         CancellationTokenSource? testCts;
+        bool dirty;
 
         public NetworkForm(AppSettings settings)
         {
@@ -25,94 +27,131 @@ namespace FastDM
             Text = "Proxy";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(480, 466);
-            MinimumSize = new Size(450, 420);
+            MaximizeBox = true;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(540, 500);
+            MinimumSize = new Size(460, 430);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            var bold = Theme.CreateFont(Theme.FontSection, FontStyle.Bold);
+            var fields = DialogLayout.CreateTwoColumnFields(this, labelWidth: 120);
 
-            // ---------- প্রক্সি ----------
-            Controls.Add(new Label { Text = "Proxy", Font = bold, Location = new Point(16, 16), AutoSize = true });
+            var mode = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                Margin = Padding.Empty
+            };
+            rbNone = new RadioButton { Text = "No proxy", AutoSize = true, Checked = s.Proxy == ProxyMode.None, Margin = new Padding(0, 3, Theme.Scale(this, 16), 3) };
+            rbSystem = new RadioButton { Text = "Use system proxy", AutoSize = true, Checked = s.Proxy == ProxyMode.System, Margin = new Padding(0, 3, Theme.Scale(this, 16), 3) };
+            rbManual = new RadioButton { Text = "Manual", AutoSize = true, Checked = s.Proxy == ProxyMode.Manual, Margin = new Padding(0, 3, 0, 3) };
+            mode.Controls.AddRange(new Control[] { rbNone, rbSystem, rbManual });
+            DialogLayout.AddFullRow(fields, mode);
 
-            rbNone = new RadioButton { Text = "No proxy", Location = new Point(16, 46), AutoSize = true, Checked = s.Proxy == ProxyMode.None };
-            rbSystem = new RadioButton { Text = "Use system proxy", Location = new Point(16, 74), AutoSize = true, Checked = s.Proxy == ProxyMode.System };
-            rbManual = new RadioButton { Text = "Manual", Location = new Point(16, 102), AutoSize = true, Checked = s.Proxy == ProxyMode.Manual };
-            Controls.AddRange(new Control[] { rbNone, rbSystem, rbManual });
-
-            Controls.Add(new Label { Text = "Type", Location = new Point(40, 140), AutoSize = true });
-            cmbType = new ComboBox { Location = new Point(140, 136), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
             cmbType.Items.AddRange(new object[] { "HTTP", "SOCKS5" });
             cmbType.SelectedIndex = s.ProxyType == ProxyKind.Socks5 ? 1 : 0;
-            Controls.Add(cmbType);
+            DialogLayout.AddFieldRow(fields, "Type", cmbType);
 
-            Controls.Add(new Label { Text = "Host", Location = new Point(40, 176), AutoSize = true });
-            txtHost = new TextBox { Location = new Point(140, 172), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = s.ProxyHost ?? "" };
-            Controls.Add(txtHost);
+            txtHost = new TextBox { Text = s.ProxyHost ?? "", AccessibleName = "Proxy host" };
+            DialogLayout.AddFieldRow(fields, "Host", txtHost);
 
-            Controls.Add(new Label { Text = "Port", Location = new Point(40, 212), AutoSize = true });
             numPort = new NumericUpDown
             {
-                Location = new Point(140, 208),
-                Width = 90,
                 Minimum = 1,
                 Maximum = 65535,
-                Value = Math.Clamp(s.ProxyPort, 1, 65535)
+                Value = Math.Clamp(s.ProxyPort, 1, 65535),
+                Width = Theme.Scale(this, 120),
+                AccessibleName = "Proxy port"
             };
-            Controls.Add(numPort);
+            DialogLayout.AddFieldRow(fields, "Port", numPort);
 
-            Controls.Add(new Label { Text = "Username", Location = new Point(40, 248), AutoSize = true });
-            txtUser = new TextBox { Location = new Point(140, 244), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = s.ProxyUser ?? "" };
-            Controls.Add(txtUser);
+            txtUser = new TextBox { Text = s.ProxyUser ?? "", AccessibleName = "Proxy username" };
+            DialogLayout.AddFieldRow(fields, "Username", txtUser);
 
-            Controls.Add(new Label { Text = "Password", Location = new Point(40, 284), AutoSize = true });
             string savedPass = "";
             if (SecretStore.Read("proxy", out _, out var sp)) savedPass = sp ?? "";
-            txtPass = new TextBox { Location = new Point(140, 280), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, UseSystemPasswordChar = true, Text = savedPass };
-            Controls.Add(txtPass);
+            txtPass = new TextBox { UseSystemPasswordChar = true, Text = savedPass, AccessibleName = "Proxy password" };
+            DialogLayout.AddFieldRow(fields, "Password", txtPass);
 
-            btnTest = new Button { Text = "Test connection", Location = new Point(140, 322), Size = new Size(130, 32) };
+            var testRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = Padding.Empty
+            };
+            testRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            testRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            btnTest = DialogLayout.CreateButton(this, "Test connection");
+            btnTest.Width = Math.Max(btnTest.Width, Theme.Scale(this, 132));
             btnTest.Click += async (a, b) =>
             {
-                try
-                {
-                    await RunTestAsync();
-                }
-                catch (OperationCanceledException)
-                {
-                    AppLog.Write("NetworkForm.ctor btnTest.Click: cancelled");
-                }
-                catch (Exception exGuard)
-                {
-                    Program.ReportError("NetworkForm.ctor btnTest.Click", exGuard);
-                }
+                try { await RunTestAsync(); }
+                catch (OperationCanceledException) { AppLog.Write("NetworkForm: test cancelled"); }
+                catch (Exception exGuard) { Program.ReportError("NetworkForm test", exGuard); }
             };
-            Controls.Add(btnTest);
-
-            lblTest = new Label { Text = "", Location = new Point(280, 329), Size = new Size(190, 22), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            Controls.Add(lblTest);
-
-            Controls.Add(new Label
+            lblTest = new Label
             {
-                Text = "Notes: the password is stored in Windows Credential Manager. " +
-                       "Proxy applies to HTTP/HTTPS downloads; SFTP uses a manual proxy only. " +
-                       "FTP connections currently connect directly.",
-                Location = new Point(16, 364),
-                Size = new Size(450, 52),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Text = "",
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                Margin = new Padding(0, Theme.Scale(this, 8), 0, Theme.Scale(this, 4)),
+                AccessibleName = "Connection test result",
+                AccessibleRole = AccessibleRole.Status
+            };
+            lblTest.ContextMenuStrip = new ContextMenuStrip();
+            lblTest.ContextMenuStrip.Items.Add("Copy", null, (a, b) =>
+            {
+                try { Clipboard.SetText(AppLog.Redact(lblTest.Text)); }
+                catch (Exception ex) { ThemeDialog.ShowError(this, "Copy result", "The test result could not be copied.", ex); }
             });
+            testRow.Controls.Add(btnTest, 0, 0);
+            testRow.Controls.Add(lblTest, 0, 1);
+            DialogLayout.AddFullRow(fields, testRow);
+            tips.SetToolTip(lblTest, "Right-click to copy the complete redacted test result.");
 
-            // ---------- বাটন ----------
-            var ok = new Button { Text = "OK", Location = new Point(290, 420), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(386, 420), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-            ok.Click += OnOk;
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            var notes = new Label
+            {
+                Text = "The password is stored in Windows Credential Manager. Proxy applies to HTTP/HTTPS downloads; SFTP uses a manual proxy only. FTP connections currently connect directly.",
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                ForeColor = Theme.P.SubText,
+                Margin = new Padding(0, Theme.Scale(this, 6), 0, Theme.Scale(this, 8))
+            };
+            DialogLayout.AddFullRow(fields, notes);
+
+            var save = DialogLayout.CreateButton(this, "Save", DialogResult.None);
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, save);
+            Controls.Add(DialogLayout.CreateShell(this, fields, footer));
+            save.Click += OnOk;
+            AcceptButton = save;
+            CancelButton = cancel;
 
             rbNone.CheckedChanged += (a, b) => UpdateEnabled();
             rbSystem.CheckedChanged += (a, b) => UpdateEnabled();
             rbManual.CheckedChanged += (a, b) => UpdateEnabled();
-            FormClosing += (a, b) => testCts?.Cancel();
+            DialogLayout.TrackDirty(this, () => dirty = true);
+            FormClosing += (a, e) =>
+            {
+                testCts?.Cancel();
+                DialogLayout.GuardUnsavedChanges(this, dirty, e);
+            };
+            Shown += (a, e) =>
+            {
+                if (rbManual.Checked) DialogLayout.FocusFirstEditable(fields);
+                else rbNone.Focus();
+            };
+            Resize += (a, e) =>
+            {
+                lblTest.MaximumSize = new Size(Math.Max(Theme.Scale(this, 160), fields.ClientSize.Width - Theme.Scale(this, 40)), 0);
+                notes.MaximumSize = new Size(Math.Max(Theme.Scale(this, 160), fields.ClientSize.Width - Theme.Scale(this, 40)), 0);
+            };
             UpdateEnabled();
         }
 
@@ -130,25 +169,23 @@ namespace FastDM
         async Task RunTestAsync()
         {
             testCts?.Cancel();
+            testCts?.Dispose();
             testCts = new CancellationTokenSource();
             var token = testCts.Token;
 
             btnTest.Enabled = false;
-            lblTest.Text = "Testing…";
+            SetTestResult("Testing…", Theme.P.SubText);
             try
             {
                 string msg = await ProxyConfig.TestAsync(CurrentMode, CurrentKind, txtHost.Text,
                     (int)numPort.Value, txtUser.Text.Trim(), txtPass.Text, token);
-                if (!IsDisposed) lblTest.Text = msg;
+                if (!IsDisposed) SetTestResult(AppLog.Redact(msg), Theme.P.Success);
             }
             catch (OperationCanceledException) { AppLog.Write("NetworkForm: connection test cancelled"); }
             catch (Exception ex)
             {
                 if (!IsDisposed)
-                {
-                    string m = AppLog.Redact(ex.GetBaseException().Message);
-                    lblTest.Text = "Failed: " + (m.Length > 60 ? m.Substring(0, 60) + "…" : m);
-                }
+                    SetTestResult("Failed: " + AppLog.Redact(ex.GetBaseException().Message), Theme.P.Error);
             }
             finally
             {
@@ -156,11 +193,23 @@ namespace FastDM
             }
         }
 
+        void SetTestResult(string message, Color color)
+        {
+            lblTest.Text = AppLog.Redact(message ?? string.Empty);
+            lblTest.ForeColor = color;
+            tips.SetToolTip(lblTest, lblTest.Text.Length == 0
+                ? "Right-click to copy the complete redacted test result."
+                : AppLog.Redact(lblTest.Text) + Environment.NewLine + "Right-click to copy.");
+            lblTest.PerformLayout();
+            lblTest.Parent?.PerformLayout();
+        }
+
         void OnOk(object? sender, EventArgs e)
         {
             if (CurrentMode == ProxyMode.Manual && txtHost.Text.Trim().Length == 0)
             {
                 ThemeDialog.Show(this, "Please enter the proxy host, or choose another proxy option.");
+                txtHost.Focus();
                 return;
             }
 
@@ -187,7 +236,19 @@ namespace FastDM
             s.ProxyUser = txtUser.Text.Trim();
 
             NetworkApply.ApplyAndReset(s);
+            dirty = false;
             DialogResult = DialogResult.OK;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                tips.Dispose();
+                testCts?.Cancel();
+                testCts?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

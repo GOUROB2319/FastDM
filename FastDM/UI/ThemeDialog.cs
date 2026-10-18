@@ -132,6 +132,67 @@ namespace FastDM
             return dialog.ShowDialog(owner);
         }
 
+
+        public static DialogResult Confirm(IWin32Window owner, string message,
+            string discardText = "Discard", string keepEditingText = "Keep editing")
+        {
+            var palette = Theme.P;
+            var dialog = new Form
+            {
+                Text = "FastDM",
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                ShowInTaskbar = false,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ClientSize = new Size(460, 172),
+                Font = Theme.CreateFont(Theme.FontBody)
+            };
+            Theme.ConfigureForm(dialog);
+
+            var body = new Label
+            {
+                Text = AppLog.Redact(message ?? string.Empty),
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(dialog, 410), 0),
+                Location = new Point(Theme.Scale(dialog, 20), Theme.Scale(dialog, 22)),
+                ForeColor = palette.Text
+            };
+
+            var keep = new Button
+            {
+                Text = keepEditingText,
+                Size = new Size(Theme.Scale(dialog, 116), Theme.Scale(dialog, 34)),
+                DialogResult = DialogResult.No
+            };
+            var discard = new Button
+            {
+                Text = discardText,
+                Size = new Size(Theme.Scale(dialog, 104), Theme.Scale(dialog, 34)),
+                DialogResult = DialogResult.Yes
+            };
+            var footer = DialogLayout.CreateFooter(dialog, keep, discard);
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = new Padding(Theme.Scale(dialog, 20))
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(dialog, 58)));
+            layout.Controls.Add(body, 0, 0);
+            layout.Controls.Add(footer, 0, 1);
+            dialog.Controls.Add(layout);
+            dialog.AcceptButton = keep;
+            dialog.CancelButton = keep;
+            Theme.Apply(dialog);
+            Theme.StyleDialogButton(keep, isPrimary: false);
+            Theme.StyleDialogButton(discard, isPrimary: true);
+            dialog.Shown += (s, e) => keep.Focus();
+            return dialog.ShowDialog(owner);
+        }
+
         public static DialogResult ShowError(IWin32Window owner, string caption, string userMessage, Exception exception)
         {
             string detail = AppLog.Redact(exception.GetBaseException().Message);

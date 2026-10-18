@@ -13,6 +13,7 @@ namespace FastDM
         readonly CheckBox[] days = new CheckBox[7];
         readonly ComboBox cmbFrom, cmbTo;
         bool updating;
+        bool dirty;
 
         static readonly string[] DayNames = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 
@@ -23,39 +24,48 @@ namespace FastDM
             Text = "Scheduler";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(480, 340);
-            MinimumSize = new Size(460, 320);
+            MaximizeBox = true;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(560, 460);
+            MinimumSize = new Size(460, 360);
             Font = Theme.CreateFont(Theme.FontBody);
+
+            var fields = DialogLayout.CreateTwoColumnFields(this, labelWidth: 120);
 
             chkEnable = new CheckBox
             {
                 Text = "Enable scheduler (download only during the time window below)",
-                Location = new Point(16, 16),
                 AutoSize = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Checked = s.SchedulerEnabled
+                Checked = s.SchedulerEnabled,
+                Margin = new Padding(0, Theme.Scale(this, 4), 0, Theme.Scale(this, 6))
             };
-            Controls.Add(chkEnable);
+            DialogLayout.AddFullRow(fields, chkEnable);
 
-            Controls.Add(new Label { Text = "Days", Location = new Point(16, 56), AutoSize = true });
-
-            chkEvery = new CheckBox { Text = "Everyday", Location = new Point(16, 82), AutoSize = true };
-            Controls.Add(chkEvery);
-
+            var dayPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                Margin = Padding.Empty
+            };
+            chkEvery = new CheckBox { Text = "Everyday", AutoSize = true, Margin = new Padding(0, 3, Theme.Scale(this, 14), 3) };
+            dayPanel.Controls.Add(chkEvery);
             for (int i = 0; i < 7; i++)
             {
                 days[i] = new CheckBox
                 {
                     Text = DayNames[i],
-                    Location = new Point(16 + i * 62, 114),
                     AutoSize = true,
-                    Checked = (s.ScheduleDays & (1 << i)) != 0
+                    Checked = (s.ScheduleDays & (1 << i)) != 0,
+                    Margin = new Padding(0, 3, Theme.Scale(this, 8), 3)
                 };
                 int idx = i;
                 days[i].CheckedChanged += (a, b) => { if (!updating) SyncEveryday(); };
-                Controls.Add(days[i]);
+                dayPanel.Controls.Add(days[i]);
             }
+            DialogLayout.AddFieldRow(fields, "Days", dayPanel);
             SyncEveryday();
             chkEvery.CheckedChanged += (a, b) =>
             {
@@ -65,37 +75,40 @@ namespace FastDM
                 updating = false;
             };
 
-            Controls.Add(new Label { Text = "From", Location = new Point(16, 164), AutoSize = true });
-            cmbFrom = MakeTimeCombo(new Point(64, 160), s.ScheduleStartMin);
-            Controls.Add(cmbFrom);
-
-            Controls.Add(new Label { Text = "To", Location = new Point(200, 164), AutoSize = true });
-            cmbTo = MakeTimeCombo(new Point(232, 160), s.ScheduleEndMin);
-            Controls.Add(cmbTo);
+            cmbFrom = MakeTimeCombo(s.ScheduleStartMin);
+            cmbTo = MakeTimeCombo(s.ScheduleEndMin);
+            DialogLayout.AddFieldRow(fields, "From", cmbFrom);
+            DialogLayout.AddFieldRow(fields, "To", cmbTo);
 
             chkStop = new CheckBox
             {
                 Text = "Pause running downloads when the window ends",
-                Location = new Point(16, 204),
                 AutoSize = true,
-                Checked = s.ScheduleStopOutside
+                Checked = s.ScheduleStopOutside,
+                Margin = new Padding(0, Theme.Scale(this, 6), 0, Theme.Scale(this, 4))
             };
-            Controls.Add(chkStop);
+            DialogLayout.AddFullRow(fields, chkStop);
 
-            Controls.Add(new Label
+            var note = new Label
             {
-                Text = "A window that crosses midnight works too (for example 22:00 to 06:00).\n" +
-                       "Right-click a download and choose \"Start now\" to ignore the schedule for it.",
-                Location = new Point(16, 238),
-                Size = new Size(450, 44),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            });
+                Text = "A window that crosses midnight works too (for example 22:00 to 06:00). Right-click a download and choose “Start now” to ignore the schedule for it.",
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                ForeColor = Theme.P.SubText
+            };
+            DialogLayout.AddFullRow(fields, note);
 
-            var ok = new Button { Text = "OK", Location = new Point(290, 292), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(386, 292), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-            ok.Click += OnOk;
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            var save = DialogLayout.CreateButton(this, "Save");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, save);
+            Controls.Add(DialogLayout.CreateShell(this, fields, footer));
+            save.Click += OnOk;
+            AcceptButton = save;
+            CancelButton = cancel;
+
+            DialogLayout.TrackDirty(this, () => dirty = true);
+            FormClosing += (a, e) => DialogLayout.GuardUnsavedChanges(this, dirty, e);
+            Shown += (a, e) => chkEnable.Focus();
         }
 
         void SyncEveryday()
@@ -107,12 +120,17 @@ namespace FastDM
             updating = false;
         }
 
-        static ComboBox MakeTimeCombo(Point loc, int minutes)
+        ComboBox MakeTimeCombo(int minutes)
         {
-            var c = new ComboBox { Location = loc, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
-            for (int m = 0; m < 1440; m += 15) c.Items.Add(Scheduler.Hm(m));
-            c.SelectedIndex = Math.Clamp((int)Math.Round(minutes / 15.0), 0, 95);
-            return c;
+            var combo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = Theme.Scale(this, 120),
+                AccessibleName = "Schedule time"
+            };
+            for (int m = 0; m < 1440; m += 15) combo.Items.Add(Scheduler.Hm(m));
+            combo.SelectedIndex = Math.Clamp((int)Math.Round(minutes / 15.0), 0, 95);
+            return combo;
         }
 
         void OnOk(object? sender, EventArgs e)
@@ -123,6 +141,7 @@ namespace FastDM
             if (chkEnable.Checked && mask == 0)
             {
                 ThemeDialog.Show(this, "Select at least one day.");
+                chkEnable.Focus();
                 return;
             }
 
@@ -131,6 +150,7 @@ namespace FastDM
             s.ScheduleStartMin = cmbFrom.SelectedIndex * 15;
             s.ScheduleEndMin = cmbTo.SelectedIndex * 15;
             s.ScheduleStopOutside = chkStop.Checked;
+            dirty = false;
             DialogResult = DialogResult.OK;
         }
     }
@@ -152,20 +172,39 @@ namespace FastDM
             Text = "FastDM — all downloads finished";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
-            MaximizeBox = false; MinimizeBox = false;
+            MaximizeBox = false;
+            MinimizeBox = false;
             ShowInTaskbar = true;
             TopMost = true;
-            ClientSize = new Size(430, 150);
+            ClientSize = new Size(460, 170);
+            MinimumSize = new Size(380, 150);
             Font = Theme.CreateFont(Theme.FontSection);
 
-            lbl = new Label { Location = new Point(20, 20), Size = new Size(390, 60) };
-            Controls.Add(lbl);
+            var body = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(Theme.Scale(this, 20)),
+                ColumnCount = 1,
+                RowCount = 1
+            };
+            lbl = new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoSize = false,
+                AccessibleName = "Shutdown countdown"
+            };
+            body.Controls.Add(lbl, 0, 0);
 
-            var now = new Button { Text = "Do it now", Location = new Point(210, 96), Size = new Size(110, 36) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(326, 96), Size = new Size(84, 36), DialogResult = DialogResult.Cancel };
+            var now = DialogLayout.CreateButton(this, "Do it now");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
             now.Click += (a, b) => DialogResult = DialogResult.OK;
-            Controls.Add(now); Controls.Add(cancel);
-            AcceptButton = cancel; CancelButton = cancel;     // Enter চাপলে ভুলে শাটডাউন না হয়ে বাতিল হবে
+            var footer = DialogLayout.CreateFooter(this, cancel, now);
+            Controls.Add(DialogLayout.CreateShell(this, body, footer));
+
+            // Enter should cancel rather than accidentally trigger shutdown.
+            AcceptButton = cancel;
+            CancelButton = cancel;
 
             timer = new System.Windows.Forms.Timer { Interval = 1000 };
             timer.Tick += (a, b) =>
