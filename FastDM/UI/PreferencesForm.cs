@@ -26,6 +26,7 @@ namespace FastDM
 
         bool navBusy;
         bool dirty;
+        bool suppressDirty;
 
         const int RowWidth = 640;
 
@@ -134,7 +135,7 @@ namespace FastDM
                 if (startSection == null) DialogLayout.FocusFirstEditable(content);
             };
 
-            DialogLayout.TrackDirty(this, () => dirty = true);
+            DialogLayout.TrackDirty(this, () => { if (!suppressDirty) dirty = true; });
             FormClosing += (a, e) => DialogLayout.GuardUnsavedChanges(this, dirty, e);
         }
 
@@ -452,7 +453,9 @@ namespace FastDM
 
                     if (IsDisposed) return;
 
-                    chkStartup.Checked = st == StartupState.On;
+                    suppressDirty = true;
+                    try { chkStartup.Checked = st == StartupState.On; }
+                    finally { suppressDirty = false; }
 
                     switch (st)
                     {

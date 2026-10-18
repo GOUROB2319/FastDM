@@ -733,9 +733,7 @@ namespace FastDM
             }
 
             var resume = AddItem("Resume", "resume", "\uE768", (s, e) => ResumeSelected());
-            resume.ShortcutKeyDisplayString = "Space";
             var pause = AddItem("Pause", "pause", "\uE769", (s, e) => PauseSelected());
-            pause.ShortcutKeyDisplayString = "Space";
             AddItem("Start now (ignore schedule)", "start-now", "\uE73A", (s, e) => StartNowSelected());
 
             m.Items.Add(
@@ -783,6 +781,13 @@ namespace FastDM
             m.Opening += (s, e) =>
             {
                 bool inDeleted = filter == DeletedFilter;
+                var selectedForShortcut = Sel();
+                bool spacePauses = selectedForShortcut.Any(i => i.State is DlState.Downloading or DlState.Queued);
+                bool spaceResumes = !spacePauses && selectedForShortcut.Any(i => i.State is DlState.Paused or DlState.Error);
+                pause.ShortcutKeyDisplayString = !inDeleted && spacePauses ? "Space" : string.Empty;
+                resume.ShortcutKeyDisplayString = !inDeleted && spaceResumes ? "Space" : string.Empty;
+                pause.AccessibleDescription = "Pause selected downloads. Keyboard shortcut: Space when the download list has focus.";
+                resume.AccessibleDescription = "Resume selected downloads. Keyboard shortcut: Space when the download list has focus.";
 
                 foreach (ToolStripItem i in m.Items)
                 {
