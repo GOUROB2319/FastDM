@@ -29,7 +29,7 @@ namespace FastDM
             ClientSize = new Size(1100, 640);
             MinimumSize = new Size(520, 480);
             StartPosition = FormStartPosition.CenterScreen;
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
             AllowDrop = true;
 
             DragEnter += OnDragEnter;
@@ -175,7 +175,7 @@ namespace FastDM
             {
                 GripStyle = ToolStripGripStyle.Hidden,
                 Padding = new Padding(8, 6, 8, 6),
-                Font = new Font("Segoe UI", 10f),
+                Font = Theme.CreateFont(Theme.FontSection),
                 ImageScalingSize = new Size(Theme.Scale(this, 20), Theme.Scale(this, 20))
             };
 

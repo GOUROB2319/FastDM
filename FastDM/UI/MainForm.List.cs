@@ -23,7 +23,7 @@ namespace FastDM
     public partial class MainForm
     {
         static Color RowColor(DownloadItem it) =>
-            it.DeletedAt.HasValue ? Gray : StateColor(it.State);
+            it.DeletedAt.HasValue ? Theme.P.SubText : StateColor(it.State);
 
         static Color StateColor(DlState s)
         {
@@ -33,16 +33,16 @@ namespace FastDM
                     return Theme.P.Accent;
 
                 case DlState.Completed:
-                    return Green;
+                    return Theme.P.Success;
 
                 case DlState.Paused:
-                    return Orange;
+                    return Theme.P.Warning;
 
                 case DlState.Error:
-                    return Red;
+                    return Theme.P.Error;
 
                 default:
-                    return Gray;
+                    return Theme.P.SubText;
             }
         }
 
@@ -114,7 +114,7 @@ namespace FastDM
             if (sel.Count == 0)
                 return;
 
-            if (MessageBox.Show(
+            if (ThemeDialog.Show(
                     this,
                     "Download " + sel.Count + " item(s) again?",
                     "Deleted",
@@ -153,7 +153,7 @@ namespace FastDM
 
         void RemoveFromHistory(List<DownloadItem> sel)
         {
-            if (MessageBox.Show(
+            if (ThemeDialog.Show(
                     this,
                     "Remove " + sel.Count + (sel.Count == 1 ? " entry" : " entries") +
                     " from the Deleted list?\n\nFiles on your disk are not touched.",
@@ -176,7 +176,7 @@ namespace FastDM
             if (deleted.Count == 0)
                 return;
 
-            if (MessageBox.Show(
+            if (ThemeDialog.Show(
                     this,
                     "Clear the whole Deleted list (" + deleted.Count + " entries)?\n\nFiles on your disk are not touched.",
                     "Deleted",

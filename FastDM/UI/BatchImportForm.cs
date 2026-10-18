@@ -54,12 +54,12 @@ namespace FastDM
             ShowInTaskbar = false;
             ClientSize = new Size(860, 620);
             MinimumSize = new Size(700, 500);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label
             {
                 Text = "Check the list, then choose what to download",
-                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+                Font = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold),
                 Location = new Point(16, 12),
                 AutoSize = true
             });
@@ -227,7 +227,7 @@ namespace FastDM
         {
             if (txtFolder.Text.Trim().Length == 0)
             {
-                MessageBox.Show(this, "Please choose a folder.");
+                ThemeDialog.Show(this, "Please choose a folder.");
                 return;
             }
 
@@ -239,7 +239,7 @@ namespace FastDM
 
             if (SelectedRows.Count == 0)
             {
-                MessageBox.Show(this, "Tick at least one link.");
+                ThemeDialog.Show(this, "Tick at least one link.");
                 return;
             }
 

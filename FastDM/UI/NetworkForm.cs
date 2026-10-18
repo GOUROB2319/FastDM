@@ -28,9 +28,9 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(480, 466);
             MinimumSize = new Size(450, 420);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
-            var bold = new Font("Segoe UI", 10f, FontStyle.Bold);
+            var bold = Theme.CreateFont(Theme.FontSection, FontStyle.Bold);
 
             // ---------- প্রক্সি ----------
             Controls.Add(new Label { Text = "Proxy", Font = bold, Location = new Point(16, 16), AutoSize = true });
@@ -160,21 +160,21 @@ namespace FastDM
         {
             if (CurrentMode == ProxyMode.Manual && txtHost.Text.Trim().Length == 0)
             {
-                MessageBox.Show(this, "Please enter the proxy host, or choose another proxy option.");
+                ThemeDialog.Show(this, "Please enter the proxy host, or choose another proxy option.");
                 return;
             }
 
             string selectedUser = txtUser.Text.Trim();
             if (selectedUser.Length > 0 && !SecretStore.Write("proxy", selectedUser, txtPass.Text))
             {
-                MessageBox.Show(this,
+                ThemeDialog.Show(this,
                     "Windows Credential Manager could not save the proxy password. The proxy settings were not applied.",
                     "Proxy password was not saved", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             if (selectedUser.Length == 0 && !SecretStore.Delete("proxy"))
             {
-                MessageBox.Show(this,
+                ThemeDialog.Show(this,
                     "FastDM could not remove the saved proxy password. The proxy settings were not applied.",
                     "Saved password could not be removed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;

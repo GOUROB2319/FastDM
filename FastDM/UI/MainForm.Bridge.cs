@@ -83,7 +83,7 @@ namespace FastDM
                             f.RestoreFromTray();
 
                             var r =
-                                MessageBox.Show(
+                                ThemeDialog.Show(
                                     f,
                                     "A browser extension wants to connect to FastDM.\n\nOrigin: " +
                                     origin +
@@ -354,7 +354,7 @@ namespace FastDM
             {
                 // fastdm:// যেকোনো ওয়েবপেজ ট্রিগার করতে পারে, তাই স্ক্যানের আগে ইউজারের হ্যাঁ লাগবে
                 var ask =
-                    MessageBox.Show(
+                    ThemeDialog.Show(
                         this,
                         "A web link asks FastDM to scan this folder and make a playlist:\n\n" +
                         cmd.Url +

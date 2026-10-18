@@ -48,7 +48,7 @@ namespace FastDM
             ShowInTaskbar = false;
             MinimizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
             ClientSize = new Size(900, 640);
             MinimumSize = new Size(780, 520);
 
@@ -220,7 +220,7 @@ namespace FastDM
                 Text = title,
                 Tag = title,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 16f, FontStyle.Bold),
+                Font = Theme.CreateFont(Theme.FontTitle, FontStyle.Bold),
                 Margin = new Padding(0, 22, 0, 4)
             };
 
@@ -239,7 +239,7 @@ namespace FastDM
             {
                 Text = text,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                Font = Theme.CreateFont(Theme.FontSection, FontStyle.Bold),
                 Margin = new Padding(0, 12, 0, 4)
             });
         }
@@ -475,7 +475,7 @@ namespace FastDM
             {
                 BridgeAuth.ForgetAll(s);
 
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "All paired browsers were forgotten. Each browser extension must connect (pair) again.",
                     "FastDM");
@@ -551,7 +551,7 @@ namespace FastDM
                     AutoSize = false,
                     Width = 100,
                     Height = 26,
-                    Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                    Font = Theme.CreateFont(Theme.FontSection, FontStyle.Bold),
                     TextAlign = ContentAlignment.MiddleLeft
                 }, c + 1, 0);
 
@@ -672,7 +672,7 @@ namespace FastDM
 
                     if (d == null)
                     {
-                        MessageBox.Show(this, "Windows Defender was not found on this PC. Choose \"Configure manually\".", "Antivirus");
+                        ThemeDialog.Show(this, "Windows Defender was not found on this PC. Choose \"Configure manually\".", "Antivirus");
                         cmbAv.SelectedIndex = 1;
                         return;
                     }
@@ -748,7 +748,7 @@ namespace FastDM
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "FastDM");
+                    ThemeDialog.ShowError(this, "FastDM", "Couldn't complete this preferences action.", ex);
                 }
             });
 
@@ -809,7 +809,7 @@ namespace FastDM
                 {
                     if (UpdateChecker.IsPackaged)
                     {
-                        MessageBox.Show(this, "In the Store version, yt-dlp is updated together with the app.", "yt-dlp");
+                        ThemeDialog.Show(this, "In the Store version, yt-dlp is updated together with the app.", "yt-dlp");
                         return;
                     }
 
@@ -819,11 +819,11 @@ namespace FastDM
                     {
                         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
                         string msg = await YtDlpUpdater.UpdateAsync(cts.Token);
-                        MessageBox.Show(this, msg, "yt-dlp");
+                        ThemeDialog.Show(this, msg, "yt-dlp");
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(this, ex.Message, "yt-dlp");
+                        ThemeDialog.ShowError(this, "yt-dlp", "The yt-dlp update failed. Check the application log for details.", ex);
                     }
                     finally
                     {
@@ -845,7 +845,7 @@ namespace FastDM
 
             ActionButton("Reset", 120, (a, b) =>
             {
-                if (MessageBox.Show(
+                if (ThemeDialog.Show(
                         this,
                         "Reset all preferences to their default values?",
                         "Reset",
@@ -883,7 +883,7 @@ namespace FastDM
 
         void Warn(string message, int navIndex, Control focus)
         {
-            MessageBox.Show(this, message, "Preferences");
+            ThemeDialog.Show(this, message, "Preferences");
             nav.SelectedIndex = navIndex;
             focus.Focus();
         }

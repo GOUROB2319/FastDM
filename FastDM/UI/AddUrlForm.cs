@@ -32,7 +32,7 @@ namespace FastDM
             ShowInTaskbar = false;
             ClientSize = new Size(560, 336);
             MinimumSize = new Size(500, 320);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label
             {
@@ -181,7 +181,7 @@ namespace FastDM
             {
                 if (new FileInfo(ofd.FileName).Length > 5 * 1024 * 1024)
                 {
-                    MessageBox.Show(this, "This file is too big for a list of links (limit 5 MB).");
+                    ThemeDialog.Show(this, "This file is too big for a list of links (limit 5 MB).");
                     return;
                 }
 
@@ -192,7 +192,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message);
+                ThemeDialog.ShowError(this, "FastDM", "Couldn't read the selected text file.", ex);
             }
         }
 
@@ -212,7 +212,7 @@ namespace FastDM
         {
             if (Urls.Length == 0)
             {
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "Please enter at least one URL.");
 
@@ -230,7 +230,7 @@ namespace FastDM
                       uri.Scheme == Uri.UriSchemeFtp ||
                       uri.Scheme == "sftp"))
                 {
-                    MessageBox.Show(
+                    ThemeDialog.Show(
                         this,
                         "Invalid link (http, https, ftp, sftp only):\n" + u);
 
@@ -240,7 +240,7 @@ namespace FastDM
 
             if (Folder.Length == 0)
             {
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "Please choose a folder.");
 

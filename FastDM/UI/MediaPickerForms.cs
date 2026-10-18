@@ -37,7 +37,7 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(560, 440);
             MinimumSize = new Size(480, 400);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 14), AutoSize = true });
             cmbVideo = new ComboBox { Location = new Point(16, 36), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
@@ -146,8 +146,8 @@ namespace FastDM
 
         void OnOk(object? sender, EventArgs e)
         {
-            if (txtName.Text.Trim().Length == 0) { MessageBox.Show(this, "Please enter a file name."); return; }
-            if (txtFolder.Text.Trim().Length == 0) { MessageBox.Show(this, "Please choose a folder."); return; }
+            if (txtName.Text.Trim().Length == 0) { ThemeDialog.Show(this, "Please enter a file name."); return; }
+            if (txtFolder.Text.Trim().Length == 0) { ThemeDialog.Show(this, "Please choose a folder."); return; }
 
             var v = (cmbVideo.SelectedItem as OptItem)?.Tag as VideoOpt;
             var a = (cmbAudio.SelectedItem as OptItem)?.Tag as AudioOpt;
@@ -173,7 +173,7 @@ namespace FastDM
             {
                 if (audioOnly && a == null)
                 {
-                    MessageBox.Show(this, "This stream has no separate audio track to save.");
+                    ThemeDialog.Show(this, "This stream has no separate audio track to save.");
                     return;
                 }
                 spec.VideoRepId = v?.RepId;
@@ -200,7 +200,7 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(620, 360);
             MinimumSize = new Size(480, 300);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label
             {

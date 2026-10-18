@@ -24,7 +24,7 @@ namespace FastDM
             ShowInTaskbar = false;
             MinimizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
             ClientSize = new Size(700, 390);
             MinimumSize = new Size(560, 340);
 
@@ -106,9 +106,9 @@ namespace FastDM
                 try
                 {
                     Clipboard.SetText(AppLog.Redact(details.Text));
-                    MessageBox.Show(this, "Redacted diagnostic details copied.", "FastDM");
+                    ThemeDialog.Show(this, "Redacted diagnostic details copied.", "FastDM");
                 }
-                catch (Exception ex) { MessageBox.Show(this, "Could not copy details: " + AppLog.Redact(ex.Message), "FastDM"); }
+                catch (Exception ex) { ThemeDialog.ShowError(this, "FastDM", "Couldn't copy diagnostic details. Try again.", ex); }
             };
             buttons.Controls.Add(close);
             buttons.Controls.Add(open);

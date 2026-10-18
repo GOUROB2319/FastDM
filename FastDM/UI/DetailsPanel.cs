@@ -32,8 +32,8 @@ namespace FastDM
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             Dock = DockStyle.Bottom;
             Height = Theme.Scale(this, 212);
-            Font = new Font("Segoe UI", 9.5f);
-            bold = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+            Font = Theme.CreateFont(Theme.FontBody);
+            bold = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold);
             underline = new Font(Font, FontStyle.Underline);
             tips = new ToolTip { ShowAlways = true, InitialDelay = 400 };
         }
@@ -214,7 +214,7 @@ namespace FastDM
                 bool isSave = row[0] == "Save to" && row[1].Length > 0;
                 bool isLink = row[0] == "Link" && IsWebLink(row[1]);
 
-                Color vc = row[0] == "Error" ? Color.FromArgb(255, 92, 119) : p.Text;
+                Color vc = row[0] == "Error" ? p.Error : p.Text;
                 Font vf = Font;
 
                 if (isSave || isLink)
@@ -329,7 +329,7 @@ namespace FastDM
                 using (var b = new SolidBrush(p.Track)) g.FillRectangle(b, ybar);
                 int yw = YtDlpRetryPolicy.IsProcessing(it.ProgressStage) ? 0 : (int)(ybar.Width * it.Percent / 100.0);
                 if (yw > 0)
-                    using (var b = new SolidBrush(it.State == DlState.Completed ? Color.FromArgb(46, 204, 113) : p.Accent))
+                    using (var b = new SolidBrush(it.State == DlState.Completed ? p.Success : p.Accent))
                         g.FillRectangle(b, ybar.X, ybar.Y, yw, ybar.Height);
                 using (var pen = new Pen(p.Border)) g.DrawRectangle(pen, ybar);
                 return;
@@ -345,7 +345,7 @@ namespace FastDM
                 using (var b = new SolidBrush(p.Track)) g.FillRectangle(b, sbar);
                 int sw = (int)(sbar.Width * it.Percent / 100.0);
                 if (sw > 0)
-                    using (var b = new SolidBrush(it.State == DlState.Completed ? Color.FromArgb(46, 204, 113) : p.Accent))
+                    using (var b = new SolidBrush(it.State == DlState.Completed ? p.Success : p.Accent))
                         g.FillRectangle(b, sbar.X, sbar.Y, sw, sbar.Height);
                 using (var pen = new Pen(p.Border)) g.DrawRectangle(pen, sbar);
                 return;
@@ -377,7 +377,7 @@ namespace FastDM
                     long len = s.End - s.Start + 1;
                     int fw = s.Finished ? w : (int)(w * Math.Min(1.0, s.Downloaded / (double)Math.Max(1, len)));
                     if (fw > 0)
-                        using (var b = new SolidBrush(s.Finished ? Color.FromArgb(46, 204, 113) : p.Accent))
+                        using (var b = new SolidBrush(s.Finished ? p.Success : p.Accent))
                             g.FillRectangle(b, x1, bar.Y, fw, bar.Height);
                     using (var pen = new Pen(p.Window)) g.DrawLine(pen, x1, bar.Y, x1, bar.Bottom);
                 }
@@ -386,7 +386,7 @@ namespace FastDM
             {
                 int fw = (int)(bar.Width * it.Percent / 100.0);
                 if (fw > 0)
-                    using (var b = new SolidBrush(it.State == DlState.Completed ? Color.FromArgb(46, 204, 113) : p.Accent))
+                    using (var b = new SolidBrush(it.State == DlState.Completed ? p.Success : p.Accent))
                         g.FillRectangle(b, bar.X, bar.Y, fw, bar.Height);
             }
             using (var pen = new Pen(p.Border)) g.DrawRectangle(pen, bar);

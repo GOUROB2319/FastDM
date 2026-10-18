@@ -13,7 +13,7 @@ namespace FastDM
     public class Palette
     {
         public Color Window, RowAlt, Text, SubText, Border, Accent, Selection, Track,
-                     Header, Toolbar, Hover, Pressed, Input, Button,
+                     Header, Toolbar, Hover, Pressed, Input, Button, Success, Warning, Error,
                      SideBg, SideSel, SideText, SideCount;
     }
 
@@ -21,6 +21,14 @@ namespace FastDM
     public static class Theme
     {
         static readonly SizeF LogicalDpi = new SizeF(96f, 96f);
+        public const float FontSmall = 8.5f;
+        public const float FontBody = 9.5f;
+        public const float FontSection = 10f;
+        public const float FontHeading = 11f;
+        public const float FontTitle = 16f;
+
+        public static Font CreateFont(float points, FontStyle style = FontStyle.Regular) =>
+            new Font("Segoe UI", points, style, GraphicsUnit.Point);
 
         // Programmatic forms use the same 96 DPI design baseline as designer forms.
         // This keeps control bounds and fonts in one coordinate system as Windows DPI changes.
@@ -73,6 +81,9 @@ namespace FastDM
             Pressed = ColorTranslator.FromHtml("#DCE0F0"),
             Input = ColorTranslator.FromHtml("#FFFFFF"),
             Button = ColorTranslator.FromHtml("#F4F5FA"),
+            Success = ColorTranslator.FromHtml("#167D42"),
+            Warning = ColorTranslator.FromHtml("#875700"),
+            Error = ColorTranslator.FromHtml("#B42338"),
             SideBg = ColorTranslator.FromHtml("#1E2233"),
             SideSel = ColorTranslator.FromHtml("#2F3550"),
             SideText = ColorTranslator.FromHtml("#FFFFFF"),
@@ -95,6 +106,9 @@ namespace FastDM
             Pressed = ColorTranslator.FromHtml("#343958"),
             Input = ColorTranslator.FromHtml("#1F2230"),
             Button = ColorTranslator.FromHtml("#262A3B"),
+            Success = ColorTranslator.FromHtml("#6CD998"),
+            Warning = ColorTranslator.FromHtml("#FFD166"),
+            Error = ColorTranslator.FromHtml("#FF7185"),
             SideBg = ColorTranslator.FromHtml("#11131B"),
             SideSel = ColorTranslator.FromHtml("#23283D"),
             SideText = ColorTranslator.FromHtml("#FFFFFF"),
@@ -104,6 +118,28 @@ namespace FastDM
         public static ThemeMode Mode { get; private set; } = ThemeMode.System;
         public static Palette P { get; private set; } = Light;
         public static bool IsDark { get; private set; }
+
+        static double Luminance(Color color)
+        {
+            static double Linear(byte value)
+            {
+                double c = value / 255.0;
+                return c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+        }
+
+        public static double ContrastRatio(Color foreground, Color background)
+        {
+            double a = Luminance(foreground);
+            double b = Luminance(background);
+            return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+        }
+
+        public static Color ContrastText(Color background) =>
+            ContrastRatio(Color.White, background) >= ContrastRatio(Color.Black, background)
+                ? Color.White
+                : Color.Black;
 
         public static void SetMode(ThemeMode mode)
         {
@@ -176,24 +212,20 @@ namespace FastDM
             f.ForeColor = P.Text;
             SetTitleBar(f);
             ApplyChildren(f);
+            if (f.AcceptButton is Button primary) StyleButton(primary, primary: true);
         }
 
         static void ApplyChildren(Control parent)
         {
             foreach (Control c in parent.Controls)
             {
+                if (c.ContextMenuStrip != null) StyleStrip(c.ContextMenuStrip);
                 switch (c)
                 {
                     case Button b:
-                        b.UseVisualStyleBackColor = false;
-                        b.FlatStyle = FlatStyle.Flat;
-                        b.BackColor = P.Button;
-                        b.ForeColor = P.Text;
-                        b.FlatAppearance.BorderColor = P.Border;
-                        b.FlatAppearance.MouseOverBackColor = P.Hover;
-                        b.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        StyleButton(b, primary: false);
                         break;
-                    case TextBox t:
+                    case TextBoxBase t:
                         t.BackColor = P.Input;
                         t.ForeColor = P.Text;
                         t.BorderStyle = BorderStyle.FixedSingle;
@@ -202,10 +234,51 @@ namespace FastDM
                         cb.BackColor = P.Input;
                         cb.ForeColor = P.Text;
                         cb.FlatStyle = FlatStyle.Flat;
+                        if (cb.DrawMode == DrawMode.Normal)
+                        {
+                            cb.DrawMode = DrawMode.OwnerDrawFixed;
+                            cb.ItemHeight = Scale(cb, 22);
+                            cb.DrawItem -= DrawComboItem;
+                            cb.DrawItem += DrawComboItem;
+                        }
+                        StyleScroll(cb);
                         break;
                     case NumericUpDown n:
                         n.BackColor = P.Input;
                         n.ForeColor = P.Text;
+                        n.BorderStyle = BorderStyle.FixedSingle;
+                        StyleScroll(n);
+                        break;
+                    case CheckedListBox clb:
+                        clb.BackColor = P.Input;
+                        clb.ForeColor = P.Text;
+                        clb.BorderStyle = BorderStyle.FixedSingle;
+                        StyleScroll(clb);
+                        if (clb.DrawMode == DrawMode.Normal)
+                        {
+                            clb.DrawMode = DrawMode.OwnerDrawFixed;
+                            clb.ItemHeight = Scale(clb, 24);
+                            clb.DrawItem -= DrawCheckedListItem;
+                            clb.DrawItem += DrawCheckedListItem;
+                        }
+                        break;
+                    case ListBox lb:
+                        lb.BackColor = P.Input;
+                        lb.ForeColor = P.Text;
+                        lb.BorderStyle = BorderStyle.FixedSingle;
+                        StyleScroll(lb);
+                        if (lb.DrawMode == DrawMode.Normal)
+                        {
+                            lb.DrawMode = DrawMode.OwnerDrawFixed;
+                            lb.ItemHeight = Scale(lb, 22);
+                            lb.DrawItem -= DrawListItem;
+                            lb.DrawItem += DrawListItem;
+                        }
+                        break;
+                    case ListView lv:
+                        lv.BackColor = P.Input;
+                        lv.ForeColor = P.Text;
+                        StyleScroll(lv);
                         break;
                     case TreeView tv:
                         tv.BackColor = P.Input;
@@ -214,6 +287,38 @@ namespace FastDM
                         tv.BorderStyle = BorderStyle.FixedSingle;
                         StyleScroll(tv);
                         break;
+                    case ToolStrip strip:
+                        StyleStrip(strip);
+                        break;
+                    case LinkLabel link:
+                        link.BackColor = P.Window;
+                        link.ForeColor = P.Text;
+                        link.LinkColor = P.Accent;
+                        link.ActiveLinkColor = P.Accent;
+                        link.VisitedLinkColor = P.SubText;
+                        break;
+                    case Label label:
+                        label.BackColor = P.Window;
+                        label.ForeColor = P.Text;
+                        break;
+                    case CheckBox check:
+                        check.BackColor = P.Window;
+                        check.ForeColor = P.Text;
+                        check.FlatStyle = FlatStyle.Flat;
+                        check.FlatAppearance.MouseOverBackColor = P.Hover;
+                        check.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        break;
+                    case RadioButton radio:
+                        radio.BackColor = P.Window;
+                        radio.ForeColor = P.Text;
+                        radio.FlatStyle = FlatStyle.Flat;
+                        radio.FlatAppearance.MouseOverBackColor = P.Hover;
+                        radio.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        break;
+                    case GroupBox group:
+                        group.BackColor = P.Window;
+                        group.ForeColor = P.Text;
+                        break;
                     default:
                         c.BackColor = P.Window;
                         c.ForeColor = P.Text;
@@ -221,6 +326,94 @@ namespace FastDM
                 }
                 if (c.HasChildren) ApplyChildren(c);
             }
+        }
+
+        static void StyleButton(Button button, bool primary)
+        {
+            button.UseVisualStyleBackColor = false;
+            button.FlatStyle = FlatStyle.Flat;
+            button.BackColor = primary ? P.Accent : P.Button;
+            button.ForeColor = primary ? ContrastText(P.Accent) : P.Text;
+            button.FlatAppearance.BorderSize = button.Focused ? 2 : 1;
+            button.FlatAppearance.BorderColor = button.Focused ? P.Accent : primary ? P.Accent : P.Border;
+            button.FlatAppearance.MouseOverBackColor = primary ? P.Accent : P.Hover;
+            button.FlatAppearance.MouseDownBackColor = primary ? P.Accent : P.Pressed;
+            button.GotFocus -= ButtonFocusChanged;
+            button.LostFocus -= ButtonFocusChanged;
+            button.Paint -= DrawButtonFocus;
+            button.GotFocus += ButtonFocusChanged;
+            button.LostFocus += ButtonFocusChanged;
+            button.Paint += DrawButtonFocus;
+        }
+
+        public static void StyleDialogButton(Button button, bool isPrimary) => StyleButton(button, isPrimary);
+
+        static void ButtonFocusChanged(object? sender, EventArgs e)
+        {
+            if (sender is Button button)
+            {
+                button.FlatAppearance.BorderSize = button.Focused ? 2 : 1;
+                button.FlatAppearance.BorderColor = button.Focused ? P.Accent : P.Border;
+                button.Invalidate();
+            }
+        }
+
+        static void DrawButtonFocus(object? sender, PaintEventArgs e)
+        {
+            if (sender is Button button && button.Focused)
+                ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(button.ClientRectangle, -4, -4), button.ForeColor, button.BackColor);
+        }
+
+        static void DrawComboItem(object? sender, DrawItemEventArgs e)
+        {
+            if (sender is not ComboBox combo || e.Bounds.Width <= 0 || e.Bounds.Height <= 0) return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            Color back = selected ? P.Accent : P.Input;
+            Color fore = selected ? ContrastText(P.Accent) : P.Text;
+            using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
+            string text = (e.Index >= 0 && e.Index < combo.Items.Count
+                ? combo.GetItemText(combo.Items[e.Index])
+                : combo.Text) ?? string.Empty;
+            TextRenderer.DrawText(e.Graphics, text, combo.Font, Rectangle.Inflate(e.Bounds, -Scale(combo, 6), 0),
+                fore, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if ((e.State & DrawItemState.Focus) != 0) e.DrawFocusRectangle();
+        }
+
+        static void DrawListItem(object? sender, DrawItemEventArgs e)
+        {
+            if (sender is not ListBox list || e.Index < 0 || e.Index >= list.Items.Count) return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            Color back = selected ? P.Selection : P.Input;
+            using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, list.GetItemText(list.Items[e.Index]), list.Font,
+                Rectangle.Inflate(e.Bounds, -Scale(list, 5), 0), P.Text,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if ((e.State & DrawItemState.Focus) != 0) e.DrawFocusRectangle();
+        }
+
+        static void DrawCheckedListItem(object? sender, DrawItemEventArgs e)
+        {
+            if (sender is not CheckedListBox list || e.Index < 0 || e.Index >= list.Items.Count) return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            Color back = selected ? P.Selection : P.Input;
+            using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
+            int box = Scale(list, 14);
+            var check = new Rectangle(e.Bounds.X + Scale(list, 5), e.Bounds.Y + (e.Bounds.Height - box) / 2, box, box);
+            using (var brush = new SolidBrush(P.Window)) e.Graphics.FillRectangle(brush, check);
+            using (var pen = new Pen(P.Border)) e.Graphics.DrawRectangle(pen, check);
+            if (list.GetItemChecked(e.Index))
+            {
+                using var pen = new Pen(P.Accent, Math.Max(1, Scale(list, 2)));
+                e.Graphics.DrawLines(pen, new[] {
+                    new Point(check.X + Scale(list, 3), check.Y + box / 2),
+                    new Point(check.X + box / 2 - 1, check.Bottom - Scale(list, 4)),
+                    new Point(check.Right - Scale(list, 2), check.Y + Scale(list, 3))
+                });
+            }
+            TextRenderer.DrawText(e.Graphics, list.GetItemText(list.Items[e.Index]), list.Font,
+                new Rectangle(check.Right + Scale(list, 6), e.Bounds.Y, e.Bounds.Width - check.Width - Scale(list, 16), e.Bounds.Height),
+                P.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if ((e.State & DrawItemState.Focus) != 0) e.DrawFocusRectangle();
         }
     }
 

@@ -26,7 +26,7 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(480, 340);
             MinimumSize = new Size(460, 320);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             chkEnable = new CheckBox
             {
@@ -122,7 +122,7 @@ namespace FastDM
 
             if (chkEnable.Checked && mask == 0)
             {
-                MessageBox.Show(this, "Select at least one day.");
+                ThemeDialog.Show(this, "Select at least one day.");
                 return;
             }
 
@@ -156,7 +156,7 @@ namespace FastDM
             ShowInTaskbar = true;
             TopMost = true;
             ClientSize = new Size(430, 150);
-            Font = new Font("Segoe UI", 10f);
+            Font = Theme.CreateFont(Theme.FontSection);
 
             lbl = new Label { Location = new Point(20, 20), Size = new Size(390, 60) };
             Controls.Add(lbl);

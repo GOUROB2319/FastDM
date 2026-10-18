@@ -41,7 +41,7 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(420, 252);
             MinimumSize = new Size(360, 240);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label
             {
@@ -73,12 +73,12 @@ namespace FastDM
             {
                 if (txtUser.Text.Trim().Length == 0)
                 {
-                    MessageBox.Show(this, "Please enter a username.");
+                    ThemeDialog.Show(this, "Please enter a username.");
                     return;
                 }
                 bool remembered = CredStore.Set(uri, txtUser.Text.Trim(), txtPass.Text, chkRemember.Checked);
                 if (chkRemember.Checked && !remembered)
-                    MessageBox.Show(this,
+                    ThemeDialog.Show(this,
                         "Windows Credential Manager could not save this login. The credentials will be available only until FastDM closes.",
                         "Login was not saved", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.OK;
@@ -124,7 +124,7 @@ namespace FastDM
             MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(660, 676);
             MinimumSize = new Size(560, 520);
-            Font = new Font("Segoe UI", 9.5f);
+            Font = Theme.CreateFont(Theme.FontBody);
 
             // লিঙ্ক
             Controls.Add(new Label { Text = "Folder link", Location = new Point(16, 12), AutoSize = true });
@@ -535,7 +535,7 @@ namespace FastDM
             string loc = txtLocation.Text.Trim();
             if (loc.Length == 0)
             {
-                MessageBox.Show(this, "Please choose a save location.");
+                ThemeDialog.Show(this, "Please choose a save location.");
                 return;
             }
 
@@ -560,7 +560,7 @@ namespace FastDM
             }
             if (list.Count == 0)
             {
-                MessageBox.Show(this, "Select at least one file.");
+                ThemeDialog.Show(this, "Select at least one file.");
                 UpdateSummary();
                 return;
             }
@@ -664,7 +664,7 @@ namespace FastDM
             var result = PlaylistBuilder.BuildStream(list);
             if (result.Count == 0)
             {
-                MessageBox.Show(this, "No video or audio files are selected, so there is nothing to put in a playlist.");
+                ThemeDialog.Show(this, "No video or audio files are selected, so there is nothing to put in a playlist.");
                 return;
             }
 
@@ -689,7 +689,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "Could not save the playlist.\n\n" + ex.Message, "Playlist", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemeDialog.ShowError(this, "Playlist", "Couldn't save the playlist. Check the save location and try again.", ex);
             }
         }
 

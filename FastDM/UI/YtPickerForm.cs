@@ -67,8 +67,8 @@ namespace FastDM
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9.5f);
-            mergeFont = new Font(Font.FontFamily, 8.5f, FontStyle.Regular);
+            Font = Theme.CreateFont(Theme.FontBody);
+            mergeFont = Theme.CreateFont(Theme.FontSmall);
             ClientSize = new Size(760, 650);
             MinimumSize = new Size(660, 590);
 
@@ -519,7 +519,7 @@ namespace FastDM
                 }
                 if (result.Count == 0)
                 {
-                    MessageBox.Show(this, "Select at least one available video.", "Video playlist");
+                    ThemeDialog.Show(this, "Select at least one available video.", "Video playlist");
                     return;
                 }
             }
@@ -557,12 +557,12 @@ namespace FastDM
         {
             if (string.IsNullOrWhiteSpace(txtFolder.Text))
             {
-                MessageBox.Show(this, "Choose a folder for the download.", "Video");
+                ThemeDialog.Show(this, "Choose a folder for the download.", "Video");
                 return false;
             }
             if (playlist == null && string.IsNullOrWhiteSpace(txtName.Text))
             {
-                MessageBox.Show(this, "Enter a file name.", "Video");
+                ThemeDialog.Show(this, "Enter a file name.", "Video");
                 txtName.Focus();
                 return false;
             }

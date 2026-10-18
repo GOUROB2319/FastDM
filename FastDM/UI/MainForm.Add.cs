@@ -71,7 +71,7 @@ namespace FastDM
                 catch (Exception ex)
                 {
                     lblActive.Text =
-                        "Could not add link: " + ex.Message;
+                        "Could not add link: " + AppLog.Redact(ex.GetBaseException().Message);
                 }
                 finally
                 {
@@ -162,7 +162,7 @@ namespace FastDM
 
             if (urls.Length > maxBatch)
             {
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "Only the first " + maxBatch +
                     " of " + urls.Length +
@@ -414,7 +414,7 @@ namespace FastDM
                 {
                     if (new FileInfo(path).Length > 5 * 1024 * 1024)
                     {
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "This file is too big for a list of links (limit 5 MB).",
                             "FastDM");
@@ -428,7 +428,7 @@ namespace FastDM
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "FastDM");
+                    ThemeDialog.ShowError(this, "FastDM", "Couldn't read the selected link file.", ex);
                 }
                 finally
                 {
@@ -462,7 +462,7 @@ namespace FastDM
 
             if (rows.Count == 0)
             {
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "No links were found in this text.",
                     "FastDM");
@@ -677,7 +677,7 @@ namespace FastDM
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(
+                    ThemeDialog.Show(
                         this,
                         "Could not scan this folder:\n" + AppLog.Redact(uri.AbsoluteUri) + "\n\n" +
                         AppLog.Redact(ex.GetBaseException().Message),
@@ -845,7 +845,7 @@ namespace FastDM
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(
+                    ThemeDialog.Show(
                         this,
                         "Could not read this stream.\n\n" +
                         ex.GetBaseException().Message,
@@ -908,7 +908,7 @@ namespace FastDM
         {
             if (YtDlpLocator.Find() == null)
             {
-                MessageBox.Show(
+                ThemeDialog.Show(
                     this,
                     "yt-dlp.exe was not found.\nPut yt-dlp.exe (and deno.exe) in the Tools folder next to the app.",
                     "Video",
@@ -1139,7 +1139,7 @@ namespace FastDM
             {
                 lblActive.Text =
                     "Could not save the local playlist: " +
-                    ex.Message;
+                    AppLog.Redact(ex.GetBaseException().Message);
             }
         }
 
@@ -1179,7 +1179,7 @@ namespace FastDM
 
                     if (!isFolder)
                     {
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "This link does not look like a folder (directory listing), so a playlist cannot be made from it.",
                             "Playlist",
@@ -1318,7 +1318,7 @@ namespace FastDM
                          FileExistsAction.Ask)
                 {
                     replaceExisting =
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "\"" + name + "\" already exists in this folder.\n\n" +
                             "Yes = replace it\n" +

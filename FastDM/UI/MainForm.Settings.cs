@@ -243,7 +243,7 @@ namespace FastDM
                                     ? "Starting FastDM with Windows is blocked by your organization's policy."
                                     : "Launch at startup is not available in this build.";
 
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             why,
                             "Launch at startup");

@@ -162,7 +162,7 @@ namespace FastDM
 
                 if (busy)
                 {
-                    var r = MessageBox.Show(
+                    var r = ThemeDialog.Show(
                         this,
                         "Downloads are still running.\n\n" +
                         "Yes = keep running in the system tray\n" +
@@ -400,7 +400,7 @@ namespace FastDM
             string text = startupNotice;
             startupNotice = null;
 
-            MessageBox.Show(
+            ThemeDialog.Show(
                 this,
                 text,
                 "FastDM",

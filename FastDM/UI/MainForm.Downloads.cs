@@ -340,13 +340,13 @@ namespace FastDM
                     }
 
                     it.Error =
-                        ex.Message;
+                        AppLog.Redact(ex.GetBaseException().Message);
 
                     AppLog.Write(
                         "Error: " +
                         it.FileName +
                         " — " +
-                        ex.Message);
+                        AppLog.Redact(ex.GetBaseException().Message));
                 }
                 finally
                 {
@@ -712,7 +712,7 @@ namespace FastDM
                     i => i.State ==
                          DlState.Completed))
             {
-                var r = MessageBox.Show(
+                var r = ThemeDialog.Show(
                     this,
                     "Remove " +
                     sel.Count +
@@ -731,7 +731,7 @@ namespace FastDM
             }
             else
             {
-                if (MessageBox.Show(
+                if (ThemeDialog.Show(
                         this,
                         "Remove " +
                         sel.Count +
@@ -820,7 +820,7 @@ namespace FastDM
                     if (it.DeletedAt.HasValue &&
                         !File.Exists(it.SavePath))
                     {
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "This file was deleted from the disk.");
 
@@ -832,7 +832,7 @@ namespace FastDM
                         !File.Exists(
                             it.SavePath))
                     {
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "File is not completed yet.");
 
@@ -840,7 +840,7 @@ namespace FastDM
                     }
 
                     if (FileCheck.IsRiskyToOpen(it.SavePath) &&
-                        MessageBox.Show(
+                        ThemeDialog.Show(
                             this,
                             "This is a program or script file. Run it only if you trust where it came from.\n\nOpen it anyway?",
                             "FastDM",
@@ -859,9 +859,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    this,
-                    ex.Message);
+                ThemeDialog.ShowError(this, "FastDM", "Couldn't open the selected file.", ex);
             }
         }
 
@@ -904,7 +902,7 @@ namespace FastDM
             {
                 if (!RevealInExplorer(it))
                 {
-                    MessageBox.Show(
+                    ThemeDialog.Show(
                         this,
                         "This folder does not exist (yet):\n" + it.Folder,
                         "FastDM");
@@ -912,7 +910,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message);
+                ThemeDialog.ShowError(this, "FastDM", "Couldn't open the selected folder.", ex);
             }
         }
 
@@ -938,7 +936,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message);
+                ThemeDialog.ShowError(this, "FastDM", "Couldn't open the selected link.", ex);
             }
         }
 

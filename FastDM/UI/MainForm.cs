@@ -21,20 +21,8 @@ namespace FastDM
 {
     public partial class MainForm : Form
     {
-        static readonly Color Green =
-            ColorTranslator.FromHtml("#2ECC71");
-
-        static readonly Color Orange =
-            ColorTranslator.FromHtml("#F5A623");
-
-        static readonly Color Red =
-            ColorTranslator.FromHtml("#FF5C77");
-
-        static readonly Color Gray =
-            ColorTranslator.FromHtml("#9AA0B4");
-
         static readonly Font BarFont =
-            new Font("Segoe UI", 8.5f, FontStyle.Bold);
+            Theme.CreateFont(Theme.FontSmall, FontStyle.Bold);
 
         class IconTag
         {
