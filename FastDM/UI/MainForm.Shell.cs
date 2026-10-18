@@ -226,6 +226,7 @@ namespace FastDM
             catch (Exception exIgnored5) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored5.Message); }
 
             StopBridge();
+            keyboardShortcuts.Dispose();
 
             if (tray != null)
             {

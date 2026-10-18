@@ -224,7 +224,7 @@ namespace FastDM
             MessageBoxIcon.Error => palette.Error,
             MessageBoxIcon.Warning => palette.Warning,
             MessageBoxIcon.Information => palette.Success,
-            MessageBoxIcon.Question => palette.Accent,
+            MessageBoxIcon.Question => palette.AccentText,
             _ => palette.Text
         };
     }
