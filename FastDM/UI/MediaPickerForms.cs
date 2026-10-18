@@ -197,30 +197,52 @@ namespace FastDM
             Text = "Videos found on this page";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(620, 360);
-            MinimumSize = new Size(480, 300);
+            MaximizeBox = true;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(660, 420);
+            MinimumSize = new Size(500, 320);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            Controls.Add(new Label
+            var body = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(Theme.Scale(this, DialogLayout.StandardMargin)),
+                Margin = Padding.Empty,
+                ColumnCount = 1,
+                RowCount = 2
+            };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            body.Controls.Add(new Label
             {
                 Text = "Several videos were found. Choose the one to download:",
-                Location = new Point(16, 14),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                AutoSize = true
-            });
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 10))
+            }, 0, 0);
 
-            list = new ListBox { Location = new Point(16, 40), Size = new Size(588, 260), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, HorizontalScrollbar = true };
-            foreach (var c in candidates) list.Items.Add(c);
+            list = new ListBox
+            {
+                Dock = DockStyle.Fill,
+                HorizontalScrollbar = true,
+                AccessibleName = "Videos found on this page",
+                AccessibleDescription = "Select a video, then choose Next. Double-click a video to continue."
+            };
+            foreach (var candidate in candidates) list.Items.Add(candidate);
             if (list.Items.Count > 0) list.SelectedIndex = 0;
             list.DoubleClick += (a, b) => Accept();
-            Controls.Add(list);
+            body.Controls.Add(list, 0, 1);
 
-            var ok = new Button { Text = "Next", Location = new Point(404, 312), Size = new Size(100, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(510, 312), Size = new Size(94, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
-            ok.Click += (a, b) => Accept();
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            var next = DialogLayout.CreateButton(this, "Next");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, next);
+            Controls.Add(DialogLayout.CreateShell(this, body, footer));
+            next.Click += (a, b) => Accept();
+            AcceptButton = next;
+            CancelButton = cancel;
+            Shown += (a, b) => list.Focus();
         }
 
         void Accept()
