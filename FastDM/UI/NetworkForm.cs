@@ -139,8 +139,8 @@ namespace FastDM
             DialogLayout.TrackDirty(this, () => dirty = true);
             FormClosing += (a, e) =>
             {
-                testCts?.Cancel();
                 DialogLayout.GuardUnsavedChanges(this, dirty, e);
+                if (!e.Cancel) testCts?.Cancel();
             };
             Shown += (a, e) =>
             {

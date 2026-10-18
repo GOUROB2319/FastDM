@@ -174,7 +174,7 @@ namespace FastDM
             };
             Controls.Add(browse);
 
-            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 574), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            btnStart = new Button { Text = "Start download", Location = new Point(412, 574), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             btnLater = new Button { Text = "Download Later", Location = new Point(588, 574), Size = new Size(140, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             var cancel = new Button { Text = "Cancel", Location = new Point(734, 574), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
 

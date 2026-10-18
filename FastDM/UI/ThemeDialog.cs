@@ -153,9 +153,10 @@ namespace FastDM
             var body = new Label
             {
                 Text = AppLog.Redact(message ?? string.Empty),
-                AutoSize = true,
-                MaximumSize = new Size(Theme.Scale(dialog, 410), 0),
-                Location = new Point(Theme.Scale(dialog, 20), Theme.Scale(dialog, 22)),
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = Padding.Empty,
                 ForeColor = palette.Text
             };
 

@@ -37,46 +37,51 @@ namespace FastDM
             Theme.ConfigureForm(this);
             uri = u;
             Text = "Login required";
-            FormBorderStyle = FormBorderStyle.Sizable;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(420, 252);
-            MinimumSize = new Size(360, 240);
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            ClientSize = new Size(500, 300);
+            MinimumSize = new Size(400, 260);
             Font = Theme.CreateFont(Theme.FontBody);
 
-            Controls.Add(new Label
+            var fields = DialogLayout.CreateTwoColumnFields(this, labelWidth: 100);
+            var intro = new Label
             {
                 Text = "This server needs a username and password:\n" + u.Scheme + "://" + u.Host,
-                Location = new Point(16, 14),
-                Size = new Size(388, 40),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            });
+                AutoSize = true,
+                MaximumSize = new Size(Theme.Scale(this, 440), 0),
+                Margin = new Padding(0, 0, 0, Theme.Scale(this, 8))
+            };
+            DialogLayout.AddFullRow(fields, intro);
 
-            Controls.Add(new Label { Text = "Username", Location = new Point(16, 62), AutoSize = true });
-            txtUser = new TextBox { Location = new Point(16, 84), Size = new Size(388, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            Controls.Add(txtUser);
+            txtUser = new TextBox { AccessibleName = "Username" };
+            DialogLayout.AddFieldRow(fields, "Username", txtUser);
 
-            Controls.Add(new Label { Text = "Password", Location = new Point(16, 118), AutoSize = true });
-            txtPass = new TextBox { Location = new Point(16, 140), Size = new Size(388, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, UseSystemPasswordChar = true };
-            Controls.Add(txtPass);
+            txtPass = new TextBox { UseSystemPasswordChar = true, AccessibleName = "Password" };
+            DialogLayout.AddFieldRow(fields, "Password", txtPass);
 
             chkRemember = new CheckBox
             {
                 Text = "Remember (save securely in Windows Credential Manager)",
-                Location = new Point(16, 176),
                 AutoSize = true
             };
-            Controls.Add(chkRemember);
+            DialogLayout.AddFullRow(fields, chkRemember);
 
-            var ok = new Button { Text = "OK", Location = new Point(222, 205), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(318, 205), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
+            var ok = DialogLayout.CreateButton(this, "OK");
+            var cancel = DialogLayout.CreateButton(this, "Cancel", DialogResult.Cancel);
+            var footer = DialogLayout.CreateFooter(this, cancel, ok);
+            Controls.Add(DialogLayout.CreateShell(this, fields, footer));
             ok.Click += (s, e) =>
             {
                 if (txtUser.Text.Trim().Length == 0)
                 {
                     ThemeDialog.Show(this, "Please enter a username.");
+                    txtUser.Focus();
                     return;
                 }
+
                 bool remembered = CredStore.Set(uri, txtUser.Text.Trim(), txtPass.Text, chkRemember.Checked);
                 if (chkRemember.Checked && !remembered)
                     ThemeDialog.Show(this,
@@ -84,8 +89,9 @@ namespace FastDM
                         "Login was not saved", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.OK;
             };
-            Controls.Add(ok); Controls.Add(cancel);
-            AcceptButton = ok; CancelButton = cancel;
+            AcceptButton = ok;
+            CancelButton = cancel;
+            Shown += (s, e) => txtUser.Focus();
         }
     }
 

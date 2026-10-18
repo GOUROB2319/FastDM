@@ -97,7 +97,7 @@ namespace FastDM
                 int height = Theme.Scale(owner, StandardButtonHeight);
                 button.MinimumSize = new Size(minWidth, height);
                 button.Height = height;
-                button.Width = Math.Max(button.Width, TextRenderer.MeasureText(button.Text, button.Font).Width + Theme.Scale(owner, 28));
+                button.Width = Math.Max(button.Width, TextRenderer.MeasureText(button.Text, owner.Font).Width + Theme.Scale(owner, 28));
                 button.Margin = new Padding(Theme.Scale(owner, 6), 0, 0, 0);
                 footer.Controls.Add(button);
             }
@@ -185,21 +185,20 @@ namespace FastDM
             owner.DialogResult = DialogResult.None;
         }
 
-        public static void FocusFirstEditable(Control root)
+        public static void FocusFirstEditable(Control root) => TryFocusFirstEditable(root);
+
+        static bool TryFocusFirstEditable(Control root)
         {
             foreach (Control control in root.Controls)
             {
                 if (!control.Visible || !control.Enabled) continue;
                 if (control is TextBoxBase or ComboBox or NumericUpDown)
                 {
-                    if (control.CanFocus && control.Focus()) return;
+                    if (control.CanFocus && control.Focus()) return true;
                 }
-                if (control.HasChildren)
-                {
-                    FocusFirstEditable(control);
-                    if (root.FindForm()?.ActiveControl == control) return;
-                }
+                if (control.HasChildren && TryFocusFirstEditable(control)) return true;
             }
+            return false;
         }
     }
 }
