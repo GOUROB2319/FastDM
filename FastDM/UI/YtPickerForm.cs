@@ -495,7 +495,10 @@ namespace FastDM
                 string? selector = option.GetSelector(hasFfmpeg);
                 if (selector == null) continue;
                 string label = option.Label;
-                if (!hasFfmpeg && option.RequiresMerge) label += "  •  no-merge format";
+                if (hasFfmpeg && option.RequiresMerge)
+                    label += "  •  video + audio merged";
+                else if (!hasFfmpeg)
+                    label += "  •  single stream (no merge)";
                 cmbVideo.Items.Add(new OptItem { Text = label, Tag = option });
             }
             if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;

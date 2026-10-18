@@ -105,6 +105,7 @@ namespace FastDM
             var byHeight = new Dictionary<int, FormatInfo>();
             var combinedByHeight = new Dictionary<int, FormatInfo>();
             long bestAudio = 0;
+            double bestAudioTbr = 0;
             bool hasAudio = false;
 
             foreach (var format in formats.EnumerateArray())
@@ -121,6 +122,7 @@ namespace FastDM
                 {
                     hasAudio = true;
                     bestAudio = Math.Max(bestAudio, bytes);
+                    bestAudioTbr = Math.Max(bestAudioTbr, Number(format, "tbr"));
                 }
                 if (!hasVideo) continue;
 
@@ -143,15 +145,16 @@ namespace FastDM
             info.BestAudioBytes = bestAudio;
             var best = byHeight.OrderByDescending(x => x.Value.Tbr).FirstOrDefault();
             bool hasCombined = combinedByHeight.Count > 0;
+            bool bestEstimateApproximate = false;
             long bestEstimate = best.Value == null
                 ? 0
-                : EstimateBytes(best.Value, bestAudio);
+                : EstimateBytes(best.Value, bestAudio, bestAudioTbr, info.Duration, out bestEstimateApproximate);
 
             if (byHeight.Count > 0)
             {
                 info.Videos.Add(new YtVideoOpt
                 {
-                    Label = "Best available" + (bestEstimate > 0 ? "  •  ≈ " + Fmt(bestEstimate) : ""),
+                    Label = "Best available" + EstimateLabel(bestEstimate, bestEstimateApproximate),
                     Selector = "bv*+ba/b",
                     NoMergeSelector = hasCombined ? "b" : null,
                     EstBytes = bestEstimate,
@@ -162,11 +165,10 @@ namespace FastDM
             foreach (int height in byHeight.Keys.OrderByDescending(x => x))
             {
                 var selected = byHeight[height];
-                long estimate = EstimateBytes(selected, bestAudio);
+                long estimate = EstimateBytes(selected, bestAudio, bestAudioTbr, info.Duration, out bool estimateApproximate);
                 string label = height + "p" + (selected.Fps > 30 ? selected.Fps.ToString(CultureInfo.InvariantCulture) : "") +
                     (selected.Ext.Length > 0 ? "  •  " + selected.Ext : "") +
-                    (estimate > 0 ? "  •  ≈ " + Fmt(estimate) : "") +
-                    (!selected.Combined ? "  •  video + audio merged" : "");
+                    EstimateLabel(estimate, estimateApproximate);
                 info.Videos.Add(new YtVideoOpt
                 {
                     Label = label,
@@ -183,10 +185,51 @@ namespace FastDM
             return info;
         }
 
-        static long EstimateBytes(FormatInfo format, long bestAudio) =>
-            format.Bytes > 0
-                ? format.Bytes + (format.Combined ? 0 : bestAudio)
+        static long EstimateBytes(FormatInfo format, long bestAudio, double bestAudioTbr,
+            double duration, out bool approximate)
+        {
+            approximate = false;
+            long videoBytes = format.Bytes;
+            if (videoBytes <= 0)
+            {
+                videoBytes = EstimateFromBitrate(format.Tbr, duration);
+                if (videoBytes <= 0) return 0;
+                approximate = true;
+            }
+
+            if (!format.Combined)
+            {
+                if (bestAudio > 0)
+                    videoBytes = AddBytes(videoBytes, bestAudio);
+                else
+                {
+                    long audioEstimate = EstimateFromBitrate(bestAudioTbr, duration);
+                    if (audioEstimate > 0)
+                    {
+                        videoBytes = AddBytes(videoBytes, audioEstimate);
+                        approximate = true;
+                    }
+                }
+            }
+
+            return videoBytes;
+        }
+
+        static long EstimateFromBitrate(double tbr, double duration)
+        {
+            if (tbr <= 0 || duration <= 0) return 0;
+            double bytes = tbr * 1000d / 8d * duration;
+            return double.IsFinite(bytes) && bytes > 0 && bytes < long.MaxValue
+                ? (long)bytes
                 : 0;
+        }
+
+        static long AddBytes(long first, long second) =>
+            first > long.MaxValue - second ? long.MaxValue : first + second;
+
+        static string EstimateLabel(long bytes, bool approximate) => bytes > 0
+            ? "  •  " + (approximate ? "~ " : "≈ ") + Fmt(bytes)
+            : "";
 
         public static YtPlaylistInfo ParsePlaylist(string json)
         {

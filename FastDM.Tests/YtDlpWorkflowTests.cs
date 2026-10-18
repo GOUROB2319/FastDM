@@ -26,8 +26,10 @@ namespace FastDM.Tests
             T.Check("known video and audio sizes are summed for quality and best estimates",
                 merged.EstBytes == 10000000 && merged.Label.Contains("≈ 9.5 MB", StringComparison.Ordinal) &&
                 bestAvailable.EstBytes == 10000000 && bestAvailable.Label.Contains("≈ 9.5 MB", StringComparison.Ordinal));
-            T.Check("separate video and audio formats have a plain-language label",
-                merged.Label.Contains("video + audio merged", StringComparison.Ordinal) && !merged.Label.Contains("may need merging", StringComparison.Ordinal));
+            T.Check("video option metadata labels contain size but defer merge hints to the picker",
+                merged.Label.Contains("≈ 9.5 MB", StringComparison.Ordinal) &&
+                !merged.Label.Contains("video + audio merged", StringComparison.Ordinal) &&
+                !merged.Label.Contains("single stream (no merge)", StringComparison.Ordinal));
             T.Check("FFmpeg selection chooses merged selector, while no-merge selection is explicit", merged.GetSelector(true) == merged.Selector && merged.GetSelector(false) == "b[height<=1080]");
             T.Check("combined format can be chosen without a merge", info.Videos.Any(x => x.Height == 360 && !x.RequiresMerge && x.GetSelector(false) != null));
 
@@ -35,7 +37,27 @@ namespace FastDM.Tests
             var unknownSizeInfo = YtDlpMetadataParser.ParseVideo(unknownSizeJson);
             T.Check("unknown video sizes omit quality and best available estimates despite known audio size",
                 unknownSizeInfo.BestAudioBytes == 19600000 && unknownSizeInfo.Videos.Count == 3 && unknownSizeInfo.Videos.All(x =>
-                    x.EstBytes == 0 && !x.Label.Contains("≈", StringComparison.Ordinal)));
+                    x.EstBytes == 0 && !x.Label.Contains("≈", StringComparison.Ordinal) &&
+                    !x.Label.Contains("~", StringComparison.Ordinal)));
+
+            const string tbrFallbackJson = """{"duration":10,"formats":[{"vcodec":"avc1","acodec":"none","height":1080,"ext":"mp4","tbr":800},{"vcodec":"none","acodec":"mp4a.40.2","ext":"m4a","tbr":128}]}""";
+            var tbrFallbackInfo = YtDlpMetadataParser.ParseVideo(tbrFallbackJson);
+            T.Check("bitrate and duration estimate video plus audio and mark the result approximate",
+                tbrFallbackInfo.Videos.Count == 2 && tbrFallbackInfo.Videos.All(x =>
+                    x.EstBytes == 1160000 && x.Label.Contains("~ 1.1 MB", StringComparison.Ordinal) &&
+                    !x.Label.Contains("≈", StringComparison.Ordinal)));
+
+            const string tbrWithKnownAudioJson = """{"duration":10,"formats":[{"vcodec":"avc1","acodec":"none","height":720,"ext":"mp4","tbr":800},{"vcodec":"none","acodec":"mp4a.40.2","ext":"m4a","filesize":200000,"tbr":128}]}""";
+            var tbrWithKnownAudio = YtDlpMetadataParser.ParseVideo(tbrWithKnownAudioJson);
+            T.Check("bitrate fallback adds known audio size instead of estimating it again",
+                tbrWithKnownAudio.Videos.All(x => x.EstBytes == 1200000 && x.Label.Contains("~ 1.1 MB", StringComparison.Ordinal)));
+
+            const string unknownEstimateJson = """{"duration":10,"formats":[{"vcodec":"avc1","acodec":"none","height":480,"ext":"mp4"},{"vcodec":"none","acodec":"mp4a.40.2","ext":"m4a"}]}""";
+            var unknownEstimate = YtDlpMetadataParser.ParseVideo(unknownEstimateJson);
+            T.Check("formats without size or usable bitrate omit the estimate",
+                unknownEstimate.Videos.Count == 2 && unknownEstimate.Videos.All(x =>
+                    x.EstBytes == 0 && !x.Label.Contains("≈", StringComparison.Ordinal) &&
+                    !x.Label.Contains("~", StringComparison.Ordinal)));
         }
 
         static void PlaylistParsing()
