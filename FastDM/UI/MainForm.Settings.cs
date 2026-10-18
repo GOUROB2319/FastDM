@@ -79,6 +79,8 @@ namespace FastDM
                     TextImageRelation =
                         TextImageRelation.ImageBeforeText,
 
+                    ShowDropDownArrow = true,
+
                     Padding =
                         new Padding(4),
 
@@ -117,6 +119,7 @@ namespace FastDM
                 mi.Click += (s, e) =>
                 {
                     afterAll = act;
+                    UpdateDoneMenuText();
                 };
 
                 doneMenu.DropDownItems.Add(mi);
@@ -132,6 +135,17 @@ namespace FastDM
                             pa == afterAll;
                 }
             };
+            UpdateDoneMenuText();
+        }
+
+        void UpdateDoneMenuText()
+        {
+            if (doneMenu == null) return;
+            string action = afterAll == PostAction.None
+                ? "Do nothing"
+                : PowerActions.Name(afterAll);
+            doneMenu.Text = "After downloads: " + action;
+            RequestToolbarFit();
         }
 
         void RunAfterAllAction()
@@ -144,6 +158,7 @@ namespace FastDM
 
             afterAll =
                 PostAction.None;
+            UpdateDoneMenuText();
 
             SaveState();
 
@@ -285,6 +300,8 @@ namespace FastDM
                     TextImageRelation =
                         TextImageRelation.ImageBeforeText,
 
+                    ShowDropDownArrow = true,
+
                     Padding =
                         new Padding(4),
 
@@ -345,7 +362,7 @@ namespace FastDM
             if (modeMenu != null)
             {
                 modeMenu.Text =
-                    "Mode: " +
+                    "Speed: " +
                     settings.ActiveMode;
 
                 RequestToolbarFit();
@@ -386,6 +403,7 @@ namespace FastDM
         {
             var p = Theme.P;
 
+            Theme.Apply(this);
             SuspendLayout();
 
             BackColor = p.Window;
@@ -395,6 +413,12 @@ namespace FastDM
             lv.ForeColor = p.Text;
 
             sidebar.BackColor = p.SideBg;
+            dragOverlay.BackColor = p.Selection;
+            if (dragOverlay.Controls.Count > 0)
+            {
+                dragOverlay.Controls[0].BackColor = p.Selection;
+                dragOverlay.Controls[0].ForeColor = p.Text;
+            }
 
             Theme.StyleStrip(tools);
             Theme.StyleStrip(statusBar);
@@ -402,22 +426,26 @@ namespace FastDM
             Theme.StyleStrip(trayMenu);
             Theme.StyleStrip(modeMenu.DropDown);
             Theme.StyleStrip(doneMenu.DropDown);
+            Theme.StyleStrip(settingsMenu.DropDown);
 
             lblActive.ForeColor =
-                p.SubText;
+                p.Accent;
 
             lblSpeed.ForeColor =
-                p.SubText;
+                p.Accent;
 
             lblLimit.ForeColor =
-                p.SubText;
+                p.Accent;
 
             lblSched.ForeColor =
-                p.SubText;
+                p.Accent;
 
             details?.Invalidate();
 
             RefreshToolIcons();
+            RefreshContextMenuIcons();
+            emptyIcon.Tag = null;
+            RefreshEmptyStateIcon();
 
             Theme.SetTitleBar(this);
             Theme.StyleScroll(lv);

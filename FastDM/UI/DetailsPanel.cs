@@ -156,7 +156,7 @@ namespace FastDM
                                       TextFormatFlags.VerticalCenter | TextFormatFlags.Left;
 
             int S(int n) => Theme.Scale(this, n);
-            TextRenderer.DrawText(g, it.FileName ?? "", bold, new Rectangle(r.X, r.Y, r.Width, S(26)), p.Text, f);
+            TextRenderer.DrawText(g, MainForm.DisplayFileName(it.FileName), bold, new Rectangle(r.X, r.Y, r.Width, S(26)), p.Text, f);
 
             string size = it.TotalBytes > 0
                 ? Fmt(it.Downloaded) + " / " + Fmt(it.TotalBytes) +

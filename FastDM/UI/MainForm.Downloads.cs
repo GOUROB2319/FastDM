@@ -178,13 +178,9 @@ namespace FastDM
                 "/s";
 
             string limText =
-                "Mode: " +
-                settings.ActiveMode +
-                (settings.SpeedLimitKBps > 0
-                    ? " · " +
-                      SpeedLimiter.Describe(
-                          settings.SpeedLimitKBps)
-                    : "");
+                settings.SpeedLimitKBps > 0
+                    ? "Limit: " + SpeedLimiter.Describe(settings.SpeedLimitKBps)
+                    : "Limit: Off";
 
             if (lblLimit.Text != limText)
                 lblLimit.Text = limText;

@@ -40,6 +40,7 @@
 		<Compile Include="..\FastDM\YtDlp\YtDlpProxy.cs" Link="Linked\YtDlpProxy.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpUrlInput.cs" Link="Linked\YtDlpUrlInput.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />
+		<Compile Include="..\FastDM\UI\DownloadDisplayName.cs" Link="Linked\DownloadDisplayName.cs" />
 	</ItemGroup>
 
 </Project>

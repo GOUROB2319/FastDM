@@ -71,10 +71,141 @@ namespace FastDM
             }
         }
 
-        IEnumerable<DownloadItem> VisibleItems() =>
-            filter == DeletedFilter
-                ? deleted.OrderByDescending(i => i.DeletedAt ?? i.Added)
-                : items.Where(i => Match(filter, i)).OrderByDescending(i => i.Added);
+        IEnumerable<DownloadItem> VisibleItems()
+        {
+            IEnumerable<DownloadItem> source = filter == DeletedFilter
+                ? deleted
+                : items.Where(i => Match(filter, i));
+
+            string query = searchBox?.Text.Trim() ?? "";
+            if (query.Length > 0)
+                source = source.Where(i =>
+                    DisplayFileName(i.FileName).Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+                    (i.Url ?? "").Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+                    (i.Error ?? "").Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
+                    i.State.ToString().Contains(query, StringComparison.CurrentCultureIgnoreCase));
+
+            DateTime AddedOrDeleted(DownloadItem it) => it.DeletedAt ?? it.Added;
+            switch (sortColumn)
+            {
+                case 0:
+                    return sortAscending
+                        ? source.OrderBy(i => DisplayFileName(i.FileName), StringComparer.CurrentCultureIgnoreCase).ThenBy(AddedOrDeleted)
+                        : source.OrderByDescending(i => DisplayFileName(i.FileName), StringComparer.CurrentCultureIgnoreCase).ThenByDescending(AddedOrDeleted);
+                case 1:
+                    var sized = source.OrderBy(i => i.TotalBytes > 0 ? 0 : 1);
+                    return sortAscending
+                        ? sized.ThenBy(i => i.TotalBytes).ThenBy(i => DisplayFileName(i.FileName), StringComparer.CurrentCultureIgnoreCase)
+                        : sized.ThenByDescending(i => i.TotalBytes).ThenBy(i => DisplayFileName(i.FileName), StringComparer.CurrentCultureIgnoreCase);
+                case 2:
+                    return sortAscending
+                        ? source.OrderBy(i => i.Percent).ThenBy(AddedOrDeleted)
+                        : source.OrderByDescending(i => i.Percent).ThenByDescending(AddedOrDeleted);
+                default:
+                    return sortAscending
+                        ? source.OrderBy(AddedOrDeleted)
+                        : source.OrderByDescending(AddedOrDeleted);
+            }
+        }
+
+        void OnColumnClick(object? sender, ColumnClickEventArgs e)
+        {
+            if (e.Column != 0 && e.Column != 1 && e.Column != 2 && e.Column != 6) return;
+            if (sortColumn == e.Column) sortAscending = !sortAscending;
+            else
+            {
+                sortColumn = e.Column;
+                sortAscending = e.Column == 0 || e.Column == 1 || e.Column == 2;
+            }
+            RebuildList();
+            lv.Invalidate();
+        }
+
+        internal static string DisplayFileName(string? value)
+            => DownloadDisplayName.Format(value);
+
+        static string FormatListDate(DateTime value) =>
+            value.Date == DateTime.Today
+                ? "Today " + value.ToString("HH:mm")
+                : value.ToString("dd MMM yyyy");
+
+        static string FormatFullListDate(DateTime value) => value.ToString("dddd, dd MMMM yyyy HH:mm:ss");
+
+        static string AddDateToTooltip(string? content, string label, DateTime value)
+        {
+            string date = label + ": " + FormatFullListDate(value);
+            return string.IsNullOrWhiteSpace(content) ? date : content + Environment.NewLine + date;
+        }
+
+        void UpdateEmptyState()
+        {
+            if (lv.Items.Count > 0)
+            {
+                emptyState.Visible = false;
+                return;
+            }
+
+            string query = searchBox?.Text.Trim() ?? "";
+            if (query.Length > 0)
+            {
+                if (query.Length > 64) query = query.Substring(0, 61) + "...";
+                emptyTitle.Text = "No matching downloads";
+                emptyDescription.Text = "No results for \"" + query + "\". Clear the search or choose another filter.";
+                emptyAdd.Visible = true;
+            }
+            else
+            {
+                switch (filter)
+                {
+                    case 0:
+                        emptyTitle.Text = "No downloads yet";
+                        emptyDescription.Text = "Paste a link or drag one here";
+                        emptyAdd.Visible = true;
+                        break;
+                    case 1:
+                        emptyTitle.Text = "Nothing downloading";
+                        emptyDescription.Text = "Active downloads will appear here.";
+                        emptyAdd.Visible = true;
+                        break;
+                    case 2:
+                        emptyTitle.Text = "Nothing queued or paused";
+                        emptyDescription.Text = "Queued and paused downloads will appear here.";
+                        emptyAdd.Visible = true;
+                        break;
+                    case 3:
+                        emptyTitle.Text = "No completed downloads yet";
+                        emptyDescription.Text = "Completed downloads will appear here.";
+                        emptyAdd.Visible = true;
+                        break;
+                    case 4:
+                        emptyTitle.Text = "No errors to show";
+                        emptyDescription.Text = "Downloads that need attention will appear here.";
+                        emptyAdd.Visible = true;
+                        break;
+                    default:
+                        emptyTitle.Text = "Deleted list is empty";
+                        emptyDescription.Text = "Removed downloads will appear here.";
+                        emptyAdd.Visible = false;
+                        break;
+                }
+            }
+            emptyState.Visible = true;
+            emptyState.BringToFront();
+            RefreshEmptyStateIcon();
+        }
+
+        void RefreshEmptyStateIcon()
+        {
+            if (emptyIcon == null || emptyIcon.Tag is int oldFilter && oldFilter == filter)
+                return;
+
+            var old = emptyIcon.Image;
+            emptyIcon.Image = Icons.Make(FilterGlyphs[Math.Clamp(filter, 0, FilterGlyphs.Length - 1)],
+                Theme.P.Accent, Theme.Scale(this, 36));
+            emptyIcon.Text = Icons.Available ? "" : "\u2193";
+            emptyIcon.Tag = filter;
+            old?.Dispose();
+        }
 
         // Keeps a copy of a download that is leaving the list, with the time and the reason.
         void RecordDeleted(DownloadItem it, string reason)
@@ -236,6 +367,7 @@ namespace FastDM
             }
 
             lv.EndUpdate();
+            UpdateEmptyState();
 
             if (selectNewId != null)
             {
@@ -275,7 +407,7 @@ namespace FastDM
             ListViewItem l,
             DownloadItem it)
         {
-            SetIf(l, 0, it.FileName ?? "");
+            SetIf(l, 0, DisplayFileName(it.FileName));
 
             SetIf(
                 l,
@@ -290,9 +422,9 @@ namespace FastDM
             SetIf(l, 3, it.DeletedReason ?? "Deleted");
             SetIf(l, 4, "");
             SetIf(l, 5, "");
-            SetIf(l, 6, (it.DeletedAt ?? it.Added).ToString("dd MMM HH:mm"));
-
-            l.ToolTipText = it.Url;
+            var date = it.DeletedAt ?? it.Added;
+            SetIf(l, 6, FormatListDate(date));
+            l.ToolTipText = AddDateToTooltip(it.Url, "Deleted", date);
         }
 
         void FillRow(
@@ -308,7 +440,7 @@ namespace FastDM
             SetIf(
                 l,
                 0,
-                it.FileName);
+                DisplayFileName(it.FileName));
 
             SetIf(
                 l,
@@ -360,7 +492,7 @@ namespace FastDM
             SetIf(
                 l,
                 6,
-                it.Added.ToString("dd MMM HH:mm"));
+                FormatListDate(it.Added));
 
             if (it.State == DlState.Error && it.YtDlp != null)
             {
@@ -372,6 +504,7 @@ namespace FastDM
             {
                 l.ToolTipText = it.State == DlState.Error ? AppLog.Redact(it.Error) : it.Url;
             }
+            l.ToolTipText = AddDateToTooltip(l.ToolTipText, "Added", it.Added);
         }
 
         static string StateText(DlState s) =>

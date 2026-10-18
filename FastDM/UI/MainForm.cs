@@ -30,6 +30,12 @@ namespace FastDM
             public bool Accent;
         }
 
+        sealed class ContextCommandTag
+        {
+            public string Command = "";
+            public string Glyph = "";
+        }
+
         static readonly string[] FilterNames =
         {
             "All Downloads",
@@ -38,6 +44,11 @@ namespace FastDM
             "Completed",
             "Errors",
             "Deleted"
+        };
+
+        static readonly string[] FilterGlyphs =
+        {
+            "\uE896", "\uE768", "\uE823", "\uE73E", "\uE783", "\uE74D"
         };
 
         static readonly string[] FileExts =
@@ -63,6 +74,15 @@ namespace FastDM
         // These controls are created by BuildUI/BuildTray during MainForm construction before use.
         BufferedListView lv = null!;
 
+        Panel listHost = null!;
+        Panel listArea = null!;
+        Panel dragOverlay = null!;
+        Panel emptyState = null!;
+        Label emptyIcon = null!;
+        Label emptyTitle = null!;
+        Label emptyDescription = null!;
+        Button emptyAdd = null!;
+
         ListBox sidebar = null!;
 
         ToolStripStatusLabel lblActive = null!;
@@ -75,9 +95,19 @@ namespace FastDM
 
         ToolStripDropDownButton doneMenu = null!;
 
+        ToolStripDropDownButton settingsMenu = null!;
+
+        TextBox searchBox = null!;
+
         System.Windows.Forms.Timer navTimer = null!;
 
+        readonly Stopwatch navAnimation = new Stopwatch();
+
+        int navStartWidth;
+
         int navTarget = 200;
+
+        int hoveredSidebarIndex = -1;
 
         int SidebarWidth => Theme.Scale(this, 200);
 
@@ -96,6 +126,10 @@ namespace FastDM
         System.Windows.Forms.Timer timer = null!;
 
         int filter = 0;
+
+        int sortColumn = 6;
+
+        bool sortAscending;
 
         bool dirty;
 

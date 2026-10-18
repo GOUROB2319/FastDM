@@ -320,18 +320,23 @@ namespace FastDM
             object? s,
             DragEventArgs e)
         {
-            e.Effect =
+            bool accepted =
                 e.Data != null &&
                 (e.Data.GetDataPresent(DataFormats.Text) ||
-                 DroppedListFile(e) != null)
-                    ? DragDropEffects.Copy
-                    : DragDropEffects.None;
+                 DroppedListFile(e) != null);
+            e.Effect = accepted ? DragDropEffects.Copy : DragDropEffects.None;
+            if (accepted && s != this)
+            {
+                dragOverlay.Visible = true;
+                dragOverlay.BringToFront();
+            }
         }
 
         void OnDragDrop(
             object? s,
             DragEventArgs e)
         {
+            dragOverlay.Visible = false;
             string? listFile = DroppedListFile(e);
 
             if (listFile != null)
@@ -347,6 +352,11 @@ namespace FastDM
                 ShowAddDialog(
                     t.Trim());
             }
+        }
+
+        void OnDragLeave(object? s, EventArgs e)
+        {
+            dragOverlay.Visible = false;
         }
 
         void CheckClipboard()

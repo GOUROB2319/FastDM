@@ -14,5 +14,6 @@ CookieScopeTests.Run();
 YtDlpDiagnosticsTests.Run();
 YtDlpWorkflowTests.Run();
 HttpRangeValidationTests.Run();
+DownloadDisplayNameTests.Run();
 await BridgeServerTests.RunAsync();
 return T.Done();

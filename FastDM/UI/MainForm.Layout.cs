@@ -30,10 +30,13 @@ namespace FastDM
             MinimumSize = new Size(520, 480);
             StartPosition = FormStartPosition.CenterScreen;
             Font = Theme.CreateFont(Theme.FontBody);
+            KeyPreview = true;
             AllowDrop = true;
 
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
+            DragLeave += OnDragLeave;
+            KeyDown += OnMainKeyDown;
 
             // ListView
             lv = new BufferedListView
@@ -59,11 +62,12 @@ namespace FastDM
             lv.Columns.Add("Status", 100);
             lv.Columns.Add("Speed", 95);
             lv.Columns.Add("ETA", 80);
-            lv.Columns.Add("Added", 120);
+            lv.Columns.Add("Added", 150);
 
             lv.DrawColumnHeader += DrawHeader;
             lv.DrawItem += (s, e) => { };
             lv.DrawSubItem += DrawSub;
+            lv.ColumnClick += OnColumnClick;
             lv.DoubleClick += (s, e) => OnDoubleClick();
 
             lv.KeyDown += (s, e) =>
@@ -84,10 +88,137 @@ namespace FastDM
             lv.DragDrop += OnDragDrop;
 
             lv.ContextMenuStrip = BuildContextMenu();
+            lv.DragLeave += OnDragLeave;
 
             lv.SelectedIndexChanged += (s, e) =>
                 details?.SetItem(
                     Sel().FirstOrDefault());
+
+            listHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.P.Window };
+            var listLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                ColumnCount = 1,
+                RowCount = 2
+            };
+            listLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(this, 44)));
+            listLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var searchHeader = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(12, 6, 12, 6),
+                ColumnCount = 3,
+                RowCount = 1,
+                BackColor = Theme.P.Window
+            };
+            searchHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 58)));
+            searchHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            searchHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Theme.Scale(this, 68)));
+            searchHeader.Controls.Add(new Label
+            {
+                Text = "Search",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Theme.P.SubText
+            }, 0, 0);
+            searchBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                PlaceholderText = "Filter by name or URL",
+                AccessibleName = "Search downloads"
+            };
+            searchBox.TextChanged += (s, e) => RebuildList();
+            searchBox.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    lv.Focus();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+            };
+            searchHeader.Controls.Add(searchBox, 1, 0);
+            var clearSearch = new Button { Text = "Clear", Dock = DockStyle.Fill, Margin = new Padding(Theme.Scale(this, 8), 0, 0, 0) };
+            clearSearch.Click += (s, e) => { searchBox.Clear(); searchBox.Focus(); };
+            searchHeader.Controls.Add(clearSearch, 2, 0);
+            listLayout.Controls.Add(searchHeader, 0, 0);
+
+            listArea = new Panel { Dock = DockStyle.Fill, BackColor = Theme.P.Window };
+            listArea.Controls.Add(lv);
+            emptyState = new Panel { Dock = DockStyle.Fill, BackColor = Theme.P.Window, Visible = false };
+            var emptyLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 6,
+                Padding = new Padding(Theme.Scale(this, 24))
+            };
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(this, 48)));
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(this, 32)));
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(this, 42)));
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, Theme.Scale(this, 42)));
+            emptyLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            emptyIcon = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = Icons.Available ? "" : "↓",
+                Image = Icons.Make("\uE896", Theme.P.Accent, Theme.Scale(this, 36)),
+                ImageAlign = ContentAlignment.MiddleCenter,
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Theme.P.Accent,
+                BackColor = Theme.P.Window
+            };
+            emptyTitle = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "No downloads yet",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold),
+                ForeColor = Theme.P.Text,
+                BackColor = Theme.P.Window
+            };
+            emptyDescription = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "Paste a link or drag one here",
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Theme.P.SubText,
+                BackColor = Theme.P.Window
+            };
+            emptyAdd = new Button { Text = "Add URL", Size = new Size(Theme.Scale(this, 112), Theme.Scale(this, 34)), Anchor = AnchorStyles.None };
+            emptyAdd.Click += (s, e) => ShowAddDialog("");
+            emptyLayout.Controls.Add(emptyIcon, 0, 1);
+            emptyLayout.Controls.Add(emptyTitle, 0, 2);
+            emptyLayout.Controls.Add(emptyDescription, 0, 3);
+            emptyLayout.Controls.Add(emptyAdd, 0, 4);
+            emptyState.Controls.Add(emptyLayout);
+            listArea.Controls.Add(emptyState);
+
+            dragOverlay = new Panel { Dock = DockStyle.Fill, BackColor = Theme.P.Selection, Visible = false };
+            dragOverlay.AllowDrop = true;
+            dragOverlay.DragEnter += OnDragEnter;
+            dragOverlay.DragDrop += OnDragDrop;
+            dragOverlay.DragLeave += OnDragLeave;
+            dragOverlay.Controls.Add(new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "Drop link to download",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = Theme.CreateFont(Theme.FontTitle, FontStyle.Bold),
+                ForeColor = Theme.P.Text,
+                BackColor = Theme.P.Selection,
+                AllowDrop = true
+            });
+            dragOverlay.Controls[0].DragEnter += OnDragEnter;
+            dragOverlay.Controls[0].DragDrop += OnDragDrop;
+            dragOverlay.Controls[0].DragLeave += OnDragLeave;
+            listArea.Controls.Add(dragOverlay);
+            listLayout.Controls.Add(listArea, 0, 1);
+            listHost.Controls.Add(listLayout);
 
             // নিচের ডিটেইলস প্যানেল
             details = new DetailsPanel
@@ -134,6 +265,19 @@ namespace FastDM
             navTimer.Tick += (s, e) => StepSidebar();
 
             sidebar.DrawItem += DrawSidebar;
+            sidebar.MouseMove += (s, e) =>
+            {
+                int index = sidebar.IndexFromPoint(e.Location);
+                if (index == hoveredSidebarIndex) return;
+                hoveredSidebarIndex = index;
+                sidebar.Invalidate();
+            };
+            sidebar.MouseLeave += (s, e) =>
+            {
+                if (hoveredSidebarIndex == -1) return;
+                hoveredSidebarIndex = -1;
+                sidebar.Invalidate();
+            };
 
             sidebar.SelectedIndexChanged += (s, e) =>
             {
@@ -170,6 +314,23 @@ namespace FastDM
             statusBar.Items.Add(lblLimit);
             statusBar.Items.Add(lblSpeed);
 
+            lblActive.IsLink = true;
+            lblActive.LinkBehavior = LinkBehavior.HoverUnderline;
+            lblActive.ToolTipText = "Show all downloads";
+            lblActive.Click += (s, e) => { sidebar.SelectedIndex = 0; searchBox.Clear(); lv.Focus(); };
+            lblSched.IsLink = true;
+            lblSched.LinkBehavior = LinkBehavior.HoverUnderline;
+            lblSched.ToolTipText = "Open scheduler settings";
+            lblSched.Click += (s, e) => ShowSchedule();
+            lblLimit.IsLink = true;
+            lblLimit.LinkBehavior = LinkBehavior.HoverUnderline;
+            lblLimit.ToolTipText = "Open traffic limit settings";
+            lblLimit.Click += (s, e) => ShowSettings("Traffic Limits");
+            lblSpeed.IsLink = true;
+            lblSpeed.LinkBehavior = LinkBehavior.HoverUnderline;
+            lblSpeed.ToolTipText = "Open traffic limit settings";
+            lblSpeed.Click += (s, e) => ShowSettings("Traffic Limits");
+
             // Toolbar
             tools = new ToolStrip
             {
@@ -182,12 +343,16 @@ namespace FastDM
             // সব toolbar action একইভাবে Icon + Text দেখাবে
             tools.Items.Add(
                 Btn(
-                    "Menu",
+                    "Sidebar",
                     "☰  ",
                     "\uE700",
                     false,
                     (s, e) => ToggleSidebar(),
                     false));
+            tools.Items[tools.Items.Count - 1].ToolTipText = "Show/Hide sidebar";
+            tools.Items[tools.Items.Count - 1].DisplayStyle = Icons.Available
+                ? ToolStripItemDisplayStyle.Image
+                : ToolStripItemDisplayStyle.Text;
 
             tools.Items.Add(
                 new ToolStripSeparator());
@@ -215,12 +380,34 @@ namespace FastDM
 
             tools.Items.Add(
                 Btn(
+                    "Pause",
+                    "❚❚  ",
+                    "\uE769",
+                    false,
+                    (s, e) => PauseSelected(),
+                    false));
+
+            tools.Items.Add(new ToolStripSeparator());
+
+            tools.Items.Add(
+                Btn(
+                    "Resume All",
+                    "▶  ",
+                    "\uE768",
+                    false,
+                    (s, e) => ResumeAll(),
+                    false));
+
+            tools.Items.Add(
+                Btn(
                     "Pause All",
                     "❚❚  ",
                     "\uE769",
                     false,
                     (s, e) => PauseAll(),
                     false));
+
+            tools.Items.Add(new ToolStripSeparator());
 
             tools.Items.Add(
                 Btn(
@@ -282,41 +469,11 @@ namespace FastDM
                     (s, e) => ToggleDetails(),
                     false));
 
-            tools.Items.Add(
-                Btn(
-                    "Settings",
-                    "⚙  ",
-                    "\uE713",
-                    false,
-                    (s, e) => ShowSettings(),
-                    false));
-
-            tools.Items.Add(
-                Btn(
-                    "Updates",
-                    "⟳  ",
-                    "\uE72C",
-                    false,
-                    async (s, e) =>
-                    {
-                        try
-                        {
-                            await UpdateChecker
-                                .CheckAndShowAsync(this, false);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            AppLog.Write("MainForm.BuildUI Updates button: cancelled");
-                        }
-                        catch (Exception exGuard)
-                        {
-                            Program.ReportError("MainForm.BuildUI Updates button", exGuard);
-                        }
-                    },
-                    false));
+            BuildSettingsMenu();
+            tools.Items.Add(settingsMenu);
 
             // ক্রম গুরুত্বপূর্ণ: Fill আগে, তারপর বাকিগুলো
-            Controls.Add(lv);
+            Controls.Add(listHost);
             Controls.Add(details);
             Controls.Add(sidebar);
             Controls.Add(statusBar);
@@ -361,6 +518,36 @@ namespace FastDM
             return b;
         }
 
+        void BuildSettingsMenu()
+        {
+            settingsMenu = new ToolStripDropDownButton(Icons.Available ? "Settings" : "⚙  Settings")
+            {
+                DisplayStyle = Icons.Available ? ToolStripItemDisplayStyle.ImageAndText : ToolStripItemDisplayStyle.Text,
+                TextImageRelation = TextImageRelation.ImageBeforeText,
+                ShowDropDownArrow = true,
+                ToolTipText = "Settings and updates",
+                Padding = new Padding(4),
+                Tag = new IconTag { Glyph = "\uE713", Accent = false }
+            };
+            settingsMenu.DropDownItems.Add("Preferences", null, (s, e) => ShowSettings());
+            settingsMenu.DropDownItems.Add(new ToolStripSeparator());
+            settingsMenu.DropDownItems.Add("Check for updates", null, async (s, e) =>
+            {
+                try
+                {
+                    await UpdateChecker.CheckAndShowAsync(this, false);
+                }
+                catch (OperationCanceledException)
+                {
+                    AppLog.Write("MainForm settings updates: cancelled");
+                }
+                catch (Exception exGuard)
+                {
+                    Program.ReportError("MainForm settings updates", exGuard);
+                }
+            });
+        }
+
         // Waits a moment so dragging the window edge does not re-measure on every pixel.
         void RequestToolbarFit()
         {
@@ -385,8 +572,7 @@ namespace FastDM
                  .Cast<ToolStripItem>()
                  .Any(i => i.Placement == ToolStripItemPlacement.Overflow);
 
-        // Buttons that lose their text first (icon only, the name stays in the tooltip). Menu, Add URL,
-        // Settings and Updates always keep their text.
+        // Frequent actions retain text; secondary actions can collapse to icons before overflow.
         List<ToolStripItem> ToolbarCollapseOrder()
         {
             ToolStripItem? ByTip(string tip) =>
@@ -399,10 +585,13 @@ namespace FastDM
                 // Keep the file/folder actions visible as long as possible; if the window is
                 // narrower than their icon widths, ToolStrip's keyboard-accessible overflow
                 // remains the final fallback.
-                ByTip("Schedule"), doneMenu, ByTip("Pause All"), ByTip("Remove"), modeMenu,
-                ByTip("Resume"), ByTip("Details"), ByTip("Settings"), ByTip("Updates"),
+                ByTip("Schedule"), doneMenu, ByTip("Remove"), ByTip("Resume"),
+                ByTip("Pause"), ByTip("Resume All"), ByTip("Pause All"), modeMenu,
+                ByTip("Details"), ByTip("Settings and updates"),
                 ByTip("Open File"), ByTip("Open Folder")
             };
+
+            wanted.Insert(0, ByTip("Show/Hide sidebar"));
 
             return wanted.Where(i => i != null).Select(i => i!).ToList();
         }
@@ -429,6 +618,14 @@ namespace FastDM
 
             foreach (var i in order)
             {
+                if (i.ToolTipText == "Show/Hide sidebar")
+                {
+                    i.DisplayStyle = Icons.Available
+                        ? ToolStripItemDisplayStyle.Image
+                        : ToolStripItemDisplayStyle.Text;
+                    continue;
+                }
+
                 i.DisplayStyle =
                     Icons.Available
                         ? ToolStripItemDisplayStyle.ImageAndText
@@ -490,42 +687,50 @@ namespace FastDM
             }
         }
 
+        void RefreshContextMenuIcons()
+        {
+            if (lv?.ContextMenuStrip == null) return;
+            foreach (ToolStripItem item in lv.ContextMenuStrip.Items)
+            {
+                if (item.Tag is not ContextCommandTag tag) continue;
+                var old = item.Image;
+                item.Image = Icons.Make(tag.Glyph, Theme.P.Text, Theme.Scale(this, 16));
+                old?.Dispose();
+            }
+        }
+
         ContextMenuStrip BuildContextMenu()
         {
             var m = new ContextMenuStrip();
 
-            m.Items.Add(
-                "Resume",
-                null,
-                (s, e) => ResumeSelected());
+            ToolStripMenuItem AddItem(string text, string command, string glyph, EventHandler click)
+            {
+                var item = new ToolStripMenuItem(text)
+                {
+                    Tag = new ContextCommandTag { Command = command, Glyph = glyph },
+                    Image = Icons.Make(glyph, Theme.P.Text, Theme.Scale(this, 16))
+                };
+                item.Click += click;
+                m.Items.Add(item);
+                return item;
+            }
 
-            m.Items.Add(
-                "Pause",
-                null,
-                (s, e) => PauseSelected());
-
-            m.Items.Add(
-                "Start now (ignore schedule)",
-                null,
-                (s, e) => StartNowSelected());
+            AddItem("Resume", "resume", "\uE768", (s, e) => ResumeSelected());
+            AddItem("Pause", "pause", "\uE769", (s, e) => PauseSelected());
+            AddItem("Start now (ignore schedule)", "start-now", "\uE73A", (s, e) => StartNowSelected());
 
             m.Items.Add(
                 new ToolStripSeparator());
 
-            m.Items.Add(
-                "Open File",
-                null,
-                (s, e) => OpenSelected(false));
-
-            m.Items.Add(
-                "Open Folder",
-                null,
-                (s, e) => OpenSelected(true));
-
-            m.Items.Add(
-                "Copy URL",
-                null,
-                (s, e) =>
+            AddItem("Open File", "open-file", "\uE8E5", (s, e) => OpenSelected(false));
+            AddItem("Open Folder", "open-folder", "\uE838", (s, e) => OpenSelected(true));
+            AddItem("Copy file name", "copy-name", "\uE8C8", (s, e) =>
+            {
+                var sel = Sel();
+                if (sel.Count > 0)
+                    Clipboard.SetText(string.Join(Environment.NewLine, sel.Select(i => DisplayFileName(i.FileName))));
+            });
+            AddItem("Copy URL", "copy-url", "\uE8C8", (s, e) =>
                 {
                     var sel = Sel();
 
@@ -538,18 +743,22 @@ namespace FastDM
                     }
                 });
 
+            AddItem("Properties", "properties", "\uE946", (s, e) => ShowSelectedProperties());
+
             m.Items.Add(
                 new ToolStripSeparator());
 
-            m.Items.Add(
-                "Remove",
-                null,
-                (s, e) => RemoveSelected());
+            var remove = AddItem("Remove", "remove", "\uE74D", (s, e) => RemoveSelected());
+            remove.ShortcutKeys = Keys.Delete;
+
+            m.Items.Add(new ToolStripSeparator());
+            var selectAll = AddItem("Select all", "select-all", "\uE8B3", (s, e) => SelectAllRows());
+            selectAll.ShortcutKeys = Keys.Control | Keys.A;
 
             // only in the Deleted list
-            m.Items.Add("Download again", null, (s, e) => DownloadAgain());
-            m.Items.Add("Remove from history", null, (s, e) => RemoveSelected());
-            m.Items.Add("Clear history", null, (s, e) => ClearHistory());
+            AddItem("Download again", "download-again", "\uE896", (s, e) => DownloadAgain());
+            AddItem("Remove from history", "remove-history", "\uE74D", (s, e) => RemoveSelected());
+            AddItem("Clear history", "clear-history", "\uE74D", (s, e) => ClearHistory());
 
             m.Opening += (s, e) =>
             {
@@ -557,19 +766,9 @@ namespace FastDM
 
                 foreach (ToolStripItem i in m.Items)
                 {
-                    string text = i.Text ?? "";
-
-                    bool deletedOnly =
-                        text == "Download again" ||
-                        text == "Remove from history" ||
-                        text == "Clear history";
-
-                    bool liveOnly =
-                        text == "Resume" ||
-                        text == "Pause" ||
-                        text.StartsWith("Start now") ||
-                        text == "Open File" ||
-                        text == "Remove";
+                    if (i.Tag is not ContextCommandTag tag) continue;
+                    bool deletedOnly = tag.Command is "download-again" or "remove-history" or "clear-history";
+                    bool liveOnly = tag.Command is "resume" or "pause" or "start-now" or "open-file" or "open-folder" or "remove";
 
                     if (deletedOnly)
                         i.Visible = inDeleted;
@@ -594,9 +793,10 @@ namespace FastDM
 
             bool sel =
                 (e.State & DrawItemState.Selected) != 0;
+            bool hovered = e.Index == hoveredSidebarIndex && !sel;
 
             using (var b = new SolidBrush(
-                sel ? p.SideSel : p.SideBg))
+                sel ? p.SideSel : hovered ? p.Hover : p.SideBg))
             {
                 g.FillRectangle(b, e.Bounds);
             }
@@ -614,10 +814,18 @@ namespace FastDM
                 }
             }
 
+            int iconSize = Theme.Scale(this, 18);
+            var iconRect = new Rectangle(e.Bounds.X + Theme.Scale(this, 14),
+                e.Bounds.Y + (e.Bounds.Height - iconSize) / 2, iconSize, iconSize);
+            using (var icon = Icons.Make(FilterGlyphs[e.Index], sel ? Theme.P.Accent : p.SideCount, iconSize))
+            {
+                if (icon != null) g.DrawImage(icon, iconRect);
+            }
+
             var tr = new Rectangle(
-                e.Bounds.X + Theme.Scale(this, 18),
+                e.Bounds.X + Theme.Scale(this, 42),
                 e.Bounds.Y,
-                SidebarWidth - Theme.Scale(this, 70),
+                SidebarWidth - Theme.Scale(this, 96),
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
@@ -648,6 +856,10 @@ namespace FastDM
                 p.SideCount,
                 TextFormatFlags.VerticalCenter |
                 TextFormatFlags.Right);
+
+            if ((e.State & DrawItemState.Focus) != 0)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(e.Bounds, -Theme.Scale(this, 6), -Theme.Scale(this, 3)),
+                    p.SideText, sel ? p.SideSel : p.SideBg);
         }
 
         void DrawHeader(
@@ -678,17 +890,18 @@ namespace FastDM
                     e.Bounds.Bottom - 6);
             }
 
+            bool sorted = e.ColumnIndex == sortColumn;
             var tr = new Rectangle(
-                e.Bounds.X + 8,
+                e.Bounds.X + Theme.Scale(this, 8),
                 e.Bounds.Y,
-                Math.Max(
-                    0,
-                    e.Bounds.Width - 12),
+                Math.Max(0, e.Bounds.Width - Theme.Scale(this, sorted ? 28 : 12)),
                 e.Bounds.Height);
+            string headerText = (e.Header?.Text ?? "") +
+                (sorted ? (sortAscending ? "  \u25B2" : "  \u25BC") : "");
 
             TextRenderer.DrawText(
                 e.Graphics,
-                e.Header?.Text ?? "",
+                headerText,
                 Font,
                 tr,
                 p.SubText,
@@ -915,6 +1128,45 @@ namespace FastDM
             }
         }
 
+        void OnMainKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                searchBox.Focus();
+                searchBox.SelectAll();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            int index = e.KeyCode switch
+            {
+                Keys.D1 or Keys.NumPad1 => 0,
+                Keys.D2 or Keys.NumPad2 => 1,
+                Keys.D3 or Keys.NumPad3 => 2,
+                Keys.D4 or Keys.NumPad4 => 3,
+                Keys.D5 or Keys.NumPad5 => 4,
+                Keys.D6 or Keys.NumPad6 => 5,
+                _ => -1
+            };
+            if (e.Control && index >= 0 && index < sidebar.Items.Count)
+            {
+                sidebar.SelectedIndex = index;
+                lv.Focus();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.Escape && searchBox.Focused && searchBox.TextLength > 0)
+            {
+                searchBox.Text = string.Empty;
+                lv.Focus();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
         // ---------- Sidebar ----------
         void ToggleSidebar()
         {
@@ -927,6 +1179,8 @@ namespace FastDM
                 settings.SidebarOpen
                     ? Theme.Scale(this, 200)
                     : 0;
+            navStartWidth = sidebar.Width;
+            navAnimation.Restart();
 
             if (settings.SidebarOpen)
                 sidebar.Visible = true;
@@ -938,25 +1192,11 @@ namespace FastDM
 
         void StepSidebar()
         {
-            int step = Theme.Scale(this, 40);
-
-            int w =
-                sidebar.Width;
-
-            if (w < navTarget)
-            {
-                w =
-                    Math.Min(
-                        navTarget,
-                        w + step);
-            }
-            else if (w > navTarget)
-            {
-                w =
-                    Math.Max(
-                        navTarget,
-                        w - step);
-            }
+            double progress = Math.Clamp(navAnimation.Elapsed.TotalMilliseconds / 150.0, 0, 1);
+            double eased = 1 - Math.Pow(1 - progress, 3);
+            int w = progress >= 1
+                ? navTarget
+                : navStartWidth + (int)Math.Round((navTarget - navStartWidth) * eased);
 
             sidebar.Width = w;
 
@@ -965,6 +1205,7 @@ namespace FastDM
             if (w == navTarget)
             {
                 navTimer.Stop();
+                navAnimation.Stop();
 
                 if (w == 0)
                     sidebar.Visible = false;
@@ -985,6 +1226,17 @@ namespace FastDM
                 Sel().FirstOrDefault());
 
             SaveState();
+        }
+
+        void ShowSelectedProperties()
+        {
+            var selected = Sel().FirstOrDefault();
+            if (selected == null) return;
+            details.SetItem(selected);
+            if (!details.Visible)
+                ToggleDetails();
+            else
+                details.Invalidate();
         }
 
         // "Compact view of downloads list": ছোট সারি

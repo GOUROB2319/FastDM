@@ -201,6 +201,25 @@ namespace FastDM
             ts.Renderer = new ToolStripProfessionalRenderer(new ThemeColorTable()) { RoundedEdges = false };
             ts.BackColor = P.Toolbar;
             ts.ForeColor = P.Text;
+            foreach (ToolStripItem item in ts.Items)
+            {
+                if (item is ToolStripTextBox text)
+                {
+                    text.BackColor = P.Input;
+                    text.ForeColor = P.Text;
+                    text.BorderStyle = BorderStyle.FixedSingle;
+                }
+                else if (item is ToolStripDropDownItem dropDown)
+                {
+                    foreach (ToolStripItem child in dropDown.DropDownItems)
+                        if (child is ToolStripTextBox childText)
+                        {
+                            childText.BackColor = P.Input;
+                            childText.ForeColor = P.Text;
+                            childText.BorderStyle = BorderStyle.FixedSingle;
+                        }
+                }
+            }
         }
 
         // ---------- Apply theme to all controls in the form/dialog ----------
