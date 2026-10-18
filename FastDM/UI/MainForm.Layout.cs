@@ -49,6 +49,9 @@ namespace FastDM
                 OwnerDraw = true,
                 BorderStyle = BorderStyle.None,
                 ShowItemToolTips = true,
+                AccessibleName = "Downloads",
+                AccessibleDescription = "Download list. Use the arrow keys to select an item. Press Delete to remove the selection.",
+                AccessibleRole = AccessibleRole.List,
                 AllowDrop = true,
                 SmallImageList = new ImageList
                 {
@@ -236,7 +239,9 @@ namespace FastDM
                 Width = Theme.Scale(this, 200),
                 BorderStyle = BorderStyle.None,
                 DrawMode = DrawMode.OwnerDrawFixed,
-                ItemHeight = Theme.Scale(this, 40)
+                ItemHeight = Theme.Scale(this, 40),
+                AccessibleName = "Download filters",
+                AccessibleDescription = "Use the arrow keys to switch between download filters."
             };
 
             sidebar.Items.AddRange(FilterNames);

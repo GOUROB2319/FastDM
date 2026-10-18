@@ -36,11 +36,13 @@ namespace FastDM
         readonly string url;
         readonly int maxPlaylistEntries;
         readonly bool ignoreCookies;
-        readonly CancellationTokenSource previewCts = new CancellationTokenSource();
+        CancellationTokenSource previewCts = new CancellationTokenSource();
         readonly Font mergeFont;
         readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
         readonly Label lblPlaylistQuality, lblName;
         readonly PictureBox thumbnail;
+        readonly ThumbnailSkeleton thumbnailSkeleton;
+        readonly ThemedMarqueeProgress loadingProgress;
         readonly Panel singlePanel, playlistPanel;
         readonly TableLayoutPanel options;
         readonly RadioButton rbVideo, rbAudio;
@@ -48,10 +50,11 @@ namespace FastDM
         readonly CheckedListBox playlistEntries;
         readonly TextBox txtName, txtFolder;
         readonly Button btnStart, btnLater;
+        readonly Button btnRetry;
         YtInfo? info;
         YtPlaylistInfo? playlist;
         YtPreviewData? preview;
-        bool loading = true;
+        bool loading;
 
         public List<YtDlpSpec> Specs { get; private set; } = new List<YtDlpSpec>();
         public string? ErrorMessage { get; private set; }
@@ -81,7 +84,7 @@ namespace FastDM
             };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
@@ -91,7 +94,7 @@ namespace FastDM
                 Dock = DockStyle.Fill,
                 AutoEllipsis = true,
                 Font = new Font(Font, FontStyle.Bold),
-                Text = "Video download preview",
+                Text = "",
                 AccessibleName = "Video title"
             };
             root.Controls.Add(lblTitle, 0, 0);
@@ -106,6 +109,13 @@ namespace FastDM
                 AccessibleName = "Video thumbnail"
             };
             previewPanel.Controls.Add(thumbnail);
+            thumbnailSkeleton = new ThumbnailSkeleton
+            {
+                Location = new Point(0, 2),
+                Size = new Size(144, 82),
+                BackColor = Theme.P.Hover
+            };
+            previewPanel.Controls.Add(thumbnailSkeleton);
             lblSource = new Label
             {
                 Location = new Point(158, 2),
@@ -118,15 +128,46 @@ namespace FastDM
             previewPanel.Controls.Add(lblSource);
             root.Controls.Add(previewPanel, 0, 1);
 
+            var statusPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                Margin = Padding.Empty
+            };
+            statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
+            statusPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            statusPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
             lblStatus = new Label
             {
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Text = "Opening video preview…",
                 AutoEllipsis = true,
-                AccessibleName = "Preview loading status"
+                AccessibleName = "Preview loading status",
+                AccessibleDescription = "Shows the current video preview state."
             };
-            root.Controls.Add(lblStatus, 0, 2);
+            statusPanel.Controls.Add(lblStatus, 0, 0);
+            btnRetry = new Button
+            {
+                Text = "Retry",
+                Dock = DockStyle.Fill,
+                Visible = false,
+                AccessibleName = "Retry video preview",
+                AccessibleDescription = "Try loading the video information again."
+            };
+            btnRetry.Click += (s, e) => _ = LoadPreviewAsync();
+            statusPanel.Controls.Add(btnRetry, 1, 0);
+            loadingProgress = new ThemedMarqueeProgress
+            {
+                Dock = DockStyle.Fill,
+                AccessibleName = "Video preview loading progress",
+                AccessibleDescription = "Indeterminate progress while video information is loading."
+            };
+            statusPanel.Controls.Add(loadingProgress, 0, 1);
+            statusPanel.SetColumnSpan(loadingProgress, 2);
+            root.Controls.Add(statusPanel, 0, 2);
 
             var mainPanel = new Panel { Dock = DockStyle.Fill };
             singlePanel = new Panel { Dock = DockStyle.Fill };
@@ -238,6 +279,7 @@ namespace FastDM
             Controls.Add(root);
             Resize += (s, e) => UpdateComboDropdownWidths();
             SetOptionsMode(isPlaylist: false, hasPreview: false);
+            SetPreviewControlsEnabled(false);
             AcceptButton = btnStart;
             CancelButton = cancel;
             FormClosing += (s, e) =>
@@ -257,6 +299,28 @@ namespace FastDM
 
         async Task LoadPreviewAsync()
         {
+            if (loading || IsDisposed) return;
+            loading = true;
+            ErrorMessage = null;
+            Text = "Video download preview";
+            lblTitle.Text = "";
+            lblStatus.Text = "Loading video information…";
+            btnRetry.Visible = false;
+            loadingProgress.Visible = true;
+            btnStart.Enabled = false;
+            btnLater.Enabled = false;
+            SetPreviewControlsEnabled(false);
+            var previousImage = thumbnail.Image;
+            thumbnail.Image = null;
+            previousImage?.Dispose();
+            thumbnailSkeleton.Visible = true;
+            info = null;
+            playlist = null;
+            preview = null;
+            previewCts.Cancel();
+            previewCts.Dispose();
+            previewCts = new CancellationTokenSource();
+
             try
             {
                 previewCts.CancelAfter(TimeSpan.FromSeconds(90));
@@ -295,6 +359,7 @@ namespace FastDM
                 previewCts.CancelAfter(Timeout.InfiniteTimeSpan);
                 if (IsDisposed) return;
                 loading = false;
+                SetPreviewControlsEnabled(true);
                 RenderPreview();
                 bool canAccept = playlist != null
                     ? playlist.AvailableCount > 0
@@ -315,16 +380,23 @@ namespace FastDM
                     lblStatus.Text = ErrorMessage;
                     Text = "No compatible video format";
                 }
+                loadingProgress.Visible = false;
+                btnRetry.Visible = !canAccept;
+                if (!canAccept) SetPreviewControlsEnabled(false);
                 if (info?.Thumbnail is string imageUrl) _ = LoadThumbnailAsync(imageUrl, previewCts.Token);
+                else thumbnailSkeleton.Visible = false;
             }
             catch (OperationCanceledException) when (previewCts.IsCancellationRequested)
             {
                 if (IsDisposed || Disposing) return;
                 loading = false;
                 ErrorMessage = "Reading video information timed out or was cancelled.";
-                lblStatus.Text = ErrorMessage;
+                lblStatus.Text = "The preview timed out. Check the link or connection, then retry.";
                 btnStart.Enabled = false;
                 btnLater.Enabled = false;
+                SetPreviewControlsEnabled(false);
+                loadingProgress.Visible = false;
+                btnRetry.Visible = true;
                 Text = "Video preview could not be loaded";
             }
             catch (Exception ex)
@@ -335,11 +407,24 @@ namespace FastDM
                 ErrorMessage = ex is YtDlpProcessException processException && !string.IsNullOrWhiteSpace(processException.DiagnosticText)
                     ? processException.DiagnosticText
                     : message;
-                lblStatus.Text = AppLog.Redact(message);
+                lblStatus.Text = "Couldn't load video information. Check the link or connection, then retry.";
                 btnStart.Enabled = false;
                 btnLater.Enabled = false;
+                SetPreviewControlsEnabled(false);
+                loadingProgress.Visible = false;
+                btnRetry.Visible = true;
                 Text = "Video preview could not be loaded";
             }
+        }
+
+        void SetPreviewControlsEnabled(bool enabled)
+        {
+            rbVideo.Enabled = enabled;
+            rbAudio.Enabled = enabled;
+            cmbVideo.Enabled = enabled;
+            cmbAudio.Enabled = enabled;
+            cmbPlaylistQuality.Enabled = enabled;
+            playlistEntries.Enabled = enabled;
         }
 
         void RenderPreview()
@@ -615,10 +700,12 @@ namespace FastDM
                 var old = thumbnail.Image;
                 thumbnail.Image = copy;
                 old?.Dispose();
+                thumbnailSkeleton.Visible = false;
                 }
             }
             catch (Exception ex)
             {
+                if (!IsDisposed) thumbnailSkeleton.Visible = false;
                 AppLog.Write("Video preview thumbnail unavailable: " + ex.Message);
             }
         }

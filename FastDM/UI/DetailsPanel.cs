@@ -36,6 +36,9 @@ namespace FastDM
             bold = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold);
             underline = new Font(Font, FontStyle.Underline);
             tips = new ToolTip { ShowAlways = true, InitialDelay = 400 };
+            AccessibleName = "Download details";
+            AccessibleDescription = "Details for the selected download, including status, size, speed, destination and link.";
+            AccessibleRole = AccessibleRole.Pane;
         }
 
         public void SetItem(DownloadItem? it)

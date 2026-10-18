@@ -231,7 +231,126 @@ namespace FastDM
             f.ForeColor = P.Text;
             SetTitleBar(f);
             ApplyChildren(f);
+            f.PerformLayout();
+            ApplyAccessibility(f);
             if (f.AcceptButton is Button primary) StyleButton(primary, primary: true);
+        }
+
+        static void ApplyAccessibility(Control parent)
+        {
+            var ordered = parent.Controls.Cast<Control>()
+                .OrderBy(c => c.Top)
+                .ThenBy(c => c.Left)
+                .ToList();
+
+            for (int i = 0; i < ordered.Count; i++)
+                ordered[i].TabIndex = i;
+
+            var fallbackCounts = new System.Collections.Generic.Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (Control control in ordered)
+            {
+                if (IsInteractive(control))
+                {
+                    if (string.IsNullOrWhiteSpace(control.AccessibleName))
+                    {
+                        string? label = NearbyLabel(control);
+                        string name = label ?? AccessibleControlKind(control);
+                        if (label == null)
+                        {
+                            fallbackCounts.TryGetValue(name, out int count);
+                            fallbackCounts[name] = ++count;
+                            name += " " + count;
+                        }
+                        control.AccessibleName = name;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(control.AccessibleDescription))
+                        control.AccessibleDescription = AccessibleDescriptionFor(control, control.AccessibleName);
+                }
+
+                if (control is ToolStrip strip)
+                    ApplyToolStripAccessibility(strip);
+                if (control.HasChildren)
+                    ApplyAccessibility(control);
+            }
+        }
+
+        static bool IsInteractive(Control control) =>
+            control.TabStop || control is ListView || control is ListBox || control is TreeView || control is TabControl;
+
+        static string? NearbyLabel(Control control)
+        {
+            if (control.Parent == null) return null;
+            return control.Parent.Controls.OfType<Label>()
+                .Where(label => !ReferenceEquals(label, control) && !string.IsNullOrWhiteSpace(label.Text))
+                .Select(label => new
+                {
+                    Label = label,
+                    Score = (label.Bottom <= control.Top
+                        ? control.Top - label.Bottom
+                        : Math.Abs(control.Top - label.Top) + 40) + Math.Abs(control.Left - label.Left) / 4
+                })
+                .OrderBy(x => x.Score)
+                .Select(x => x.Label)
+                .FirstOrDefault()?.Text.Trim().TrimEnd(':');
+        }
+
+        static string AccessibleControlKind(Control control) => control switch
+        {
+            TextBoxBase => "Text input",
+            ComboBox => "Option list",
+            NumericUpDown => "Number input",
+            CheckBox => "Checkbox",
+            RadioButton => "Radio button",
+            ListView => "Items list",
+            TreeView => "Folder tree",
+            ListBox => "Options list",
+            Button => "Button",
+            LinkLabel => "Link",
+            TabControl => "Tabs",
+            _ => control.GetType().Name
+        };
+
+        static string AccessibleDescriptionFor(Control control, string name) => control switch
+        {
+            TextBoxBase => "Enter " + name.ToLowerInvariant() + ".",
+            ComboBox => "Choose " + name.ToLowerInvariant() + ".",
+            NumericUpDown => "Adjust " + name.ToLowerInvariant() + ".",
+            CheckBox => "Toggle this option.",
+            RadioButton => "Select this option.",
+            TreeView => "Use the arrow keys to browse folders and Space to toggle a selection.",
+            ListView or ListBox => "Use the arrow keys to move through the list.",
+            Button => "Activate this button.",
+            LinkLabel => "Open this link.",
+            _ => name
+        };
+
+        static void ApplyToolStripAccessibility(ToolStrip strip)
+        {
+            foreach (ToolStripItem item in strip.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.AccessibleName))
+                    item.AccessibleName = string.IsNullOrWhiteSpace(item.Text)
+                        ? item.GetType().Name
+                        : item.Text.Replace("&", "").Trim();
+                if (string.IsNullOrWhiteSpace(item.AccessibleDescription))
+                    item.AccessibleDescription = string.IsNullOrWhiteSpace(item.ToolTipText)
+                        ? item.AccessibleName
+                        : item.ToolTipText;
+
+                if (item is ToolStripDropDownItem dropDown)
+                    foreach (ToolStripItem child in dropDown.DropDownItems)
+                    {
+                        if (string.IsNullOrWhiteSpace(child.AccessibleName))
+                            child.AccessibleName = string.IsNullOrWhiteSpace(child.Text)
+                                ? child.GetType().Name
+                                : child.Text.Replace("&", "").Trim();
+                        if (string.IsNullOrWhiteSpace(child.AccessibleDescription))
+                            child.AccessibleDescription = string.IsNullOrWhiteSpace(child.ToolTipText)
+                                ? child.AccessibleName
+                                : child.ToolTipText;
+                    }
+            }
         }
 
         static void ApplyChildren(Control parent)
@@ -244,10 +363,13 @@ namespace FastDM
                     case Button b:
                         StyleButton(b, primary: false);
                         break;
+                    case ValidationInputFrame frame:
+                        frame.BackColor = P.Input;
+                        break;
                     case TextBoxBase t:
                         t.BackColor = P.Input;
                         t.ForeColor = P.Text;
-                        t.BorderStyle = BorderStyle.FixedSingle;
+                        t.BorderStyle = t.Parent is ValidationInputFrame ? BorderStyle.None : BorderStyle.FixedSingle;
                         break;
                     case ComboBox cb:
                         cb.BackColor = P.Input;
@@ -318,7 +440,7 @@ namespace FastDM
                         break;
                     case Label label:
                         label.BackColor = P.Window;
-                        label.ForeColor = P.Text;
+                        label.ForeColor = label is ValidationMessageLabel ? P.Error : P.Text;
                         break;
                     case CheckBox check:
                         check.BackColor = P.Window;

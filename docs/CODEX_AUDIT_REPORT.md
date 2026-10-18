@@ -86,3 +86,31 @@ The package manifest check reported desktop app `1.0.13` and MSIX `1.0.13.0`; th
 - **Packaging and audit documentation:** `scripts/Test-PackageManifest.ps1`, new `scripts/Test-ToolProvenance.ps1`, new `docs/tool-bundle.lock.json`, `docs/TOOLS.md`, `docs/TESTING.md`, new `docs/STORE_RELEASE_CHECKLIST.md`, and this report.
 
 The master plan remains the source of task requirements; this report records the current implementation and verified outcomes.
+
+## UI/UX remediation follow-up — 2026-10-18
+
+The audit above records the earlier full engineering and security review. This follow-up completes the separate five-phase UI/UX plan and keeps its stated boundary: dialogs, controls, theme, accessibility and user-visible presentation. It does not claim new changes to the download engine, network stack, browser bridge or extension.
+
+At the start of this follow-up, the branch was `master` at `56577a2` after Phases 1–4. The worktree also contained a pre-existing edit to `FastDM.Package/FastDM.Package.wapproj` that enables package signing, disables revision auto-increment and sets a certificate thumbprint. That user-owned edit was not staged or changed. The completed UI phase commits are:
+
+- Phase 1: `ca11bf2` — progress, preview and folder-selection fixes.
+- Phase 2: `91e8d65` — DPI behavior and responsive dialogs.
+- Phase 3: `53d7e49` — themed controls and dialogs.
+- Phase 4: `56577a2` — download-list navigation and presentation.
+- Phase 5: this handoff commit — URL validation, video-preview loading/retry, folder navigation and accessibility polish.
+
+Phase 5 adds live link counting and inline URL/folder validation to Add URL; a themed indeterminate progress bar, thumbnail skeleton, disabled format inputs and retry action to the video preview; shell icons, navigable breadcrumbs and selected-size feedback to the remote-folder picker; and shared accessible names, descriptions and tab ordering for dialogs. Regression tests cover allowed link schemes, unsafe/malformed links, blank lines, original line numbers and empty input. The theme pass preserves validation colors and the borderless inputs inside their validation frames.
+
+### Follow-up verification
+
+| Command/check | Result |
+| --- | --- |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; 320 .NET regression checks, 22 local integration checks and 20 extension tests passed; package/version checks passed. The Debug app build completed with 0 errors and 5 apphost-copy retry warnings because the running `FastDM` process (PID 9032) held `FastDM.exe`; the process was left running. The tool-provenance check retained the warnings documented above for the local FFmpeg bundle. |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS** after the final UI code change; 0 warnings, 0 errors. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; clean-copy Release app build had 0 warnings/errors; manifest/tool checks passed without ignored local tools; Visual Studio MSBuild 18.10.1 built `FastDM.Package_1.0.13.0_x64.msixbundle` (73,353,768 bytes); all 320 regression, 22 integration and 20 extension tests passed, and the extension ZIP was generated. The unique temporary copy was removed and its absence confirmed. This verifies package generation only; signing, installation and Store certification were not verified. |
+| `dotnet build FastDM.Package/FastDM.Package.wapproj -c Release -p:Platform=x64` | **BLOCKED for the `dotnet` MSBuild invocation** because `C:\Program Files\dotnet\sdk\10.0.401\Microsoft\DesktopBridge\Microsoft.DesktopBridge.props` is missing. The isolated package build passed through Visual Studio MSBuild, so the blocker is specific to the `dotnet` MSBuild target discovery path. |
+| `git diff --check` | **PASS**; no whitespace errors. Git emitted line-ending conversion notices for LF-edited source/docs. |
+
+The interactive Windows checks in [`TESTING.md`](TESTING.md) for validation colors, dialog tab order, screen-reader announcements, preview retry/loading states, breadcrumbs and size feedback were not run. The build and automated suites do not establish visual correctness or assistive-technology behavior. The manual FTP/SFTP, live browser-cookie and site-extraction limitations in the earlier audit also remain.
+
+The original package-signing worktree edit remained unstaged after the Phase 5 commit. The FFmpeg/ffprobe provenance release gate remains a separate release blocker as described above.

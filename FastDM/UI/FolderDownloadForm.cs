@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -97,8 +98,10 @@ namespace FastDM
         readonly NumericUpDown numSim;
         readonly TreeView tree;
         readonly Label lblStatus;
+        readonly Label lblSelectedSize;
         readonly Button btnOk, btnStream, btnBack, btnUp;
-        readonly Label lblPath;
+        readonly FlowLayoutPanel breadcrumb;
+        readonly ImageList treeImages;
         readonly Stack<Uri> history = new Stack<Uri>();
         readonly CheckBox chkLocalPlaylist;
         CancellationTokenSource? cts;
@@ -190,12 +193,24 @@ namespace FastDM
                 Uri? parent = ParentUri(currentUri);
                 if (parent != null) await NavigateAsync(parent, rememberCurrent: true);
             };
-            lblPath = new Label { Location = new Point(184, 231), Size = new Size(460, 22), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, AutoEllipsis = true, Text = DisplayPath(currentUri) };
+            breadcrumb = new FlowLayoutPanel
+            {
+                Location = new Point(184, 229),
+                Size = new Size(460, 25),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                AutoScroll = true,
+                WrapContents = false,
+                FlowDirection = FlowDirection.LeftToRight,
+                AccessibleName = "Current folder path",
+                AccessibleDescription = "Folder path. Activate a segment to navigate to it."
+            };
             Controls.Add(btnBack);
             Controls.Add(btnUp);
-            Controls.Add(lblPath);
+            Controls.Add(breadcrumb);
+            RebuildBreadcrumb();
 
             // ট্রি ভিউ
+            treeImages = CreateShellImageList();
             tree = new TreeView
             {
                 Location = new Point(16, 260),
@@ -203,7 +218,10 @@ namespace FastDM
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 CheckBoxes = true,
                 HideSelection = false,
-                ShowLines = true
+                ShowLines = true,
+                ImageList = treeImages,
+                AccessibleName = "Remote folders and files",
+                AccessibleDescription = "Browse the remote folder tree. Use Space to select folders or files."
             };
             tree.AfterCheck += OnAfterCheck;
             tree.NodeMouseDoubleClick += async (s, e) =>
@@ -231,11 +249,27 @@ namespace FastDM
             lblStatus = new Label
             {
                 Location = new Point(236, 546),
-                Size = new Size(408, 22),
+                Size = new Size(214, 22),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                Text = "Scanning…"
+                Text = "Scanning…",
+                AutoEllipsis = true,
+                AccessibleName = "Folder scan status",
+                AccessibleDescription = "Shows directory loading and selection status."
             };
             Controls.Add(lblStatus);
+
+            lblSelectedSize = new Label
+            {
+                Location = new Point(456, 546),
+                Size = new Size(188, 22),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+                Text = "Selected size: 0 B",
+                TextAlign = ContentAlignment.MiddleRight,
+                AutoEllipsis = true,
+                AccessibleName = "Selected total size",
+                AccessibleDescription = "Estimated total size of selected files."
+            };
+            Controls.Add(lblSelectedSize);
 
             // প্লেলিস্ট (VLC)
             chkLocalPlaylist = new CheckBox
@@ -282,6 +316,60 @@ namespace FastDM
                 }
             };
             FormClosing += (s, e) => cts?.Cancel();
+            FormClosed += (s, e) =>
+            {
+                cts?.Dispose();
+                treeImages.Dispose();
+            };
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct ShellFileInfo
+        {
+            public IntPtr Icon;
+            public int IconIndex;
+            public uint Attributes;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string? DisplayName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string? TypeName;
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SHGetFileInfo(string path, uint fileAttributes, ref ShellFileInfo info, uint size, uint flags);
+
+        [DllImport("user32.dll")]
+        static extern bool DestroyIcon(IntPtr icon);
+
+        ImageList CreateShellImageList()
+        {
+            var list = new ImageList
+            {
+                ColorDepth = ColorDepth.Depth32Bit,
+                ImageSize = new Size(Theme.Scale(this, 16), Theme.Scale(this, 16))
+            };
+            AddShellImage(list, "folder", "folder", 0x10);
+            AddShellImage(list, "file", ".txt", 0x80);
+            return list;
+        }
+
+        static void AddShellImage(ImageList list, string key, string path, uint attributes)
+        {
+            const uint flags = 0x00000100 | 0x00000001 | 0x00000010; // icon, small icon, use attributes
+            var info = new ShellFileInfo();
+            IntPtr result = SHGetFileInfo(path, attributes, ref info, (uint)Marshal.SizeOf<ShellFileInfo>(), flags);
+            if (result == IntPtr.Zero || info.Icon == IntPtr.Zero)
+            {
+                using var fallback = SystemIcons.Application.ToBitmap();
+                list.Images.Add(key, (Image)fallback.Clone());
+                return;
+            }
+
+            try
+            {
+                using var icon = Icon.FromHandle(info.Icon);
+                using var bitmap = icon.ToBitmap();
+                list.Images.Add(key, (Image)bitmap.Clone());
+            }
+            finally { DestroyIcon(info.Icon); }
         }
 
         string DefaultName()
@@ -339,11 +427,12 @@ namespace FastDM
             try
             {
                 lblStatus.Text = "Loading directory…";
+                lblSelectedSize.Text = "Selected size: calculating…";
                 BuildTree(await ListWithCredentialsAsync(currentUri, cts.Token));
-                lblPath.Text = DisplayPath(currentUri);
+                RebuildBreadcrumb();
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); }
+            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); lblSelectedSize.Text = "Selected size: unavailable"; }
         }
 
         async Task NavigateAsync(Uri target, bool rememberCurrent)
@@ -356,19 +445,59 @@ namespace FastDM
             try
             {
                 lblStatus.Text = "Loading directory…";
+                lblSelectedSize.Text = "Selected size: calculating…";
                 var listing = await ListWithCredentialsAsync(target, cts.Token);
                 if (rememberCurrent) history.Push(currentUri);
                 currentUri = target;
                 BuildTree(listing);
-                lblPath.Text = DisplayPath(currentUri);
+                RebuildBreadcrumb();
                 btnBack.Enabled = history.Count > 0;
                 btnUp.Enabled = ParentUri(currentUri) != null;
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); }
+            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); lblSelectedSize.Text = "Selected size: unavailable"; }
         }
 
-        static string DisplayPath(Uri target) => Uri.UnescapeDataString(target.AbsolutePath);
+        void RebuildBreadcrumb()
+        {
+            breadcrumb.SuspendLayout();
+            var previousCrumbs = breadcrumb.Controls.Cast<Control>().ToArray();
+            breadcrumb.Controls.Clear();
+            foreach (Control crumb in previousCrumbs) crumb.Dispose();
+            string authority = currentUri.GetLeftPart(UriPartial.Authority);
+            string query = currentUri.Query;
+
+            void AddCrumb(string text, string escapedPath)
+            {
+                if (breadcrumb.Controls.Count > 0)
+                    breadcrumb.Controls.Add(new Label { Text = "›", AutoSize = true, Margin = new Padding(3, 3, 3, 0), ForeColor = Theme.P.SubText });
+
+                var link = new LinkLabel
+                {
+                    Text = text,
+                    AutoSize = true,
+                    Margin = new Padding(2, 3, 2, 0),
+                    LinkBehavior = LinkBehavior.HoverUnderline,
+                    Tag = new Uri(authority + escapedPath + query)
+                };
+                link.LinkClicked += async (s, e) =>
+                {
+                    if (link.Tag is Uri target)
+                        await NavigateAsync(target, rememberCurrent: true);
+                };
+                breadcrumb.Controls.Add(link);
+            }
+
+            AddCrumb(currentUri.Host, "/");
+            var segments = currentUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string accumulated = "";
+            foreach (string segment in segments)
+            {
+                accumulated += segment + "/";
+                AddCrumb(Uri.UnescapeDataString(segment), "/" + accumulated);
+            }
+            breadcrumb.ResumeLayout(true);
+        }
 
         static Uri? ParentUri(Uri target)
         {
@@ -401,6 +530,7 @@ namespace FastDM
             if (tree.Nodes.Count == 0)
             {
                 lblStatus.Text = "No files found. The page may not be a plain directory listing.";
+                lblSelectedSize.Text = "Selected size: 0 B";
                 return;
             }
             if (txtFilter.Text.Trim().Length > 0) ApplyFilter(); else UpdateSummary();
@@ -424,7 +554,8 @@ namespace FastDM
             {
                 string text = c.IsDir ? c.Name
                             : c.Size > 0 ? c.Name + "   (" + Fmt(c.Size) + ")" : c.Name;
-                var tn = new TreeNode(text) { Tag = c };
+                string imageKey = c.IsDir ? "folder" : "file";
+                var tn = new TreeNode(text) { Tag = c, ImageKey = imageKey, SelectedImageKey = imageKey };
                 col.Add(tn);
                 if (c.IsDir)
                 {
@@ -523,8 +654,10 @@ namespace FastDM
             foreach (TreeNode node in tree.Nodes) Count(node);
 
             string t = files + " file(s), " + folders + " folder(s) selected";
-            if (size > 0) t += " — " + Fmt(size) + (unknown ? "+" : "");
             lblStatus.Text = t;
+            lblSelectedSize.Text = unknown
+                ? size > 0 ? "Selected size: at least " + Fmt(size) : "Selected size: unknown"
+                : "Selected size: " + Fmt(size);
             btnOk.Enabled = files > 0 || folders > 0;
             btnStream.Enabled = files > 0 || folders > 0;
         }
