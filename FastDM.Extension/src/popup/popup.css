@@ -13,8 +13,14 @@ h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--sub); text
 
 .card { background: var(--row-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .card p { margin: 0 0 10px; }
-.actions { display: flex; gap: 8px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .error { color: var(--red); }
+.loading { display: flex; align-items: center; gap: 10px; color: var(--sub); }
+.spinner { width: 14px; height: 14px; flex: 0 0 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+.task-status { margin: 4px 0 8px; }
+.task-action-status { color: var(--red); font-size: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
 ul#taskList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .task { background: var(--row-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }

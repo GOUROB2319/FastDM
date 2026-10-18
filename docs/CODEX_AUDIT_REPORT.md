@@ -114,3 +114,28 @@ Phase 5 adds live link counting and inline URL/folder validation to Add URL; a t
 The interactive Windows checks in [`TESTING.md`](TESTING.md) for validation colors, dialog tab order, screen-reader announcements, preview retry/loading states, breadcrumbs and size feedback were not run. The build and automated suites do not establish visual correctness or assistive-technology behavior. The manual FTP/SFTP, live browser-cookie and site-extraction limitations in the earlier audit also remain.
 
 The original package-signing worktree edit remained unstaged after the Phase 5 commit. The FFmpeg/ffprobe provenance release gate remains a separate release blocker as described above.
+
+## Second-pass UI/UX review — 2026-10-18
+
+This pass began on branch `master` at `348aa6e` with a clean worktree. It followed the six UI areas in the attached objective and kept implementation changes to desktop/extension presentation and regression coverage. Download, network, scheduler, bridge, authentication, cookie, persistence and settings behavior were not changed. The extension `package.json` test command was left unchanged.
+
+| Area | Finding and remediation | Status |
+| --- | --- | --- |
+| Main download list | Fixed column widths overflowed at the normal window/sidebar layout and did not adapt when resized. Added deterministic width allocation that favors Name/Progress, hides lower-priority columns only when required, restores all columns when space returns, and exposes hidden values in row tooltips and Details. | **Implemented; layout allocation regression-tested.** |
+| Preferences | Fixed 640 px content rows and the 670 px traffic table could exceed the viewport. Content, path/argument rows, hints, checkboxes, and the traffic table now track available width; long labels/descriptions wrap and vertical scrolling remains available. | **Implemented; runtime visual check deferred.** |
+| Batch Import | Video-quality and Save to labels did not follow bottom-anchored controls; fixed list columns could overflow. Labels now share the controls' anchors and the Link/Note columns adapt to list width. | **Implemented; runtime resize check deferred.** |
+| Details Panel | Scrolling was difficult to discover, wheel movement was not clamped to content, and painted actions had no keyboard/accessibility children. Added a visible, clickable/draggable scrollbar; bounded wheel/Up/Down scrolling; focus cues; keyboard action selection/activation; and named accessible Save to/Link actions. Full path, URL and error values remain available through descriptions/tooltips and right-click copy. | **Implemented; screen-reader and runtime checks deferred.** |
+| Extension popup/options | The disconnected popup could show two Open FastDM buttons; loading/task failures were unclear and options lacked a centered content width. Popup actions are now mutually exclusive by connection state, loading/recent-task feedback is explicit, options controls reflect loading/connected/unpaired/disconnected/error states, and the options page uses shared width/spacing tokens. English and Bangla keys remain in parity. | **Implemented; state logic and locale checks passed; browser rendering deferred.** |
+| Branding | The desktop main-window title used “Fast DM” while the product name is “FastDM”. | **Fixed.** |
+
+### Second-pass verification
+
+| Command/check | Result |
+| --- | --- |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; Debug build 0 warnings/errors; manifest and optional-tool integrity checks passed with the existing FFmpeg provenance warnings; 333 .NET regression checks, 22 loopback integration checks and 20 extension tests passed. |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `node --test FastDM.Extension/tests/ui-state.test.mjs` | **PASS**; 2 UI-state regression tests. This file is run separately; `package.json` was not changed. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only Release build and package metadata checks passed; Visual Studio MSBuild created an unsigned `FastDM.Package_1.0.13.0_x64.msixbundle` (73,373,807 bytes); 333 .NET checks, 22 integration checks and 22 extension tests passed, including the UI-state tests; extension ZIP created (34,467 bytes). The temporary workspace was removed by the script. This verifies package generation only, not signing or installation. |
+| `git diff --check` | **PASS**; no whitespace errors. Git reported only LF-to-CRLF conversion notices for the rewritten extension scripts. |
+
+No interactive WinForms window, Chrome/Edge popup, screen reader, high-DPI monitor, or accessibility inspection tool was available to this run. Therefore the six areas' runtime appearance, 520/700/900 px resize behavior, Preferences/Batch minimum sizes, popup/options rendering, actual pairing states, and high-DPI behavior remain manual checks listed in [`TESTING.md`](TESTING.md). Automated layout logic/build results do not establish those visual outcomes.

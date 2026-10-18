@@ -10,22 +10,23 @@
 
   <section class="card">
     <h2 data-i18n="optionsConnection">Connection</h2>
-    <p><span id="pill" class="pill"><span class="dot"></span><span id="pillText"></span></span></p>
-    <p id="errorText" class="error hidden"></p>
+    <p><span id="pill" class="pill"><span class="dot"></span><span id="pillText" data-i18n="statusChecking">Checking…</span></span></p>
+    <p id="connectionHint" class="muted" role="status" aria-live="polite" data-i18n="statusChecking">Checking…</p>
+    <p id="errorText" class="error hidden" role="alert"></p>
     <div class="actions">
-      <button id="btnConnect" class="primary" data-i18n="btnConnect">Connect</button>
-      <button id="btnForget" data-i18n="btnForget">Disconnect this browser</button>
+      <button id="btnConnect" class="primary" data-i18n="btnConnect" disabled>Connect</button>
+      <button id="btnForget" class="hidden" data-i18n="btnForget">Disconnect this browser</button>
     </div>
   </section>
 
   <section class="card">
     <h2 data-i18n="optionsCookies">Login cookies</h2>
     <p class="muted small" data-i18n="cookiesHint"></p>
-    <p><span id="cookiePill" class="pill"><span class="dot"></span><span id="cookiePillText"></span></span></p>
-    <p id="cookieError" class="error hidden"></p>
+    <p><span id="cookiePill" class="pill"><span class="dot"></span><span id="cookiePillText" data-i18n="statusChecking">Checking…</span></span></p>
+    <p id="cookieError" class="error hidden" role="alert"></p>
     <div class="actions">
-      <button id="btnCookiesEnable" class="primary" data-i18n="btnCookiesEnable">Turn on</button>
-      <button id="btnCookiesDisable" data-i18n="btnCookiesDisable">Turn off</button>
+      <button id="btnCookiesEnable" class="primary hidden" data-i18n="btnCookiesEnable">Turn on</button>
+      <button id="btnCookiesDisable" class="hidden" data-i18n="btnCookiesDisable">Turn off</button>
     </div>
   </section>
 

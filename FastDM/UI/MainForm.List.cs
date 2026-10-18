@@ -424,7 +424,8 @@ namespace FastDM
             SetIf(l, 5, "");
             var date = it.DeletedAt ?? it.Added;
             SetIf(l, 6, FormatListDate(date));
-            l.ToolTipText = AddDateToTooltip(it.Url, "Deleted", date);
+            l.ToolTipText = AddListDetailsToTooltip(
+                AddDateToTooltip(it.Url, "Deleted", date), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
         }
 
         void FillRow(
@@ -504,7 +505,24 @@ namespace FastDM
             {
                 l.ToolTipText = it.State == DlState.Error ? AppLog.Redact(it.Error) : it.Url;
             }
-            l.ToolTipText = AddDateToTooltip(l.ToolTipText, "Added", it.Added);
+            l.ToolTipText = AddListDetailsToTooltip(
+                AddDateToTooltip(l.ToolTipText, "Added", it.Added), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
+        }
+
+        static string AddListDetailsToTooltip(string? tooltip, DownloadItem it, string status, string size, string speed, string eta)
+        {
+            var details = new List<string>
+            {
+                "Status: " + status,
+                "Size: " + size,
+                "Speed: " + speed,
+                "ETA: " + eta,
+                "Added: " + FormatListDate(it.Added)
+            };
+
+            return string.IsNullOrWhiteSpace(tooltip)
+                ? string.Join(Environment.NewLine, details)
+                : tooltip + Environment.NewLine + string.Join(Environment.NewLine, details);
         }
 
         static string StateText(DlState s) =>

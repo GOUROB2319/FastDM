@@ -17,6 +17,9 @@
   "statusChecking": {
     "message": "যাচাই হচ্ছে…"
   },
+  "statusError": {
+    "message": "সংযোগ যাচাই করা যায়নি। আবার চেষ্টা করুন।"
+  },
   "statusConnected": {
     "message": "সংযুক্ত"
   },
@@ -70,6 +73,9 @@
   },
   "recentTitle": {
     "message": "সাম্প্রতিক ডাউনলোড"
+  },
+  "recentLoading": {
+    "message": "সাম্প্রতিক ডাউনলোড দেখা হচ্ছে…"
   },
   "emptyTitle": {
     "message": "এখনো কোনো ডাউনলোড নেই"

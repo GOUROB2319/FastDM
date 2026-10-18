@@ -305,6 +305,7 @@ dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64
 dotnet run --project FastDM.Tests -c Release
 dotnet run --project FastDM.IntegrationTests -c Release
 node --test FastDM.Extension/tests/bridge.test.mjs FastDM.Extension/tests/locales.test.mjs
+node --test FastDM.Extension/tests/ui-state.test.mjs
 powershell -ExecutionPolicy Bypass -File scripts/Test-ToolProvenance.ps1
 git diff --check
 ```
@@ -325,8 +326,12 @@ These checks require a Windows interactive desktop and representative servers. A
 
 | Area | Manual checks |
 | --- | --- |
-| Main toolbar and table | Resize 520/700/900 px and maximized; verify Open File/Open Folder remain visible or in the keyboard-accessible ToolStrip overflow; no standalone toolbar Pause; retain Pause All and per-item Pause. Check all seven headers and row alignment with 0, 1, 4 and 10+ items; test long Unicode names and horizontal scrolling. |
-| DPI, theme and access | 100/125/150/200% DPI and text scaling; light/dark/system theme; keyboard-only focus order, Enter/Escape, screen reader labels, high contrast, long English/Bangla text and small display-height clipping. |
+| Main toolbar and table | Resize 520/700/900 px with the sidebar open and closed, then maximize. Verify there is no horizontal scrolling; all seven columns return at normal width; narrow layouts retain Name/Size/Progress and expose hidden values through row tooltips and Details. Check sorting, selection, compact view, progress rendering, and long Unicode names. |
+| Preferences | Resize from 900×640 to the 780×520 minimum and use a short display height. Verify no horizontal scrolling; path fields, Browse/Clear, checks, wrapped descriptions, traffic limits, Save/Cancel and section navigation remain accessible. |
+| Batch Import | Check initial, minimum-width, wider and minimum-height sizes. Verify Video quality and Save to labels stay beside their controls; Browse remains visible; the list columns fit; action buttons and selection count remain available. |
+| Details Panel | Tab to the panel; use Up/Down, wheel, scrollbar track and thumb, Left/Right, Enter and Space. Check focus cues, screen-reader names/descriptions, long path/URL/error access, right-click copy, and retained speed graph/connection information. |
+| Extension popup/options | Check loading, connected, unpaired, disconnected and error states in English and Bangla. Disconnected shows one Open FastDM button; connected tasks show loading, empty and error feedback. Check pause/resume disabled/error behavior and centered options width at narrow and wide browser sizes. |
+| DPI, theme and access | 100/125/150/200% DPI and text scaling; light/dark/system theme; keyboard-only focus order, Enter/Escape, screen-reader announcements, high contrast, long English/Bangla text and small display-height clipping. |
 | Add URL and video preview | Paste valid links, blank lines and an invalid link; verify the live detected-link count, line-specific inline error and field focus after validation. Start a video preview and verify the themed progress/skeleton, disabled format controls while loading, and Retry after a failed preview. |
 | Remote folder picker | Navigate into nested folders and back using breadcrumbs; verify shell folder/file icons, selected-size states (known, unknown and calculating), and selection counts. |
 | Dialog accessibility | In Add URL, video preview and remote-folder dialogs, tab through controls in visual order, confirm controls have useful accessible names/descriptions, and verify validation/status updates are announced by the configured screen reader. |
@@ -337,4 +342,4 @@ These checks require a Windows interactive desktop and representative servers. A
 | Video and cookies | None mode on public video, selected Brave missing/locked DB, valid/missing/malformed cookies file, bot-check/login, removed/private video, rate limit and network failure. No access-control bypass; ensure explicit Retry without cookies is user-triggered. |
 | Store package | Follow [`STORE_RELEASE_CHECKLIST.md`](STORE_RELEASE_CHECKLIST.md), including install/upgrade/uninstall, identity, privacy and Partner Center listing review. |
 
-Record each manual outcome and Windows/tool version before release. The follow-up Add URL, preview, folder-picker and dialog-accessibility checks above were not executed in this automated run. No live browser cookie or FTP/SFTP server matrix was executed for this audit.
+Record each manual outcome and Windows/tool version before release. The Add URL, preview, folder-picker, dialog accessibility, and second-pass responsive UI checks above were not executed in the automated run. Popup/options state behavior has automated logic tests, but no live browser rendering check was run. No live browser cookie or FTP/SFTP server matrix was executed for this audit.

@@ -88,6 +88,7 @@ namespace FastDM
             list.Columns.Add("Type", 120);
             list.Columns.Add("Link", 420);
             list.Columns.Add("Note", 220);
+            list.ClientSizeChanged += (s, e) => FitBatchColumns();
 
             foreach (var r in rows)
             {
@@ -136,7 +137,7 @@ namespace FastDM
             lblCount = new Label { Location = new Point(336, 418), Size = new Size(508, 22), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             Controls.Add(lblCount);
 
-            Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 460), AutoSize = true });
+            Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 460), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
 
             cmbQuality = new ComboBox
             {
@@ -159,7 +160,7 @@ namespace FastDM
             };
             Controls.Add(chkFolders);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 530), AutoSize = true });
+            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 530), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
 
             txtFolder = new TextBox { Location = new Point(80, 526), Size = new Size(650, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
             Controls.Add(txtFolder);
@@ -188,6 +189,19 @@ namespace FastDM
             CancelButton = cancel;
 
             UpdateCount();
+            FitBatchColumns();
+        }
+
+        void FitBatchColumns()
+        {
+            if (list.Columns.Count < 4 || list.ClientSize.Width <= 0) return;
+            int available = Math.Max(0, list.ClientSize.Width - 4);
+            const int line = 52, type = 120, note = 160, minimumLink = 160;
+            int link = Math.Max(minimumLink, available - line - type - note);
+            int[] widths = { line, type, link, Math.Max(note, available - line - type - link) };
+            for (int i = 0; i < widths.Length; i++)
+                if (list.Columns[i].Width != widths[i])
+                    list.Columns[i].Width = widths[i];
         }
 
         void TickWhere(Func<BatchRow, bool> pick)

@@ -16,5 +16,6 @@ YtDlpWorkflowTests.Run();
 HttpRangeValidationTests.Run();
 DownloadDisplayNameTests.Run();
 AddUrlValidationTests.Run();
+DownloadColumnLayoutTests.Run();
 await BridgeServerTests.RunAsync();
 return T.Done();

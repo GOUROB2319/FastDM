@@ -22,6 +22,7 @@ namespace FastDM
         readonly List<Label> muted = new List<Label>();
         readonly List<Panel> lines = new List<Panel>();
         readonly List<Action> commit = new List<Action>();
+        readonly List<Action<int>> responsiveRows = new List<Action<int>>();
 
         bool navBusy;
 
@@ -100,6 +101,7 @@ namespace FastDM
             };
 
             content.Controls.Add(flow);
+            content.Resize += (a, b) => UpdateResponsiveWidth();
 
             Controls.Add(content);
             Controls.Add(nav);
@@ -113,6 +115,7 @@ namespace FastDM
             BuildAntivirus();
             BuildNotifications();
             BuildAdvanced();
+            UpdateResponsiveWidth();
 
             foreach (var h in sectionHeaders)
                 nav.Items.Add(h.Text);
@@ -123,10 +126,19 @@ namespace FastDM
 
             Shown += (a, b) =>
             {
+                UpdateResponsiveWidth();
                 Restyle();
                 nav.SelectedIndex = Math.Max(0, SectionIndex(startSection));
                 RefreshStartupAsync();
             };
+        }
+
+        void UpdateResponsiveWidth()
+        {
+            if (content == null || flow == null) return;
+            int width = Math.Max(1, content.ClientSize.Width - content.Padding.Horizontal - 4);
+            flow.Width = width;
+            foreach (var update in responsiveRows) update(width);
         }
 
         int SectionIndex(string? name)
@@ -220,6 +232,7 @@ namespace FastDM
                 Text = title,
                 Tag = title,
                 AutoSize = true,
+                MaximumSize = new Size(RowWidth, 0),
                 Font = Theme.CreateFont(Theme.FontTitle, FontStyle.Bold),
                 Margin = new Padding(0, 22, 0, 4)
             };
@@ -229,19 +242,26 @@ namespace FastDM
 
             flow.Controls.Add(l);
             flow.Controls.Add(line);
+            responsiveRows.Add(width =>
+            {
+                l.MaximumSize = new Size(width, 0);
+                line.Width = width;
+            });
             sectionHeaders.Add(l);
             return l;
         }
 
         void Sub(string text)
         {
-            flow.Controls.Add(new Label
+            var l = new Label
             {
                 Text = text,
                 AutoSize = true,
                 Font = Theme.CreateFont(Theme.FontSection, FontStyle.Bold),
                 Margin = new Padding(0, 12, 0, 4)
-            });
+            };
+            flow.Controls.Add(l);
+            responsiveRows.Add(width => l.MaximumSize = new Size(width, 0));
         }
 
         Label Hint(string text)
@@ -256,6 +276,7 @@ namespace FastDM
 
             muted.Add(l);
             flow.Controls.Add(l);
+            responsiveRows.Add(width => l.MaximumSize = new Size(width, 0));
             return l;
         }
 
@@ -272,27 +293,34 @@ namespace FastDM
 
             commit.Add(() => set(c.Checked));
             flow.Controls.Add(c);
+            responsiveRows.Add(width => c.MaximumSize = new Size(width, 0));
             return c;
         }
 
         NumericUpDown Num(string label, int min, int max, int value, Action<int> set)
         {
-            var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 4, 0, 4) };
+            var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Margin = new Padding(0, 4, 0, 4) };
 
-            var lbl = new Label { Text = label, AutoSize = false, Width = 380, Height = 26, TextAlign = ContentAlignment.MiddleLeft };
+            var lbl = new Label { Text = label, AutoSize = true, MaximumSize = new Size(RowWidth - 100, 0), TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty };
 
             var n = new NumericUpDown
             {
                 Width = 90,
                 Minimum = min,
                 Maximum = max,
-                Value = Math.Clamp(value, min, max)
+                Value = Math.Clamp(value, min, max),
+                Margin = Padding.Empty
             };
 
             commit.Add(() => set((int)n.Value));
             row.Controls.Add(lbl);
             row.Controls.Add(n);
             flow.Controls.Add(row);
+            responsiveRows.Add(width =>
+            {
+                row.Width = width;
+                lbl.MaximumSize = new Size(Math.Max(120, width - n.Width - 8), 0);
+            });
             return n;
         }
 
@@ -317,8 +345,8 @@ namespace FastDM
         TextBox PathRow(string value, bool folder, string? filter, bool allowClear = false)
         {
             var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 2, 0, 4) };
-            var txt = new TextBox { Width = allowClear ? 420 : 500, Text = value ?? "" };
-            var btn = new Button { Text = "Browse…", Width = 100, Height = 28 };
+            var txt = new TextBox { Width = allowClear ? 420 : 500, Text = value ?? "", Margin = new Padding(0, 0, 6, 0) };
+            var btn = new Button { Text = "Browse…", Width = 100, Height = 28, Margin = allowClear ? new Padding(0, 0, 6, 0) : Padding.Empty };
 
             btn.Click += (a, b) =>
             {
@@ -338,22 +366,33 @@ namespace FastDM
             row.Controls.Add(btn);
             if (allowClear)
             {
-                var clear = new Button { Text = "Clear", Width = 64, Height = 28, AccessibleName = "Clear selected file path" };
+                var clear = new Button { Text = "Clear", Width = 64, Height = 28, AccessibleName = "Clear selected file path", Margin = Padding.Empty };
                 clear.Click += (a, b) => txt.Clear();
                 row.Controls.Add(clear);
             }
             flow.Controls.Add(row);
+            responsiveRows.Add(width =>
+            {
+                row.Width = width;
+                int fixedWidth = 100 + 6 + (allowClear ? 64 + 6 : 0);
+                txt.Width = Math.Max(120, width - fixedWidth);
+            });
             return txt;
         }
 
         TextBox TextRow(string label, string value)
         {
             var row = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 2, 0, 4) };
-            row.Controls.Add(new Label { Text = label, AutoSize = false, Width = 100, Height = 26, TextAlign = ContentAlignment.MiddleLeft });
+            row.Controls.Add(new Label { Text = label, AutoSize = false, Width = 100, Height = 26, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 0, 6, 0) });
 
-            var txt = new TextBox { Width = 400, Text = value ?? "" };
+            var txt = new TextBox { Width = 400, Text = value ?? "", Margin = Padding.Empty };
             row.Controls.Add(txt);
             flow.Controls.Add(row);
+            responsiveRows.Add(width =>
+            {
+                row.Width = width;
+                txt.Width = Math.Max(120, width - 106);
+            });
             return txt;
         }
 
@@ -533,16 +572,17 @@ namespace FastDM
             {
                 AutoSize = true,
                 ColumnCount = 4,
-                Margin = new Padding(0, 4, 0, 8)
+                Margin = new Padding(0, 4, 0, 8),
+                Width = RowWidth
             };
 
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 352));
             for (int c = 0; c < 3; c++)
-                table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
 
             string[] heads = { "Low", "Medium", "High" };
 
-            table.Controls.Add(new Label { Text = "", AutoSize = true }, 0, 0);
+            table.Controls.Add(new Label { Text = "", AutoSize = true, Margin = Padding.Empty }, 0, 0);
 
             for (int c = 0; c < 3; c++)
                 table.Controls.Add(new Label
@@ -552,7 +592,8 @@ namespace FastDM
                     Width = 100,
                     Height = 26,
                     Font = Theme.CreateFont(Theme.FontSection, FontStyle.Bold),
-                    TextAlign = ContentAlignment.MiddleLeft
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Margin = Padding.Empty
                 }, c + 1, 0);
 
             var rowDefs = new (string Label, int Min, int Max)[]
@@ -568,14 +609,15 @@ namespace FastDM
 
             for (int r = 0; r < 4; r++)
             {
-                table.Controls.Add(new Label
+                var rowLabel = new Label
                 {
                     Text = rowDefs[r].Label,
-                    AutoSize = false,
-                    Width = 330,
-                    Height = 28,
-                    TextAlign = ContentAlignment.MiddleLeft
-                }, 0, r + 1);
+                    AutoSize = true,
+                    MaximumSize = new Size(352, 0),
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Margin = Padding.Empty
+                };
+                table.Controls.Add(rowLabel, 0, r + 1);
 
                 for (int c = 0; c < 3; c++)
                 {
@@ -589,7 +631,8 @@ namespace FastDM
                         Width = 96,
                         Minimum = rowDefs[r].Min,
                         Maximum = rowDefs[r].Max,
-                        Value = Math.Clamp(v, rowDefs[r].Min, rowDefs[r].Max)
+                        Value = Math.Clamp(v, rowDefs[r].Min, rowDefs[r].Max),
+                        Margin = Padding.Empty
                     };
 
                     nums[r, c] = n;
@@ -598,6 +641,16 @@ namespace FastDM
             }
 
             flow.Controls.Add(table);
+            responsiveRows.Add(width =>
+            {
+                int numericWidth = nums[0, 0].Width;
+                int labelWidth = Math.Max(120, width - numericWidth * 3);
+                table.Width = labelWidth + numericWidth * 3;
+                table.ColumnStyles[0].Width = labelWidth;
+                foreach (Control control in table.Controls)
+                    if (table.GetColumn(control) == 0 && control is Label label)
+                        label.MaximumSize = new Size(labelWidth, 0);
+            });
 
             commit.Add(() =>
             {
@@ -772,6 +825,7 @@ namespace FastDM
 
             var cookieSourceStatus = new Label { AutoSize = true, MaximumSize = new Size(RowWidth, 0), Margin = new Padding(0, 2, 0, 8) };
             flow.Controls.Add(cookieSourceStatus);
+            responsiveRows.Add(width => cookieSourceStatus.MaximumSize = new Size(width, 0));
             void RefreshCookieSourceStatus()
             {
                 string browser = YtDlpCookies.Browsers[Math.Max(0, cookieBox.SelectedIndex)];

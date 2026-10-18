@@ -2,33 +2,52 @@ import { getStatus, pair, forgetPairing } from '../background/bridge.js';
 import { CONN } from '../shared/protocol.js';
 import { applyI18n, t } from '../shared/i18n.js';
 import { hasCookieAccess, enableCookieAccess, disableCookieAccess } from '../background/cookies.js';
+import { optionsView } from '../shared/ui-state.js';
 
 const $ = (id) => document.getElementById(id);
+let connectionState = CONN.CHECKING;
 
 function setPill(kind, text) {
   $('pill').className = `pill ${kind}`;
   $('pillText').textContent = text;
 }
 
-async function refresh() {
-  const s = await getStatus();
-  $('errorText').classList.add('hidden');
-  $('appVersion').textContent = s.version || '—';
+function applyConnectionState(state) {
+  connectionState = state;
+  const view = optionsView(state);
+  $('btnConnect').classList.toggle('hidden', !view.connect);
+  $('btnConnect').disabled = !view.connectEnabled;
+  $('btnForget').classList.toggle('hidden', !view.forget);
 
-  if (s.state === CONN.CONNECTED) {
+  if (state === CONN.CONNECTED) {
     setPill('ok', t('statusConnected'));
-    $('btnConnect').classList.add('hidden');
-    $('btnForget').classList.remove('hidden');
-  } else if (s.state === CONN.NOT_PAIRED) {
+    $('connectionHint').textContent = t('statusConnected');
+  } else if (state === CONN.NOT_PAIRED) {
     setPill('warn', t('statusNotPaired'));
-    $('btnConnect').classList.remove('hidden');
-    $('btnConnect').textContent = t('btnConnect');
-    $('btnForget').classList.add('hidden');
-  } else {
+    $('connectionHint').textContent = t('notPairedHint');
+  } else if (state === CONN.NOT_RUNNING) {
     setPill('bad', t('statusNotRunning'));
-    $('btnConnect').classList.remove('hidden');
-    $('btnConnect').textContent = t('btnConnect');
-    $('btnForget').classList.toggle('hidden', false);
+    $('connectionHint').textContent = t('notRunningHint');
+  } else if (state === 'error') {
+    setPill('bad', t('statusError'));
+    $('connectionHint').textContent = t('statusError');
+  } else {
+    setPill('muted', t('statusChecking'));
+    $('connectionHint').textContent = t('statusChecking');
+  }
+}
+
+async function refresh({ keepError = false } = {}) {
+  if (!keepError) $('errorText').classList.add('hidden');
+  try {
+    const status = await getStatus();
+    $('appVersion').textContent = status.version || '—';
+    applyConnectionState(status.state);
+  } catch {
+    $('appVersion').textContent = '—';
+    applyConnectionState('error');
+    $('errorText').textContent = t('errGeneric');
+    $('errorText').classList.remove('hidden');
   }
 }
 
@@ -37,48 +56,92 @@ $('btnConnect').addEventListener('click', async () => {
   btn.disabled = true;
   $('errorText').classList.add('hidden');
   setPill('warn', t('waitingApproval'));
+  $('connectionHint').textContent = t('waitingApproval');
   try {
     await pair();
-  } catch (e) {
+    await refresh();
+  } catch (error) {
+    await refresh();
     const map = { pairing_denied: 'errPairingDenied', pairing_timeout: 'errPairingTimeout', pairing_busy: 'errPairingBusy', not_running: 'statusNotRunning' };
-    $('errorText').textContent = t(map[e && e.code] || 'errGeneric');
+    $('errorText').textContent = t(map[error && error.code] || 'errGeneric');
     $('errorText').classList.remove('hidden');
+  } finally {
+    btn.disabled = !optionsView(connectionState).connectEnabled;
   }
-  btn.disabled = false;
-  refresh();
 });
 
 $('btnForget').addEventListener('click', async () => {
-  await forgetPairing();
-  refresh();
+  const btn = $('btnForget');
+  btn.disabled = true;
+  try {
+    await forgetPairing();
+    await refresh();
+  } catch {
+    $('errorText').textContent = t('errGeneric');
+    $('errorText').classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 async function refreshCookies() {
-  const on = await hasCookieAccess();
-  $('cookiePill').className = `pill ${on ? 'ok' : 'warn'}`;
-  $('cookiePillText').textContent = t(on ? 'cookiesOn' : 'cookiesOff');
-  $('btnCookiesEnable').classList.toggle('hidden', on);
-  $('btnCookiesDisable').classList.toggle('hidden', !on);
+  try {
+    const on = await hasCookieAccess();
+    $('cookiePill').className = `pill ${on ? 'ok' : 'warn'}`;
+    $('cookiePillText').textContent = t(on ? 'cookiesOn' : 'cookiesOff');
+    $('btnCookiesEnable').classList.toggle('hidden', on);
+    $('btnCookiesDisable').classList.toggle('hidden', !on);
+    $('cookieError').classList.add('hidden');
+  } catch {
+    $('cookiePill').className = 'pill bad';
+    $('cookiePillText').textContent = t('statusError');
+    $('cookieError').textContent = t('errGeneric');
+    $('cookieError').classList.remove('hidden');
+    $('btnCookiesEnable').classList.remove('hidden');
+    $('btnCookiesDisable').classList.add('hidden');
+  }
 }
 
-// permissions.request অবশ্যই এই বাটন-ক্লিক (user gesture) থেকেই ডাকতে হয়
 $('btnCookiesEnable').addEventListener('click', async () => {
+  const btn = $('btnCookiesEnable');
+  btn.disabled = true;
   $('cookieError').classList.add('hidden');
-  let granted = false;
-  try { granted = await enableCookieAccess(); } catch { /* granted = false */ }
-  if (!granted) {
-    $('cookieError').textContent = t('errCookiesDenied');
+  let message = null;
+  try {
+    const granted = await enableCookieAccess();
+    if (!granted) message = 'errCookiesDenied';
+  } catch {
+    message = 'errGeneric';
+  } finally {
+    btn.disabled = false;
+    await refreshCookies();
+  }
+  if (message) {
+    $('cookieError').textContent = t(message);
     $('cookieError').classList.remove('hidden');
   }
-  refreshCookies();
 });
 
 $('btnCookiesDisable').addEventListener('click', async () => {
-  try { await disableCookieAccess(); } catch { /* ignore */ }
-  refreshCookies();
+  const btn = $('btnCookiesDisable');
+  btn.disabled = true;
+  let failed = false;
+  try {
+    await disableCookieAccess();
+  } catch {
+    failed = true;
+  } finally {
+    btn.disabled = false;
+    await refreshCookies();
+  }
+  if (failed) {
+    $('cookieError').textContent = t('errGeneric');
+    $('cookieError').classList.remove('hidden');
+  }
 });
 
 $('extVersion').textContent = chrome.runtime.getManifest().version;
 applyI18n();
+applyConnectionState(CONN.CHECKING);
 refresh();
 refreshCookies();

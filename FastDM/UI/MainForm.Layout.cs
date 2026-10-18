@@ -25,7 +25,7 @@ namespace FastDM
         // ---------- UI ----------
         void BuildUI()
         {
-            Text = "Fast DM — Download Manager";
+            Text = "FastDM — Download Manager";
             ClientSize = new Size(1100, 640);
             MinimumSize = new Size(520, 480);
             StartPosition = FormStartPosition.CenterScreen;
@@ -66,6 +66,7 @@ namespace FastDM
             lv.Columns.Add("Speed", 95);
             lv.Columns.Add("ETA", 80);
             lv.Columns.Add("Added", 150);
+            lv.ClientSizeChanged += (s, e) => FitLastColumn();
 
             lv.DrawColumnHeader += DrawHeader;
             lv.DrawItem += (s, e) => { };
@@ -1280,31 +1281,13 @@ namespace FastDM
         void FitLastColumn()
         {
             if (lv == null ||
-                lv.Columns.Count == 0 ||
-                lv.ClientSize.Width <= 0)
+                lv.Columns.Count == 0)
                 return;
 
-            int used = 0;
-
-            for (int i = 0;
-                 i < lv.Columns.Count - 1;
-                 i++)
-            {
-                used +=
-                    lv.Columns[i].Width;
-            }
-
-            int w =
-                Math.Max(
-                    120,
-                    lv.ClientSize.Width - used);
-
-            var last =
-                lv.Columns[
-                    lv.Columns.Count - 1];
-
-            if (last.Width != w)
-                last.Width = w;
+            var widths = DownloadColumnLayout.Fit(Math.Max(0, lv.ClientSize.Width - 4));
+            for (int i = 0; i < Math.Min(widths.Length, lv.Columns.Count); i++)
+                if (lv.Columns[i].Width != widths[i])
+                    lv.Columns[i].Width = widths[i];
         }
     }
 }

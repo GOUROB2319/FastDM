@@ -17,6 +17,9 @@
   "statusChecking": {
     "message": "Checking…"
   },
+  "statusError": {
+    "message": "Couldn't check the connection. Please try again."
+  },
   "statusConnected": {
     "message": "Connected"
   },
@@ -70,6 +73,9 @@
   },
   "recentTitle": {
     "message": "Recent downloads"
+  },
+  "recentLoading": {
+    "message": "Loading recent downloads…"
   },
   "emptyTitle": {
     "message": "No downloads yet"

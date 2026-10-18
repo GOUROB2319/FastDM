@@ -15,6 +15,8 @@
   --red: #FF5C77;
   --gray: #9AA0B4;
   --radius: 8px;
+  --content-max-width: 760px;
+  --page-padding: 24px;
   --font: "Segoe UI", system-ui, -apple-system, "Noto Sans Bengali", sans-serif;
   color-scheme: light;
 }

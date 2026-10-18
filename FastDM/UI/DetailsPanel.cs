@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
@@ -18,8 +19,15 @@ namespace FastDM
 
         // "Save to" and "Link" values are clickable. Their areas are set while painting.
         Rectangle saveRect, linkRect;
+        Rectangle errorRect;
+        Rectangle scrollTrackRect, scrollThumbRect;
         int hover;                                   // 0 = nothing, 1 = "Save to", 2 = "Link"
         int detailScrollOffset;
+        int maxDetailScroll;
+        int visibleDetailRows;
+        int actionFocus;
+        bool draggingScroll;
+        int scrollDragGrip;
 
         public event Action<DownloadItem>? OpenFolderRequested;
         public event Action<DownloadItem>? OpenLinkRequested;
@@ -33,11 +41,12 @@ namespace FastDM
             Dock = DockStyle.Bottom;
             Height = Theme.Scale(this, 212);
             Font = Theme.CreateFont(Theme.FontBody);
+            TabStop = true;
             bold = Theme.CreateFont(Theme.FontHeading, FontStyle.Bold);
             underline = new Font(Font, FontStyle.Underline);
             tips = new ToolTip { ShowAlways = true, InitialDelay = 400 };
             AccessibleName = "Download details";
-            AccessibleDescription = "Details for the selected download, including status, size, speed, destination and link.";
+            AccessibleDescription = "Details for the selected download. Use the scrollbar, mouse wheel, or Up and Down to scroll; use Left and Right to select an action, then Enter or Space to open it.";
             AccessibleRole = AccessibleRole.Pane;
         }
 
@@ -45,8 +54,117 @@ namespace FastDM
         {
             item = it;
             detailScrollOffset = 0;
-            tips.SetToolTip(this, it == null ? null : "Scroll for more details. Right-click Save to or Link to copy its value.");
+            maxDetailScroll = 0;
+            visibleDetailRows = 0;
+            saveRect = linkRect = errorRect = Rectangle.Empty;
+            scrollTrackRect = scrollThumbRect = Rectangle.Empty;
+            actionFocus = it != null && !string.IsNullOrEmpty(it.Folder) ? 1 : IsWebLink(it?.Url ?? "") ? 2 : 0;
+            AccessibleName = it == null ? "Download details" : "Download details for " + MainForm.DisplayFileName(it.FileName);
+            AccessibleDescription = it == null
+                ? "Select a download to see its details."
+                : string.Join(". ", BuildRows(it).ConvertAll(row => row[0] + ": " + row[1])) +
+                  ". Use the scrollbar, mouse wheel, or Up and Down to scroll. Use Left and Right to select Save to or Link, then Enter or Space to activate. Right-click either value to copy it.";
+            tips.SetToolTip(this, it == null ? null : "Use the mouse wheel or Up/Down to scroll. Tab to the details, then Left/Right and Enter to open an action. Right-click Save to or Link to copy its value.");
             Invalidate();
+        }
+
+        protected override AccessibleObject CreateAccessibilityInstance() => new DetailsAccessibleObject(this);
+
+        int ActionCount => (item != null && !string.IsNullOrEmpty(item.Folder) ? 1 : 0) + (IsWebLink(item?.Url ?? "") ? 1 : 0);
+
+        int ActionAt(int index)
+        {
+            if (index < 0 || index >= ActionCount) return 0;
+            bool hasFolder = item != null && !string.IsNullOrEmpty(item.Folder);
+            return hasFolder && index == 0 ? 1 : 2;
+        }
+
+        Rectangle ActionBounds(int action) => action == 1 ? saveRect : action == 2 ? linkRect : Rectangle.Empty;
+
+        string ActionName(int action) => action == 1
+            ? "Save to: " + (item?.Folder ?? "")
+            : "Link: " + (item?.Url ?? "");
+
+        string ActionDescription(int action) => action == 1
+            ? "Open this folder. Right-click to copy its full path."
+            : "Open this link. Right-click to copy its full URL.";
+
+        void ActivateAction(int action)
+        {
+            var snapshot = item;
+            if (snapshot == null) return;
+            if (action == 1 && !string.IsNullOrEmpty(snapshot.Folder)) OpenFolderRequested?.Invoke(snapshot);
+            else if (action == 2 && IsWebLink(snapshot.Url ?? "")) OpenLinkRequested?.Invoke(snapshot);
+        }
+
+        void EnsureActionVisible(int action)
+        {
+            if (item == null || visibleDetailRows <= 0) return;
+            var rows = BuildRows(item);
+            int index = rows.FindIndex(row => row[0] == (action == 1 ? "Save to" : "Link"));
+            if (index < 0) return;
+            if (index < detailScrollOffset) detailScrollOffset = index;
+            else if (index >= detailScrollOffset + visibleDetailRows)
+                detailScrollOffset = index - visibleDetailRows + 1;
+            Invalidate();
+        }
+
+        sealed class DetailsAccessibleObject : Control.ControlAccessibleObject
+        {
+            readonly DetailsPanel owner;
+
+            public DetailsAccessibleObject(DetailsPanel owner) : base(owner) => this.owner = owner;
+
+            public override int GetChildCount() => owner.ActionCount;
+
+            public override AccessibleObject? GetChild(int index) =>
+                index >= 0 && index < owner.ActionCount
+                    ? new DetailsActionAccessibleObject(owner, owner.ActionAt(index))
+                    : null;
+        }
+
+        sealed class DetailsActionAccessibleObject : AccessibleObject
+        {
+            readonly DetailsPanel owner;
+            readonly int action;
+
+            public DetailsActionAccessibleObject(DetailsPanel owner, int action)
+            {
+                this.owner = owner;
+                this.action = action;
+            }
+
+            public override AccessibleObject? Parent => owner.AccessibilityObject;
+            public override string? Name { get => owner.ActionName(action); set { } }
+            public override string? Description => owner.ActionDescription(action);
+            public override string? DefaultAction => action == 1 ? "Open folder" : "Open link";
+            public override AccessibleRole Role => AccessibleRole.Link;
+            public override AccessibleStates State => AccessibleStates.Focusable | AccessibleStates.Selectable |
+                (owner.Focused && owner.actionFocus == action ? AccessibleStates.Focused : AccessibleStates.None);
+            public override Rectangle Bounds
+            {
+                get
+                {
+                    var bounds = owner.ActionBounds(action);
+                    return bounds.IsEmpty ? Rectangle.Empty : owner.RectangleToScreen(bounds);
+                }
+            }
+
+            public override void DoDefaultAction()
+            {
+                owner.actionFocus = action;
+                owner.EnsureActionVisible(action);
+                owner.ActivateAction(action);
+            }
+
+            public override void Select(AccessibleSelection flags)
+            {
+                if ((flags & AccessibleSelection.TakeFocus) == 0) return;
+                owner.actionFocus = action;
+                owner.EnsureActionVisible(action);
+                owner.Focus();
+                owner.Invalidate();
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -71,14 +189,56 @@ namespace FastDM
         {
             base.OnMouseMove(e);
 
+            if (draggingScroll)
+            {
+                SetScrollFromThumb(e.Y - scrollDragGrip);
+                return;
+            }
+
             int h = HitTest(e.Location);
-            tips.SetToolTip(this, h == 1 ? "Open folder. Right-click to copy path." :
-                h == 2 ? "Open link. Right-click to copy URL." :
-                item == null ? null : "Scroll for more details.");
-            if (h == hover) return;
+            tips.SetToolTip(this, h == 1 ? "Save to: " + (item?.Folder ?? "") + " — click to open, right-click to copy." :
+                h == 2 ? "Link: " + (item?.Url ?? "") + " — click to open, right-click to copy." :
+                errorRect.Contains(e.Location) ? "Full error: " + AppLog.Redact(item?.Error ?? "") :
+                item == null ? null : "Use the mouse wheel or Up/Down to scroll for more details.");
+            var cursor = h != 0 ? Cursors.Hand : scrollTrackRect.Contains(e.Location) ? Cursors.SizeNS : Cursors.Default;
+            if (h == hover && Cursor == cursor) return;
 
             hover = h;
-            Cursor = h != 0 ? Cursors.Hand : Cursors.Default;
+            Cursor = cursor;
+            Invalidate();
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left || maxDetailScroll == 0 || !scrollTrackRect.Contains(e.Location)) return;
+            Focus();
+            if (scrollThumbRect.Contains(e.Location))
+            {
+                draggingScroll = true;
+                scrollDragGrip = e.Y - scrollThumbRect.Y;
+                Capture = true;
+            }
+            else
+            {
+                SetScrollFromThumb(e.Y - scrollThumbRect.Height / 2);
+            }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (e.Button != MouseButtons.Left || !draggingScroll) return;
+            draggingScroll = false;
+            Capture = false;
+            Cursor = Cursors.Default;
+        }
+
+        void SetScrollFromThumb(int thumbTop)
+        {
+            int travel = Math.Max(0, scrollTrackRect.Height - scrollThumbRect.Height);
+            int relative = Math.Clamp(thumbTop - scrollTrackRect.Y, 0, travel);
+            detailScrollOffset = travel == 0 ? 0 : (int)Math.Round(relative * maxDetailScroll / (double)travel);
             Invalidate();
         }
 
@@ -86,10 +246,14 @@ namespace FastDM
         {
             base.OnMouseLeave(e);
 
-            if (hover == 0) return;
+            if (hover == 0)
+            {
+                Cursor = Cursors.Default;
+                return;
+            }
 
             hover = 0;
-            Cursor = Cursors.Default;
+            Cursor = scrollTrackRect.Contains(PointToClient(Cursor.Position)) ? Cursors.SizeNS : Cursors.Default;
             Invalidate();
         }
 
@@ -108,16 +272,78 @@ namespace FastDM
             }
             else if (e.Button == MouseButtons.Left)
             {
-                if (h == 1) OpenFolderRequested?.Invoke(it);
-                else if (h == 2) OpenLinkRequested?.Invoke(it);
+                Focus();
+                if (h != 0)
+                {
+                    actionFocus = h;
+                    EnsureActionVisible(h);
+                    ActivateAction(h);
+                }
             }
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (item == null) return;
+
+            if (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down)
+            {
+                ScrollDetails(e.KeyCode == Keys.Down ? 1 : -1);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+            {
+                int count = ActionCount;
+                if (count > 0)
+                {
+                    var actions = new List<int>();
+                    for (int i = 0; i < count; i++) actions.Add(ActionAt(i));
+                    int current = actions.IndexOf(actionFocus);
+                    actionFocus = actions[(current + (e.KeyCode == Keys.Right ? 1 : count - 1)) % count];
+                    EnsureActionVisible(actionFocus);
+                }
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if ((e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) && actionFocus != 0)
+            {
+                ActivateAction(actionFocus);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            if (actionFocus == 0 && ActionCount > 0) actionFocus = ActionAt(0);
+            EnsureActionVisible(actionFocus);
+            Invalidate();
+        }
+
+        protected override void OnLostFocus(EventArgs e)
+        {
+            base.OnLostFocus(e);
+            Invalidate();
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
             if (item == null) return;
-            detailScrollOffset = Math.Max(0, detailScrollOffset + (e.Delta < 0 ? 1 : -1));
+            int steps = Math.Max(1, Math.Abs(e.Delta) / 120);
+            ScrollDetails(e.Delta < 0 ? steps : -steps);
+        }
+
+        void ScrollDetails(int amount)
+        {
+            detailScrollOffset = Math.Clamp(detailScrollOffset + amount, 0, maxDetailScroll);
             Invalidate();
         }
 
@@ -141,7 +367,11 @@ namespace FastDM
             int top = Theme.Scale(this, 10);
             int leftW = Math.Max(Theme.Scale(this, 280), (int)(Width * 0.42));
 
-            DrawInfo(g, p, snapshot, new Rectangle(pad, top, leftW - pad, Height - Theme.Scale(this, 16)));
+            var info = new Rectangle(pad, top, leftW - pad, Height - Theme.Scale(this, 16));
+            var state = g.Save();
+            g.SetClip(info);
+            DrawInfo(g, p, snapshot, info);
+            g.Restore(state);
 
             var right = new Rectangle(leftW + Theme.Scale(this, 12), top,
                 Width - leftW - Theme.Scale(this, 12) - pad, Height - Theme.Scale(this, 16));
@@ -161,6 +391,73 @@ namespace FastDM
             int S(int n) => Theme.Scale(this, n);
             TextRenderer.DrawText(g, MainForm.DisplayFileName(it.FileName), bold, new Rectangle(r.X, r.Y, r.Width, S(26)), p.Text, f);
 
+            var rows = BuildRows(it);
+            int rowTop = r.Y + S(32);
+            int lh = S(21);
+            int visibleRows = Math.Max(1, (r.Bottom - rowTop) / lh);
+            visibleDetailRows = visibleRows;
+            maxDetailScroll = Math.Max(0, rows.Count - visibleRows);
+            detailScrollOffset = Math.Clamp(detailScrollOffset, 0, maxDetailScroll);
+            int y = rowTop - detailScrollOffset * lh;
+            int contentWidth = Math.Max(0, r.Width - S(12));
+
+            saveRect = Rectangle.Empty;
+            linkRect = Rectangle.Empty;
+            errorRect = Rectangle.Empty;
+            scrollTrackRect = Rectangle.Empty;
+            scrollThumbRect = Rectangle.Empty;
+            Rectangle focusRect = Rectangle.Empty;
+
+            foreach (var row in rows)
+            {
+                if (y + lh <= rowTop) { y += lh; continue; }
+                if (y >= r.Bottom) break;
+                TextRenderer.DrawText(g, row[0], Font, new Rectangle(r.X, y, S(68), lh), p.SubText, f);
+
+                var valueRect = new Rectangle(r.X + S(72), y, Math.Max(0, contentWidth - S(72)), lh);
+                bool isSave = row[0] == "Save to" && row[1].Length > 0;
+                bool isLink = row[0] == "Link" && IsWebLink(row[1]);
+
+                Color vc = row[0] == "Error" ? p.Error : p.Text;
+                Font vf = Font;
+
+                if (isSave || isLink)
+                {
+                    vc = p.Accent;
+                    int textW = TextRenderer.MeasureText(g, row[1], Font, new Size(valueRect.Width, lh), f).Width;
+                    var hit = new Rectangle(valueRect.X, valueRect.Y, Math.Min(valueRect.Width, textW), lh);
+                    if (isSave) saveRect = hit; else linkRect = hit;
+                    if (hover == (isSave ? 1 : 2)) vf = underline;
+                    if (Focused && actionFocus == (isSave ? 1 : 2) && !hit.IsEmpty)
+                        focusRect = hit;
+                }
+                else if (row[0] == "Error" || row[0] == "Note")
+                {
+                    int textW = TextRenderer.MeasureText(g, row[1], Font, new Size(valueRect.Width, lh), f).Width;
+                    errorRect = new Rectangle(valueRect.X, valueRect.Y, Math.Min(valueRect.Width, textW), lh);
+                }
+
+                TextRenderer.DrawText(g, row[1], vf, valueRect, vc, f);
+                y += lh;
+            }
+
+            if (!focusRect.IsEmpty)
+                ControlPaint.DrawFocusRectangle(g, focusRect, p.Text, p.Window);
+
+            if (maxDetailScroll > 0)
+            {
+                scrollTrackRect = new Rectangle(r.Right - S(8), rowTop, S(8), Math.Max(1, r.Bottom - rowTop));
+                using (var brush = new SolidBrush(p.Track)) g.FillRectangle(brush, scrollTrackRect);
+                int thumbHeight = Math.Clamp((int)Math.Round(scrollTrackRect.Height * visibleRows / (double)rows.Count), Math.Min(S(18), scrollTrackRect.Height), scrollTrackRect.Height);
+                int travel = Math.Max(0, scrollTrackRect.Height - thumbHeight);
+                int thumbY = scrollTrackRect.Y + (maxDetailScroll == 0 ? 0 : travel * detailScrollOffset / maxDetailScroll);
+                scrollThumbRect = new Rectangle(scrollTrackRect.X, thumbY, scrollTrackRect.Width, thumbHeight);
+                using (var brush = new SolidBrush(p.Accent)) g.FillRectangle(brush, scrollThumbRect);
+            }
+        }
+
+        List<string[]> BuildRows(DownloadItem it)
+        {
             string size = it.TotalBytes > 0
                 ? Fmt(it.Downloaded) + " / " + Fmt(it.TotalBytes) +
                   (it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage) ? "" : "  (" + it.Percent.ToString("0.0") + "%)")
@@ -197,43 +494,7 @@ namespace FastDM
             }
             else if (!string.IsNullOrEmpty(it.Error))
                 rows.Insert(1, new[] { "Note", it.Error });
-
-            int rowTop = r.Y + S(32);
-            int lh = S(21);
-            int visibleRows = Math.Max(1, (r.Bottom - rowTop) / lh);
-            detailScrollOffset = Math.Clamp(detailScrollOffset, 0, Math.Max(0, rows.Count - visibleRows));
-            int y = rowTop - detailScrollOffset * lh;
-
-            saveRect = Rectangle.Empty;
-            linkRect = Rectangle.Empty;
-
-            foreach (var row in rows)
-            {
-                if (y + lh <= rowTop) { y += lh; continue; }
-                if (y >= r.Bottom) break;
-                TextRenderer.DrawText(g, row[0], Font, new Rectangle(r.X, y, S(68), lh), p.SubText, f);
-
-                var valueRect = new Rectangle(r.X + S(72), y, r.Width - S(72), lh);
-                bool isSave = row[0] == "Save to" && row[1].Length > 0;
-                bool isLink = row[0] == "Link" && IsWebLink(row[1]);
-
-                Color vc = row[0] == "Error" ? p.Error : p.Text;
-                Font vf = Font;
-
-                if (isSave || isLink)
-                {
-                    vc = p.Accent;
-
-                    int textW = TextRenderer.MeasureText(g, row[1], Font, new Size(valueRect.Width, lh), f).Width;
-                    var hit = new Rectangle(valueRect.X, valueRect.Y, Math.Min(valueRect.Width, textW), lh);
-
-                    if (isSave) saveRect = hit; else linkRect = hit;
-                    if (hover == (isSave ? 1 : 2)) vf = underline;
-                }
-
-                TextRenderer.DrawText(g, row[1], vf, valueRect, vc, f);
-                y += lh;
-            }
+            return rows;
         }
 
         // ---------- ডান পাশ: স্পিড গ্রাফ ----------
