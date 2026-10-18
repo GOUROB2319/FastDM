@@ -6,6 +6,9 @@
   --sub: #6B7089;
   --border: #E3E6EF;
   --accent: #5B6CFF;
+  --accent-strong: #4B56D5;
+  --on-accent: #FFFFFF;
+  --danger-text: #B42338;
   --selection: #DEE6FF;
   --track: #E6E9F2;
   --hover: #EDEFF7;
@@ -29,6 +32,9 @@
     --sub: #9AA0B4;
     --border: #2C3043;
     --accent: #7482FF;
+    --accent-strong: #5260D9;
+    --on-accent: #FFFFFF;
+    --danger-text: #FF91A0;
     --selection: #2A3157;
     --track: #2C3043;
     --hover: #2A2E42;
@@ -57,8 +63,11 @@ button {
 }
 button:hover { background: var(--hover); }
 button:disabled { opacity: .55; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
 button.primary:hover { filter: brightness(1.08); }
+button:focus-visible, a:focus-visible, [role="link"]:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+:lang(bn) { font-family: "Nirmala UI", "Noto Sans Bengali", "Segoe UI", system-ui, sans-serif; }
+:lang(bn) h1, :lang(bn) h2 { letter-spacing: 0; text-transform: none; }
 button.icon { padding: 4px 8px; }
 
 .pill {

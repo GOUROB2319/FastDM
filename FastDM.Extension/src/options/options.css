@@ -4,7 +4,7 @@ h2 { font-size: 12px; margin: 0 0 8px; color: var(--sub); text-transform: upperc
 .card { background: var(--row-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
 .card p { margin: 0 0 10px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.error { color: var(--red); }
+.error { color: var(--danger-text); }
 .small { font-size: 12px; }
 dl { display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr); gap: 6px 14px; margin: 0 0 10px; }
 dt { color: var(--sub); }
