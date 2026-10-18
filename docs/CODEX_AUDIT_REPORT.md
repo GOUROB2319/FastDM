@@ -139,3 +139,38 @@ This pass began on branch `master` at `348aa6e` with a clean worktree. It follow
 | `git diff --check` | **PASS**; no whitespace errors. Git reported only LF-to-CRLF conversion notices for the rewritten extension scripts. |
 
 No interactive WinForms window, Chrome/Edge popup, screen reader, high-DPI monitor, or accessibility inspection tool was available to this run. Therefore the six areas' runtime appearance, 520/700/900 px resize behavior, Preferences/Batch minimum sizes, popup/options rendering, actual pairing states, and high-DPI behavior remain manual checks listed in [`TESTING.md`](TESTING.md). Automated layout logic/build results do not establish those visual outcomes.
+
+
+## Third-pass UI/UX review — 2026-10-18
+
+### Scope and change summary
+
+This pass was developed on the separate branch uiux/third-pass-2026-10-18 and draft PR #18, based on the then-current master UI improvements. The work is presentation-only and intentionally leaves FastDM.Package/FastDM.Package.wapproj untouched. No change was intentionally made to download, network, bridge, yt-dlp, scheduler, credential storage, persistence formats or security logic.
+
+| Area | Changes | Automated coverage |
+| --- | --- | --- |
+| Desktop contrast | Added Palette.AccentText and Palette.InputBorder; adjusted SubText and status text colors; used the text accent for links; applied stronger borders to inputs, validation frames and secondary buttons, plus focus highlighting. | FastDM.Tests/ThemeContrastTests.cs checks configured foreground/surface and non-text contrast pairs for both palettes. |
+| Resource-file safety | scripts/Test-Project.ps1 rejects unexpected .resx files under FastDM/ while ignoring obj/ and bin/; only UI/MainForm.resx and UI/AddUrlForm.resx are allowed. | The full project test script performs this check before building. |
+| Browser extension | Added dedicated primary-button and danger-text tokens, focus-visible outlines, Bengali font/heading rules, translated document titles, localized document language initialization, Options-in-tab behavior and the requested Bangla pause/resume copy. | tests/theme-contrast.test.mjs, locale parity tests, and UI-state tests; npm test includes UI-state coverage. |
+| Shared dialogs | Added DialogLayout helpers and applied table/footer layouts to Network, Scheduler, stream media/candidate pickers and credential prompt; improved Network test-result wrapping/redaction/copy; standardized Save/Cancel or action verbs and dialog focus/size; added discard prompts to Preferences, Network and Scheduler. | Windows build and regression runner exercise compilation and existing tests; unsaved-close behavior still requires the manual cases in TESTING.md. |
+| Main-window keyboard UX | Added Ctrl+N clipboard-prefilled Add URL, list-only Space pause/resume, list-only Ctrl+V Add URL, shortcut hints, accessible search description and context-menu shortcut labels. | Existing test suite builds the shortcut code; the keyboard interaction matrix remains manual. |
+| Documentation/verification workflow | Expanded the manual checklist and named screenshot set; CI now runs the project verification script, complete extension tests and clean-workspace verification. | Results of the amended CI workflow will be recorded after it completes. |
+
+### Verification completed on the implementation snapshot
+
+The GitHub Actions run for implementation commit 25e49e403487d1ead0adfad6fd89b84ae34b2e35 passed both jobs ([CI run](https://github.com/GOUROB2319/FastDM/actions/runs/39154312480)):
+
+- Desktop Release build succeeded; the desktop regression runner reported 505 passed, 0 failed.
+- Local integration tests reported 0 integration failures.
+- Browser extension tests reported 23 passed, 0 failed before the workflow update that adds the separate complete-directory command and includes ui-state.test.mjs in npm test.
+- Package manifest/version checks passed in that run.
+- The contrast numbers are automated mathematical checks only.
+
+The amended workflow additionally invokes scripts/Test-Project.ps1, node --test FastDM.Extension/tests, and scripts/Test-CleanWorkspace.ps1; their outcome must be taken from the CI run for the amended workflow rather than inferred from the earlier successful run.
+
+### Limitations and checks not performed
+
+- No local checkout was available to this execution environment, so git status --short --branch, local git diff --check, and direct local PowerShell commands were not executed here. Repository changes were made through GitHub APIs on the dedicated feature branch; master was not edited and the PR remains draft.
+- No interactive WinForms session, native Windows control inspection, browser rendering session, screen reader or actual 100/150% DPI/text-scaling environment was available. Therefore no screenshot in TESTING.md is claimed to have been captured, and no assertion is made that visual layout, native border painting or accessibility announcements are correct at runtime.
+- The named screenshots in TESTING.md remain a maintainer capture/review task. Manual checks must cover all dialog states, keyboard shortcuts, and Discard/Keep editing behavior.
+- Build and automated test success do not establish visual correctness. Review the final diff and the amended CI results before merging the draft PR.

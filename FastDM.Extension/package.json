@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/bridge.test.mjs tests/cookies.test.mjs tests/locales.test.mjs tests/theme-contrast.test.mjs"
+    "test": "node --test tests/bridge.test.mjs tests/cookies.test.mjs tests/locales.test.mjs tests/ui-state.test.mjs tests/theme-contrast.test.mjs"
   }
 }

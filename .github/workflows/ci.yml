@@ -40,6 +40,14 @@ jobs:
       - name: Run local download-engine integration tests
         run: dotnet run --project FastDM.IntegrationTests -c Release
 
+      - name: Run full project verification (including the .resx guard)
+        shell: pwsh
+        run: ./scripts/Test-Project.ps1
+
+      - name: Run clean-workspace verification
+        shell: pwsh
+        run: ./scripts/Test-CleanWorkspace.ps1
+
   extension:
     name: Browser extension (tests)
     runs-on: ubuntu-latest
@@ -53,3 +61,6 @@ jobs:
       - name: Run extension tests
         working-directory: FastDM.Extension
         run: npm test
+
+      - name: Run the complete extension test directory
+        run: node --test FastDM.Extension/tests
