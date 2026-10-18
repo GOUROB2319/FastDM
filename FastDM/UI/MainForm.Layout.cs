@@ -593,9 +593,9 @@ namespace FastDM
                 tools.Items
                      .Cast<ToolStripItem>()
                      .FirstOrDefault(i =>
-                         i.ToolTipText == tip ||
-                         string.Equals(i.Text.Trim(), tip, StringComparison.Ordinal) ||
-                         !string.IsNullOrEmpty(i.ToolTipText) && i.ToolTipText.StartsWith(tip + " (", StringComparison.Ordinal));
+                         string.Equals(i.ToolTipText, tip, StringComparison.Ordinal) ||
+                         string.Equals((i.Text ?? string.Empty).Trim(), tip, StringComparison.Ordinal) ||
+                         (!string.IsNullOrEmpty(i.ToolTipText) && i.ToolTipText.StartsWith(tip + " (", StringComparison.Ordinal)));
 
             var wanted = new List<ToolStripItem?>
             {
