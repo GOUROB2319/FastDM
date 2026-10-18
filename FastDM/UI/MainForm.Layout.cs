@@ -173,7 +173,7 @@ namespace FastDM
                 Image = Icons.Make("\uE896", Theme.P.Accent, Theme.Scale(this, 36)),
                 ImageAlign = ContentAlignment.MiddleCenter,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Theme.P.Accent,
+                ForeColor = Theme.P.AccentText,
                 BackColor = Theme.P.Window
             };
             emptyTitle = new Label

@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Text;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -12,7 +13,7 @@ namespace FastDM
 
     public class Palette
     {
-        public Color Window, RowAlt, Text, SubText, Border, Accent, Selection, Track,
+        public Color Window, RowAlt, Text, SubText, Border, InputBorder, Accent, AccentText, Selection, Track,
                      Header, Toolbar, Hover, Pressed, Input, Button, Success, Warning, Error,
                      SideBg, SideSel, SideText, SideCount;
     }
@@ -70,9 +71,11 @@ namespace FastDM
             Window = ColorTranslator.FromHtml("#FFFFFF"),
             RowAlt = ColorTranslator.FromHtml("#F8F9FC"),
             Text = ColorTranslator.FromHtml("#2D3142"),
-            SubText = ColorTranslator.FromHtml("#6B7089"),
+            SubText = ColorTranslator.FromHtml("#555B70"),
             Border = ColorTranslator.FromHtml("#E3E6EF"),
+            InputBorder = ColorTranslator.FromHtml("#717B96"),
             Accent = ColorTranslator.FromHtml("#5B6CFF"),
+            AccentText = ColorTranslator.FromHtml("#424CC4"),
             Selection = ColorTranslator.FromHtml("#DEE6FF"),
             Track = ColorTranslator.FromHtml("#E6E9F2"),
             Header = ColorTranslator.FromHtml("#F4F5FA"),
@@ -81,7 +84,7 @@ namespace FastDM
             Pressed = ColorTranslator.FromHtml("#DCE0F0"),
             Input = ColorTranslator.FromHtml("#FFFFFF"),
             Button = ColorTranslator.FromHtml("#F4F5FA"),
-            Success = ColorTranslator.FromHtml("#167D42"),
+            Success = ColorTranslator.FromHtml("#115F31"),
             Warning = ColorTranslator.FromHtml("#875700"),
             Error = ColorTranslator.FromHtml("#B42338"),
             SideBg = ColorTranslator.FromHtml("#1E2233"),
@@ -95,9 +98,11 @@ namespace FastDM
             Window = ColorTranslator.FromHtml("#171923"),
             RowAlt = ColorTranslator.FromHtml("#1C1F2B"),
             Text = ColorTranslator.FromHtml("#E6E8F2"),
-            SubText = ColorTranslator.FromHtml("#9AA0B4"),
+            SubText = ColorTranslator.FromHtml("#B6BED2"),
             Border = ColorTranslator.FromHtml("#2C3043"),
+            InputBorder = ColorTranslator.FromHtml("#99A5C2"),
             Accent = ColorTranslator.FromHtml("#7482FF"),
+            AccentText = ColorTranslator.FromHtml("#BEC7FF"),
             Selection = ColorTranslator.FromHtml("#2A3157"),
             Track = ColorTranslator.FromHtml("#2C3043"),
             Header = ColorTranslator.FromHtml("#1F2230"),
@@ -108,7 +113,7 @@ namespace FastDM
             Button = ColorTranslator.FromHtml("#262A3B"),
             Success = ColorTranslator.FromHtml("#6CD998"),
             Warning = ColorTranslator.FromHtml("#FFD166"),
-            Error = ColorTranslator.FromHtml("#FF7185"),
+            Error = ColorTranslator.FromHtml("#FF91A0"),
             SideBg = ColorTranslator.FromHtml("#11131B"),
             SideSel = ColorTranslator.FromHtml("#23283D"),
             SideText = ColorTranslator.FromHtml("#FFFFFF"),
@@ -118,6 +123,8 @@ namespace FastDM
         public static ThemeMode Mode { get; private set; } = ThemeMode.System;
         public static Palette P { get; private set; } = Light;
         public static bool IsDark { get; private set; }
+
+        static readonly ConditionalWeakTable<Control, InputBorderWindow> InputBorders = new();
 
         static double Luminance(Color color)
         {
@@ -434,8 +441,8 @@ namespace FastDM
                     case LinkLabel link:
                         link.BackColor = P.Window;
                         link.ForeColor = P.Text;
-                        link.LinkColor = P.Accent;
-                        link.ActiveLinkColor = P.Accent;
+                        link.LinkColor = P.AccentText;
+                        link.ActiveLinkColor = P.AccentText;
                         link.VisitedLinkColor = P.SubText;
                         break;
                     case Label label:
@@ -446,15 +453,27 @@ namespace FastDM
                         check.BackColor = P.Window;
                         check.ForeColor = P.Text;
                         check.FlatStyle = FlatStyle.Flat;
+                        check.FlatAppearance.BorderSize = 1;
+                        check.FlatAppearance.BorderColor = check.Focused ? P.Accent : P.InputBorder;
                         check.FlatAppearance.MouseOverBackColor = P.Hover;
                         check.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        check.GotFocus -= CheckRadioFocusChanged;
+                        check.LostFocus -= CheckRadioFocusChanged;
+                        check.GotFocus += CheckRadioFocusChanged;
+                        check.LostFocus += CheckRadioFocusChanged;
                         break;
                     case RadioButton radio:
                         radio.BackColor = P.Window;
                         radio.ForeColor = P.Text;
                         radio.FlatStyle = FlatStyle.Flat;
+                        radio.FlatAppearance.BorderSize = 1;
+                        radio.FlatAppearance.BorderColor = radio.Focused ? P.Accent : P.InputBorder;
                         radio.FlatAppearance.MouseOverBackColor = P.Hover;
                         radio.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        radio.GotFocus -= CheckRadioFocusChanged;
+                        radio.LostFocus -= CheckRadioFocusChanged;
+                        radio.GotFocus += CheckRadioFocusChanged;
+                        radio.LostFocus += CheckRadioFocusChanged;
                         break;
                     case GroupBox group:
                         group.BackColor = P.Window;
@@ -465,6 +484,7 @@ namespace FastDM
                         c.ForeColor = P.Text;
                         break;
                 }
+                AttachInputBorder(c);
                 if (c.HasChildren) ApplyChildren(c);
             }
         }
@@ -476,7 +496,7 @@ namespace FastDM
             button.BackColor = primary ? P.Accent : P.Button;
             button.ForeColor = primary ? ContrastText(P.Accent) : P.Text;
             button.FlatAppearance.BorderSize = button.Focused ? 2 : 1;
-            button.FlatAppearance.BorderColor = button.Focused ? P.Accent : primary ? P.Accent : P.Border;
+            button.FlatAppearance.BorderColor = button.Focused ? P.Accent : primary ? P.Accent : P.InputBorder;
             button.FlatAppearance.MouseOverBackColor = primary ? P.Accent : P.Hover;
             button.FlatAppearance.MouseDownBackColor = primary ? P.Accent : P.Pressed;
             button.GotFocus -= ButtonFocusChanged;
@@ -489,12 +509,108 @@ namespace FastDM
 
         public static void StyleDialogButton(Button button, bool isPrimary) => StyleButton(button, isPrimary);
 
+        static void CheckRadioFocusChanged(object? sender, EventArgs e)
+        {
+            if (sender is CheckBox check)
+            {
+                check.FlatAppearance.BorderColor = check.Focused ? P.Accent : P.InputBorder;
+                check.Invalidate();
+            }
+            else if (sender is RadioButton radio)
+            {
+                radio.FlatAppearance.BorderColor = radio.Focused ? P.Accent : P.InputBorder;
+                radio.Invalidate();
+            }
+        }
+
+        static void AttachInputBorder(Control control)
+        {
+            if (control is TextBoxBase && control.Parent is ValidationInputFrame) return;
+            if (control is TextBoxBase or ComboBox or NumericUpDown or CheckedListBox or ListBox or TreeView)
+                _ = InputBorders.GetValue(control, c => new InputBorderWindow(c));
+        }
+
+        sealed class InputBorderWindow : NativeWindow
+        {
+            const int WmPaint = 0x000F, WmNcPaint = 0x0085, WmSetFocus = 0x0007,
+                WmKillFocus = 0x0008, WmEnable = 0x000A, WmThemeChanged = 0x031A;
+            readonly Control control;
+
+            public InputBorderWindow(Control control)
+            {
+                this.control = control;
+                control.HandleCreated += HandleCreated;
+                control.HandleDestroyed += HandleDestroyed;
+                control.Disposed += ControlDisposed;
+                if (control.IsHandleCreated) AssignHandle(control.Handle);
+            }
+
+            void HandleCreated(object? sender, EventArgs e)
+            {
+                if (control.IsHandleCreated && Handle != control.Handle)
+                {
+                    if (Handle != IntPtr.Zero) ReleaseHandle();
+                    AssignHandle(control.Handle);
+                }
+                DrawBorder();
+            }
+
+            void HandleDestroyed(object? sender, EventArgs e)
+            {
+                if (Handle != IntPtr.Zero) ReleaseHandle();
+            }
+
+            void ControlDisposed(object? sender, EventArgs e)
+            {
+                control.HandleCreated -= HandleCreated;
+                control.HandleDestroyed -= HandleDestroyed;
+                control.Disposed -= ControlDisposed;
+                if (Handle != IntPtr.Zero) ReleaseHandle();
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                int message = m.Msg;
+                base.WndProc(ref m);
+                if (message is WmPaint or WmNcPaint or WmSetFocus or WmKillFocus or WmEnable or WmThemeChanged)
+                    DrawBorder();
+            }
+
+            void DrawBorder()
+            {
+                IntPtr hwnd = Handle;
+                if (hwnd == IntPtr.Zero || control.IsDisposed || !control.IsHandleCreated) return;
+                IntPtr hdc = GetWindowDC(hwnd);
+                if (hdc == IntPtr.Zero) return;
+                try
+                {
+                    if (!GetWindowRect(hwnd, out NativeRect rect)) return;
+                    int width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
+                    if (width < 2 || height < 2) return;
+                    using var graphics = Graphics.FromHdc(hdc);
+                    int thickness = control.ContainsFocus ? Math.Max(2, Scale(control, 2)) : 1;
+                    using var pen = new Pen(control.ContainsFocus ? P.Accent : P.InputBorder, thickness);
+                    graphics.DrawRectangle(pen, thickness / 2f, thickness / 2f,
+                        width - thickness, height - thickness);
+                }
+                catch (Exception exIgnored) { AppLog.Write("Theme input border (ignored): " + exIgnored.Message); }
+                finally { _ = ReleaseDC(hwnd, hdc); }
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct NativeRect { public int Left, Top, Right, Bottom; }
+
+        [DllImport("user32.dll")] static extern IntPtr GetWindowDC(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
         static void ButtonFocusChanged(object? sender, EventArgs e)
         {
             if (sender is Button button)
             {
                 button.FlatAppearance.BorderSize = button.Focused ? 2 : 1;
-                button.FlatAppearance.BorderColor = button.Focused ? P.Accent : P.Border;
+                button.FlatAppearance.BorderColor = button.Focused ? P.Accent : P.InputBorder;
                 button.Invalidate();
             }
         }

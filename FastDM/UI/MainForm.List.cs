@@ -30,7 +30,7 @@ namespace FastDM
             switch (s)
             {
                 case DlState.Downloading:
-                    return Theme.P.Accent;
+                    return Theme.P.AccentText;
 
                 case DlState.Completed:
                     return Theme.P.Success;
