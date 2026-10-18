@@ -39,6 +39,7 @@ namespace FastDM
 
         public PreferencesForm(AppSettings settings, string? startSection = null)
         {
+            Theme.ConfigureForm(this);
             s = settings;
             this.startSection = startSection;
 

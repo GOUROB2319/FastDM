@@ -20,12 +20,14 @@ namespace FastDM
 
         public NetworkForm(AppSettings settings)
         {
+            Theme.ConfigureForm(this);
             s = settings;
             Text = "Proxy";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(480, 466);
+            MinimumSize = new Size(450, 420);
             Font = new Font("Segoe UI", 9.5f);
 
             var bold = new Font("Segoe UI", 10f, FontStyle.Bold);
@@ -45,7 +47,7 @@ namespace FastDM
             Controls.Add(cmbType);
 
             Controls.Add(new Label { Text = "Host", Location = new Point(40, 176), AutoSize = true });
-            txtHost = new TextBox { Location = new Point(140, 172), Width = 310, Text = s.ProxyHost ?? "" };
+            txtHost = new TextBox { Location = new Point(140, 172), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = s.ProxyHost ?? "" };
             Controls.Add(txtHost);
 
             Controls.Add(new Label { Text = "Port", Location = new Point(40, 212), AutoSize = true });
@@ -60,13 +62,13 @@ namespace FastDM
             Controls.Add(numPort);
 
             Controls.Add(new Label { Text = "Username", Location = new Point(40, 248), AutoSize = true });
-            txtUser = new TextBox { Location = new Point(140, 244), Width = 310, Text = s.ProxyUser ?? "" };
+            txtUser = new TextBox { Location = new Point(140, 244), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = s.ProxyUser ?? "" };
             Controls.Add(txtUser);
 
             Controls.Add(new Label { Text = "Password", Location = new Point(40, 284), AutoSize = true });
             string savedPass = "";
             if (SecretStore.Read("proxy", out _, out var sp)) savedPass = sp ?? "";
-            txtPass = new TextBox { Location = new Point(140, 280), Width = 310, UseSystemPasswordChar = true, Text = savedPass };
+            txtPass = new TextBox { Location = new Point(140, 280), Width = 310, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, UseSystemPasswordChar = true, Text = savedPass };
             Controls.Add(txtPass);
 
             btnTest = new Button { Text = "Test connection", Location = new Point(140, 322), Size = new Size(130, 32) };
@@ -87,7 +89,7 @@ namespace FastDM
             };
             Controls.Add(btnTest);
 
-            lblTest = new Label { Text = "", Location = new Point(280, 329), Size = new Size(190, 22) };
+            lblTest = new Label { Text = "", Location = new Point(280, 329), Size = new Size(190, 22), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             Controls.Add(lblTest);
 
             Controls.Add(new Label
@@ -96,12 +98,13 @@ namespace FastDM
                        "Proxy applies to HTTP/HTTPS downloads; SFTP uses a manual proxy only. " +
                        "FTP connections currently connect directly.",
                 Location = new Point(16, 364),
-                Size = new Size(450, 52)
+                Size = new Size(450, 52),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
             // ---------- বাটন ----------
-            var ok = new Button { Text = "OK", Location = new Point(290, 420), Size = new Size(90, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(386, 420), Size = new Size(84, 34), DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Location = new Point(290, 420), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(386, 420), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             ok.Click += OnOk;
             Controls.Add(ok); Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;

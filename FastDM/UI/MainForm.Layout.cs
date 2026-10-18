@@ -49,7 +49,7 @@ namespace FastDM
                 AllowDrop = true,
                 SmallImageList = new ImageList
                 {
-                    ImageSize = new Size(1, 34)
+                    ImageSize = new Size(1, Theme.Scale(this, 34))
                 }
             };
 
@@ -102,10 +102,10 @@ namespace FastDM
             sidebar = new BufferedListBox
             {
                 Dock = DockStyle.Left,
-                Width = 200,
+                Width = Theme.Scale(this, 200),
                 BorderStyle = BorderStyle.None,
                 DrawMode = DrawMode.OwnerDrawFixed,
-                ItemHeight = 40
+                ItemHeight = Theme.Scale(this, 40)
             };
 
             sidebar.Items.AddRange(FilterNames);
@@ -115,7 +115,7 @@ namespace FastDM
 
             sidebar.Width =
                 settings.SidebarOpen
-                    ? 200
+                    ? Theme.Scale(this, 200)
                     : 0;
 
             sidebar.Visible =
@@ -123,7 +123,7 @@ namespace FastDM
 
             navTarget =
                 settings.SidebarOpen
-                    ? 200
+                    ? Theme.Scale(this, 200)
                     : 0;
 
             navTimer = new System.Windows.Forms.Timer
@@ -176,7 +176,7 @@ namespace FastDM
                 GripStyle = ToolStripGripStyle.Hidden,
                 Padding = new Padding(8, 6, 8, 6),
                 Font = new Font("Segoe UI", 10f),
-                ImageScalingSize = new Size(20, 20)
+                ImageScalingSize = new Size(Theme.Scale(this, 20), Theme.Scale(this, 20))
             };
 
             // সব toolbar action একইভাবে Icon + Text দেখাবে
@@ -483,7 +483,7 @@ namespace FastDM
                         tag.Accent
                             ? Theme.P.Accent
                             : Theme.P.Text,
-                        20);
+                        Theme.Scale(this, 20));
 
                     old?.Dispose();
                 }
@@ -609,15 +609,15 @@ namespace FastDM
                         b,
                         e.Bounds.X,
                         e.Bounds.Y,
-                        4,
+                        Theme.Scale(this, 4),
                         e.Bounds.Height);
                 }
             }
 
             var tr = new Rectangle(
-                e.Bounds.X + 18,
+                e.Bounds.X + Theme.Scale(this, 18),
                 e.Bounds.Y,
-                SidebarWidth - 70,
+                SidebarWidth - Theme.Scale(this, 70),
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
@@ -635,9 +635,9 @@ namespace FastDM
                     : 0;
 
             var cr = new Rectangle(
-                e.Bounds.X + SidebarWidth - 55,
+                e.Bounds.X + SidebarWidth - Theme.Scale(this, 55),
                 e.Bounds.Y,
-                45,
+                Theme.Scale(this, 45),
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
@@ -925,7 +925,7 @@ namespace FastDM
 
             navTarget =
                 settings.SidebarOpen
-                    ? 200
+                    ? Theme.Scale(this, 200)
                     : 0;
 
             if (settings.SidebarOpen)
@@ -938,7 +938,7 @@ namespace FastDM
 
         void StepSidebar()
         {
-            const int step = 40;
+            int step = Theme.Scale(this, 40);
 
             int w =
                 sidebar.Width;
@@ -997,10 +997,26 @@ namespace FastDM
                 new Size(
                     1,
                     settings.CompactView
-                        ? 26
-                        : 34);
+                        ? Theme.Scale(this, 26)
+                        : Theme.Scale(this, 34));
 
             lv.Invalidate();
+        }
+
+        void RefreshDpiMetrics()
+        {
+            if (sidebar != null)
+            {
+                sidebar.ItemHeight = Theme.Scale(this, 40);
+                sidebar.Width = settings.SidebarOpen ? Theme.Scale(this, 200) : 0;
+                navTarget = settings.SidebarOpen ? Theme.Scale(this, 200) : 0;
+            }
+            if (details != null) details.Height = Theme.Scale(details, 212);
+            if (tools != null)
+                tools.ImageScalingSize = new Size(Theme.Scale(this, 20), Theme.Scale(this, 20));
+            ApplyCompactView();
+            RefreshToolIcons();
+            FitLastColumn();
         }
 
         // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে

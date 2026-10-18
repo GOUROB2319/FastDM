@@ -13,6 +13,7 @@ namespace FastDM
 
         public YtDlpErrorForm(string error, YtDlpCookieSource source, bool packaged, bool canRetryWithoutCookies = true)
         {
+            Theme.ConfigureForm(this);
             var kind = YtDlpDiagnostics.Classify(error, source);
             var description = YtDlpDiagnostics.Describe(kind, packaged);
             bool offerNoCookieRetry = canRetryWithoutCookies && YtDlpDiagnostics.CanRetryWithoutCookies(kind);

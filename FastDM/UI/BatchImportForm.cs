@@ -42,16 +42,18 @@ namespace FastDM
 
         public BatchImportForm(List<BatchRow> importRows, string defaultFolder, int maxBatchUrls)
         {
+            Theme.ConfigureForm(this);
             rows = importRows;
             maxBatch = Math.Max(1, maxBatchUrls);
 
             Text = "Import links";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false;
+            MaximizeBox = true;
             MinimizeBox = false;
             ShowInTaskbar = false;
             ClientSize = new Size(860, 620);
+            MinimumSize = new Size(700, 500);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label
@@ -66,13 +68,15 @@ namespace FastDM
             {
                 Text = BatchImport.Summarize(rows),
                 Location = new Point(16, 42),
-                Size = new Size(828, 36)
+                Size = new Size(828, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
             list = new ListView
             {
                 Location = new Point(16, 84),
                 Size = new Size(828, 320),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 View = View.Details,
                 FullRowSelect = true,
                 CheckBoxes = true,
@@ -117,9 +121,9 @@ namespace FastDM
             list.ItemChecked += (s, e) => UpdateCount();
             Controls.Add(list);
 
-            var all = new Button { Text = "Select all", Location = new Point(16, 412), Size = new Size(96, 28) };
-            var none = new Button { Text = "Select none", Location = new Point(118, 412), Size = new Size(100, 28) };
-            var videos = new Button { Text = "Videos only", Location = new Point(224, 412), Size = new Size(100, 28) };
+            var all = new Button { Text = "Select all", Location = new Point(16, 412), Size = new Size(96, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var none = new Button { Text = "Select none", Location = new Point(118, 412), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var videos = new Button { Text = "Videos only", Location = new Point(224, 412), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
 
             all.Click += (s, e) => TickWhere(r => CanTick(r));
             none.Click += (s, e) => TickWhere(r => false);
@@ -129,7 +133,7 @@ namespace FastDM
             Controls.Add(none);
             Controls.Add(videos);
 
-            lblCount = new Label { Location = new Point(336, 418), Size = new Size(508, 22) };
+            lblCount = new Label { Location = new Point(336, 418), Size = new Size(508, 22), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             Controls.Add(lblCount);
 
             Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 460), AutoSize = true });
@@ -138,6 +142,7 @@ namespace FastDM
             {
                 Location = new Point(120, 456),
                 Width = 260,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             cmbQuality.Items.AddRange(BatchQuality.Presets);
@@ -149,16 +154,17 @@ namespace FastDM
                 Text = "Download whole folders automatically (no window for each folder)",
                 Location = new Point(16, 492),
                 AutoSize = true,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
                 Checked = true
             };
             Controls.Add(chkFolders);
 
             Controls.Add(new Label { Text = "Save to", Location = new Point(16, 530), AutoSize = true });
 
-            txtFolder = new TextBox { Location = new Point(80, 526), Size = new Size(650, 26), Text = defaultFolder };
+            txtFolder = new TextBox { Location = new Point(80, 526), Size = new Size(650, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
             Controls.Add(txtFolder);
 
-            var browse = new Button { Text = "Browse...", Location = new Point(740, 525), Size = new Size(104, 28) };
+            var browse = new Button { Text = "Browse...", Location = new Point(740, 525), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             browse.Click += (s, e) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
@@ -167,9 +173,9 @@ namespace FastDM
             };
             Controls.Add(browse);
 
-            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 574), Size = new Size(170, 34) };
-            btnLater = new Button { Text = "Download Later", Location = new Point(588, 574), Size = new Size(140, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(734, 574), Size = new Size(110, 34), DialogResult = DialogResult.Cancel };
+            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 574), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            btnLater = new Button { Text = "Download Later", Location = new Point(588, 574), Size = new Size(140, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(734, 574), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
 
             btnStart.Click += (s, e) => Finish(DialogResult.OK);
             btnLater.Click += (s, e) => Finish(DialogResult.Yes);

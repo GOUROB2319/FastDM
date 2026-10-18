@@ -91,7 +91,7 @@ namespace FastDM
 
         int navTarget = 200;
 
-        const int SidebarWidth = 200;
+        int SidebarWidth => Theme.Scale(this, 200);
 
         readonly int[] sideCounts = new int[6];
 
@@ -146,6 +146,7 @@ namespace FastDM
         public MainForm()
         {
             InitializeComponent();
+            Theme.ConfigureForm(this, clampToWorkArea: false);
 
             LoadState();
 
@@ -160,6 +161,8 @@ namespace FastDM
 
             BuildUI();
             BuildTray();
+
+            DpiChanged += (s, e) => RefreshDpiMetrics();
 
             ApplyTheme();
             RebuildList();

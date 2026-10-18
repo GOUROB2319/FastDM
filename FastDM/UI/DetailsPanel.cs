@@ -14,10 +14,12 @@ namespace FastDM
         DownloadItem? item;
         readonly Font bold;
         readonly Font underline;
+        readonly ToolTip tips;
 
         // "Save to" and "Link" values are clickable. Their areas are set while painting.
         Rectangle saveRect, linkRect;
         int hover;                                   // 0 = nothing, 1 = "Save to", 2 = "Link"
+        int detailScrollOffset;
 
         public event Action<DownloadItem>? OpenFolderRequested;
         public event Action<DownloadItem>? OpenLinkRequested;
@@ -29,15 +31,18 @@ namespace FastDM
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             Dock = DockStyle.Bottom;
-            Height = 212;
+            Height = Theme.Scale(this, 212);
             Font = new Font("Segoe UI", 9.5f);
             bold = new Font("Segoe UI", 10.5f, FontStyle.Bold);
             underline = new Font(Font, FontStyle.Underline);
+            tips = new ToolTip { ShowAlways = true, InitialDelay = 400 };
         }
 
         public void SetItem(DownloadItem? it)
         {
             item = it;
+            detailScrollOffset = 0;
+            tips.SetToolTip(this, it == null ? null : "Scroll for more details. Right-click Save to or Link to copy its value.");
             Invalidate();
         }
 
@@ -47,6 +52,7 @@ namespace FastDM
             {
                 bold.Dispose();
                 underline.Dispose();
+                tips.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -63,6 +69,9 @@ namespace FastDM
             base.OnMouseMove(e);
 
             int h = HitTest(e.Location);
+            tips.SetToolTip(this, h == 1 ? "Open folder. Right-click to copy path." :
+                h == 2 ? "Open link. Right-click to copy URL." :
+                item == null ? null : "Scroll for more details.");
             if (h == hover) return;
 
             hover = h;
@@ -86,11 +95,27 @@ namespace FastDM
             base.OnMouseClick(e);
 
             var it = item;
-            if (e.Button != MouseButtons.Left || it == null) return;
+            if (it == null) return;
 
             int h = HitTest(e.Location);
-            if (h == 1) OpenFolderRequested?.Invoke(it);
-            else if (h == 2) OpenLinkRequested?.Invoke(it);
+            if (e.Button == MouseButtons.Right && h != 0)
+            {
+                try { Clipboard.SetText(h == 1 ? it.Folder ?? "" : it.Url ?? ""); }
+                catch (Exception exIgnored) { AppLog.Write("DetailsPanel clipboard (ignored): " + exIgnored.Message); }
+            }
+            else if (e.Button == MouseButtons.Left)
+            {
+                if (h == 1) OpenFolderRequested?.Invoke(it);
+                else if (h == 2) OpenLinkRequested?.Invoke(it);
+            }
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            if (item == null) return;
+            detailScrollOffset = Math.Max(0, detailScrollOffset + (e.Delta < 0 ? 1 : -1));
+            Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -109,16 +134,18 @@ namespace FastDM
             }
 
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            const int pad = 16;
-            int leftW = Math.Max(280, (int)(Width * 0.42));
+            int pad = Theme.Scale(this, 16);
+            int top = Theme.Scale(this, 10);
+            int leftW = Math.Max(Theme.Scale(this, 280), (int)(Width * 0.42));
 
-            DrawInfo(g, p, snapshot, new Rectangle(pad, 10, leftW - pad, Height - 16));
+            DrawInfo(g, p, snapshot, new Rectangle(pad, top, leftW - pad, Height - Theme.Scale(this, 16)));
 
-            var right = new Rectangle(leftW + 12, 10, Width - leftW - 12 - pad, Height - 16);
-            if (right.Width > 160)
+            var right = new Rectangle(leftW + Theme.Scale(this, 12), top,
+                Width - leftW - Theme.Scale(this, 12) - pad, Height - Theme.Scale(this, 16));
+            if (right.Width > Theme.Scale(this, 160))
             {
                 DrawGraph(g, p, snapshot, right);
-                DrawConnections(g, p, snapshot, new Rectangle(right.X, right.Y + 124, right.Width, 70));
+                DrawConnections(g, p, snapshot, new Rectangle(right.X, right.Y + Theme.Scale(this, 124), right.Width, Theme.Scale(this, 70)));
             }
         }
 
@@ -128,7 +155,8 @@ namespace FastDM
             const TextFormatFlags f = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
                                       TextFormatFlags.VerticalCenter | TextFormatFlags.Left;
 
-            TextRenderer.DrawText(g, it.FileName ?? "", bold, new Rectangle(r.X, r.Y, r.Width, 26), p.Text, f);
+            int S(int n) => Theme.Scale(this, n);
+            TextRenderer.DrawText(g, it.FileName ?? "", bold, new Rectangle(r.X, r.Y, r.Width, S(26)), p.Text, f);
 
             string size = it.TotalBytes > 0
                 ? Fmt(it.Downloaded) + " / " + Fmt(it.TotalBytes) +
@@ -167,18 +195,22 @@ namespace FastDM
             else if (!string.IsNullOrEmpty(it.Error))
                 rows.Insert(1, new[] { "Note", it.Error });
 
-            int y = r.Y + 32;
-            const int lh = 21;
+            int rowTop = r.Y + S(32);
+            int lh = S(21);
+            int visibleRows = Math.Max(1, (r.Bottom - rowTop) / lh);
+            detailScrollOffset = Math.Clamp(detailScrollOffset, 0, Math.Max(0, rows.Count - visibleRows));
+            int y = rowTop - detailScrollOffset * lh;
 
             saveRect = Rectangle.Empty;
             linkRect = Rectangle.Empty;
 
             foreach (var row in rows)
             {
-                if (y + lh > r.Bottom) break;
-                TextRenderer.DrawText(g, row[0], Font, new Rectangle(r.X, y, 68, lh), p.SubText, f);
+                if (y + lh <= rowTop) { y += lh; continue; }
+                if (y >= r.Bottom) break;
+                TextRenderer.DrawText(g, row[0], Font, new Rectangle(r.X, y, S(68), lh), p.SubText, f);
 
-                var valueRect = new Rectangle(r.X + 72, y, r.Width - 72, lh);
+                var valueRect = new Rectangle(r.X + S(72), y, r.Width - S(72), lh);
                 bool isSave = row[0] == "Save to" && row[1].Length > 0;
                 bool isLink = row[0] == "Link" && IsWebLink(row[1]);
 
@@ -207,13 +239,14 @@ namespace FastDM
             const TextFormatFlags f = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
                                       TextFormatFlags.VerticalCenter;
 
-            TextRenderer.DrawText(g, "Speed (last 60 s)", Font, new Rectangle(r.X, r.Y, r.Width / 2, 20),
+            int S(int n) => Theme.Scale(this, n);
+            TextRenderer.DrawText(g, "Speed (last 60 s)", Font, new Rectangle(r.X, r.Y, r.Width / 2, S(20)),
                 p.SubText, f | TextFormatFlags.Left);
             string now = it.State == DlState.Downloading && (it.YtDlp == null || YtDlpRetryPolicy.IsTransferring(it.ProgressStage)) ? Fmt(it.Speed) + "/s" : "—";
-            TextRenderer.DrawText(g, now, bold, new Rectangle(r.X + r.Width / 2, r.Y - 2, r.Width / 2, 24),
+            TextRenderer.DrawText(g, now, bold, new Rectangle(r.X + r.Width / 2, r.Y - S(2), r.Width / 2, S(24)),
                 p.Text, f | TextFormatFlags.Right);
 
-            var gr = new Rectangle(r.X, r.Y + 24, r.Width, 92);
+            var gr = new Rectangle(r.X, r.Y + S(24), r.Width, S(92));
             using (var b = new SolidBrush(p.RowAlt)) g.FillRectangle(b, gr);
             if (it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage))
             {
@@ -227,48 +260,72 @@ namespace FastDM
                 g.DrawRectangle(pen, gr);
                 for (int i = 1; i <= 2; i++)
                 {
-                    int gy = gr.Y + gr.Height * i / 3;
+                    int gy = gr.Y + (gr.Height - S(18)) * i / 3;
                     g.DrawLine(pen, gr.X, gy, gr.Right, gy);
                 }
             }
 
             double[] h = it.SpeedHistory.ToArray();
-            if (h.Length < 2) return;
+            if (h.Length < 2)
+            {
+                DrawGraphAxisLabels(g, p, gr, 1024 * 1.15);
+                return;
+            }
 
             double max = Math.Max(h.Max(), 1024) * 1.15;
+            int plotBottom = gr.Bottom - S(18);
+            int plotHeight = gr.Height - S(22);
             float step = (gr.Width - 2) / (float)(HistoryLength - 1);
             var pts = new PointF[h.Length];
             for (int i = 0; i < h.Length; i++)
             {
                 float x = gr.Right - 1 - (h.Length - 1 - i) * step;
-                float y = gr.Bottom - 3 - (float)(h[i] / max * (gr.Height - 8));
+                float y = plotBottom - S(3) - (float)(h[i] / max * Math.Max(1, plotHeight - S(8)));
                 pts[i] = new PointF(x, y);
             }
 
             var poly = new PointF[pts.Length + 2];
             Array.Copy(pts, poly, pts.Length);
-            poly[pts.Length] = new PointF(pts[pts.Length - 1].X, gr.Bottom - 1);
-            poly[pts.Length + 1] = new PointF(pts[0].X, gr.Bottom - 1);
+            poly[pts.Length] = new PointF(pts[pts.Length - 1].X, plotBottom - 1);
+            poly[pts.Length + 1] = new PointF(pts[0].X, plotBottom - 1);
 
             using (var fill = new SolidBrush(Color.FromArgb(55, p.Accent))) g.FillPolygon(fill, poly);
             using (var line = new Pen(p.Accent, 2f) { LineJoin = LineJoin.Round }) g.DrawLines(line, pts);
 
-            TextRenderer.DrawText(g, Fmt(max) + "/s", Font, new Rectangle(gr.X + 6, gr.Y + 2, 120, 18),
-                p.SubText, f | TextFormatFlags.Left);
+            DrawGraphAxisLabels(g, p, gr, max);
+        }
+
+        void DrawGraphAxisLabels(Graphics g, Palette p, Rectangle gr, double max)
+        {
+            int S(int n) => Theme.Scale(this, n);
+            const TextFormatFlags f = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
+                                      TextFormatFlags.VerticalCenter;
+            int plotBottom = gr.Bottom - S(18);
+            var maxLabel = new Rectangle(gr.X + S(6), gr.Y + S(2), S(120), S(18));
+            using (var bg = new SolidBrush(p.RowAlt)) g.FillRectangle(bg, maxLabel);
+            TextRenderer.DrawText(g, Fmt(max) + "/s", Font, maxLabel, p.SubText,
+                f | TextFormatFlags.Left);
+            TextRenderer.DrawText(g, "60 s ago", Font,
+                new Rectangle(gr.X + S(4), plotBottom, S(90), S(16)), p.SubText,
+                f | TextFormatFlags.Left);
+            TextRenderer.DrawText(g, "now", Font,
+                new Rectangle(gr.Right - S(54), plotBottom, S(50), S(16)), p.SubText,
+                f | TextFormatFlags.Right);
         }
 
         // ---------- ডান পাশ নিচে: কানেকশন/সেগমেন্ট ম্যাপ ----------
         void DrawConnections(Graphics g, Palette p, DownloadItem it, Rectangle r)
         {
+            int S(int n) => Theme.Scale(this, n);
             const TextFormatFlags f = TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix |
                                       TextFormatFlags.VerticalCenter | TextFormatFlags.Left;
 
             if (it.YtDlp != null)
             {
                 string ycap = "Downloaded by yt-dlp" + (string.IsNullOrEmpty(it.StatusNote) ? "" : "  •  " + it.StatusNote);
-                TextRenderer.DrawText(g, ycap, Font, new Rectangle(r.X, r.Y, r.Width, 20), p.SubText, f);
+                TextRenderer.DrawText(g, ycap, Font, new Rectangle(r.X, r.Y, r.Width, S(20)), p.SubText, f);
 
-                var ybar = new Rectangle(r.X, r.Y + 26, r.Width, 18);
+                var ybar = new Rectangle(r.X, r.Y + S(26), r.Width, S(18));
                 using (var b = new SolidBrush(p.Track)) g.FillRectangle(b, ybar);
                 int yw = YtDlpRetryPolicy.IsProcessing(it.ProgressStage) ? 0 : (int)(ybar.Width * it.Percent / 100.0);
                 if (yw > 0)
@@ -282,9 +339,9 @@ namespace FastDM
             {
                 string cap = "Stream (" + (it.Stream.Kind ?? "").ToUpperInvariant() + "): " + it.StreamDone + " / " + it.StreamTotal + " segments" +
                              (string.IsNullOrEmpty(it.StatusNote) ? "" : "  •  " + it.StatusNote);
-                TextRenderer.DrawText(g, cap, Font, new Rectangle(r.X, r.Y, r.Width, 20), p.SubText, f);
+                TextRenderer.DrawText(g, cap, Font, new Rectangle(r.X, r.Y, r.Width, S(20)), p.SubText, f);
 
-                var sbar = new Rectangle(r.X, r.Y + 26, r.Width, 18);
+                var sbar = new Rectangle(r.X, r.Y + S(26), r.Width, S(18));
                 using (var b = new SolidBrush(p.Track)) g.FillRectangle(b, sbar);
                 int sw = (int)(sbar.Width * it.Percent / 100.0);
                 if (sw > 0)

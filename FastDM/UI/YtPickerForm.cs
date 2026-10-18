@@ -39,8 +39,10 @@ namespace FastDM
         readonly CancellationTokenSource previewCts = new CancellationTokenSource();
         readonly Font mergeFont;
         readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
+        readonly Label lblPlaylistQuality, lblName;
         readonly PictureBox thumbnail;
         readonly Panel singlePanel, playlistPanel;
+        readonly TableLayoutPanel options;
         readonly RadioButton rbVideo, rbAudio;
         readonly ComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
         readonly CheckedListBox playlistEntries;
@@ -57,6 +59,7 @@ namespace FastDM
 
         public YtPickerForm(string videoUrl, string defaultFolder, int maxPlaylistEntries = 100, bool ignoreCookies = false)
         {
+            Theme.ConfigureForm(this);
             url = videoUrl;
             this.maxPlaylistEntries = Math.Clamp(maxPlaylistEntries, 1, 1000);
             this.ignoreCookies = ignoreCookies;
@@ -80,7 +83,7 @@ namespace FastDM
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 94));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
 
             lblTitle = new Label
@@ -172,18 +175,29 @@ namespace FastDM
             };
             playlistPanel.Controls.Add(playlistHelp);
 
-            var options = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(0, 4, 0, 0) };
-            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-            options.Controls.Add(new Label { Text = "Playlist quality", AutoSize = true }, 0, 0);
+            options = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(0, 4, 0, 0)
+            };
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+            options.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+            lblPlaylistQuality = new Label { Text = "Playlist quality", AutoSize = true, Visible = false };
+            options.Controls.Add(lblPlaylistQuality, 0, 0);
             cmbPlaylistQuality = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             cmbPlaylistQuality.Items.AddRange(BatchQuality.Presets);
             cmbPlaylistQuality.SelectedIndex = 0;
+            cmbPlaylistQuality.Visible = false;
             options.Controls.Add(cmbPlaylistQuality, 0, 1);
-            options.Controls.Add(new Label { Text = "File name (single video)", AutoSize = true }, 0, 2);
-            txtName = new TextBox { Dock = DockStyle.Fill, AccessibleName = "Output file name" };
+            lblName = new Label { Text = "File name (single video)", AutoSize = true, Visible = false };
+            options.Controls.Add(lblName, 0, 2);
+            txtName = new TextBox { Dock = DockStyle.Fill, Visible = false, AccessibleName = "Output file name" };
             options.Controls.Add(txtName, 0, 3);
             root.Controls.Add(options, 0, 4);
 
@@ -222,6 +236,8 @@ namespace FastDM
             root.Controls.Add(footer, 0, 5);
 
             Controls.Add(root);
+            Resize += (s, e) => UpdateComboDropdownWidths();
+            SetOptionsMode(isPlaylist: false, hasPreview: false);
             AcceptButton = btnStart;
             CancelButton = cancel;
             FormClosing += (s, e) =>
@@ -337,6 +353,7 @@ namespace FastDM
                     "Save folder: " + txtFolder.Text;
                 singlePanel.Visible = false;
                 playlistPanel.Visible = true;
+                SetOptionsMode(isPlaylist: true, hasPreview: true);
                 txtName.Enabled = false;
                 cmbPlaylistQuality.Enabled = true;
                 playlistEntries.Items.Clear();
@@ -367,6 +384,7 @@ namespace FastDM
                     "Available formats: " + video.Videos.Count + " video quality option(s)";
                 singlePanel.Visible = true;
                 playlistPanel.Visible = false;
+                SetOptionsMode(isPlaylist: false, hasPreview: true);
                 txtName.Enabled = true;
                 txtName.Text = DefaultName(video.Title);
                 FillVideoFormats(video);
@@ -406,6 +424,27 @@ namespace FastDM
             cmbVideo.Visible = !audio;
             cmbAudio.Visible = audio;
             UpdateSizeAndMerge();
+        }
+
+        void SetOptionsMode(bool isPlaylist, bool hasPreview)
+        {
+            lblPlaylistQuality.Visible = hasPreview && isPlaylist;
+            cmbPlaylistQuality.Visible = hasPreview && isPlaylist;
+            lblName.Visible = hasPreview && !isPlaylist;
+            txtName.Visible = hasPreview && !isPlaylist;
+            options.RowStyles[0].Height = hasPreview && isPlaylist ? Theme.Scale(this, 24) : 0;
+            options.RowStyles[1].Height = hasPreview && isPlaylist ? Theme.Scale(this, 34) : 0;
+            options.RowStyles[2].Height = hasPreview && !isPlaylist ? Theme.Scale(this, 24) : 0;
+            options.RowStyles[3].Height = hasPreview && !isPlaylist ? Theme.Scale(this, 34) : 0;
+            options.PerformLayout();
+            UpdateComboDropdownWidths();
+        }
+
+        void UpdateComboDropdownWidths()
+        {
+            int available = Math.Max(120, ClientSize.Width - Theme.Scale(this, 32));
+            foreach (var combo in new[] { cmbVideo, cmbAudio, cmbPlaylistQuality })
+                combo.DropDownWidth = Math.Min(available, Math.Max(combo.Width, combo.DropDownWidth));
         }
 
         void UpdateSizeAndMerge()

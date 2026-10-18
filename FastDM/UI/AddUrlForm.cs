@@ -23,13 +23,15 @@ namespace FastDM
 
         public AddUrlForm(string initialUrl, string folder)
         {
+            Theme.ConfigureForm(this);
             Text = "Add Download";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false;
+            MaximizeBox = true;
             MinimizeBox = false;
             ShowInTaskbar = false;
             ClientSize = new Size(560, 336);
+            MinimumSize = new Size(500, 320);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label
@@ -43,6 +45,7 @@ namespace FastDM
             {
                 Location = new Point(16, 34),
                 Size = new Size(528, 110),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 Text = initialUrl ?? ""
@@ -70,7 +73,8 @@ namespace FastDM
             txtName = new TextBox
             {
                 Location = new Point(16, 178),
-                Size = new Size(528, 26)
+                Size = new Size(528, 26),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
             Controls.Add(txtName);
@@ -86,6 +90,7 @@ namespace FastDM
             {
                 Location = new Point(16, 236),
                 Size = new Size(436, 26),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Text = folder
             };
 
@@ -95,7 +100,8 @@ namespace FastDM
             {
                 Text = "Browse…",
                 Location = new Point(460, 235),
-                Size = new Size(84, 28)
+                Size = new Size(84, 28),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
 
             browse.Click += (s, e) =>
@@ -115,14 +121,16 @@ namespace FastDM
             {
                 Text = "Start Download",
                 Location = new Point(196, 284),
-                Size = new Size(124, 34)
+                Size = new Size(124, 34),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
 
             var later = new Button
             {
                 Text = "Download Later",
                 Location = new Point(326, 284),
-                Size = new Size(120, 34)
+                Size = new Size(120, 34),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
 
             var cancel = new Button
@@ -130,6 +138,7 @@ namespace FastDM
                 Text = "Cancel",
                 Location = new Point(452, 284),
                 Size = new Size(92, 34),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
                 DialogResult = DialogResult.Cancel
             };
 

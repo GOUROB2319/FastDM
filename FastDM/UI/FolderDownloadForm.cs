@@ -33,27 +33,30 @@ namespace FastDM
 
         CredentialForm(Uri u)
         {
+            Theme.ConfigureForm(this);
             uri = u;
             Text = "Login required";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(420, 252);
+            MinimumSize = new Size(360, 240);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label
             {
                 Text = "This server needs a username and password:\n" + u.Scheme + "://" + u.Host,
                 Location = new Point(16, 14),
-                Size = new Size(388, 40)
+                Size = new Size(388, 40),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
             Controls.Add(new Label { Text = "Username", Location = new Point(16, 62), AutoSize = true });
-            txtUser = new TextBox { Location = new Point(16, 84), Size = new Size(388, 26) };
+            txtUser = new TextBox { Location = new Point(16, 84), Size = new Size(388, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             Controls.Add(txtUser);
 
             Controls.Add(new Label { Text = "Password", Location = new Point(16, 118), AutoSize = true });
-            txtPass = new TextBox { Location = new Point(16, 140), Size = new Size(388, 26), UseSystemPasswordChar = true };
+            txtPass = new TextBox { Location = new Point(16, 140), Size = new Size(388, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, UseSystemPasswordChar = true };
             Controls.Add(txtPass);
 
             chkRemember = new CheckBox
@@ -64,8 +67,8 @@ namespace FastDM
             };
             Controls.Add(chkRemember);
 
-            var ok = new Button { Text = "OK", Location = new Point(222, 205), Size = new Size(90, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(318, 205), Size = new Size(90, 34), DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Location = new Point(222, 205), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(318, 205), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             ok.Click += (s, e) =>
             {
                 if (txtUser.Text.Trim().Length == 0)
@@ -111,14 +114,16 @@ namespace FastDM
         // playlistMode = এক্সটেনশনের "Create playlist" থেকে খোলা: প্লেলিস্ট বাটনই মূল (Enter চাপলে সেটাই চলে)
         public FolderDownloadForm(Uri folderUri, string defaultLocation, int simultaneous, bool playlistMode = false)
         {
+            Theme.ConfigureForm(this);
             rootUri = folderUri;
             currentUri = folderUri;
 
             Text = playlistMode ? "Create Playlist" : "Download Folder";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(660, 676);
+            MinimumSize = new Size(560, 520);
             Font = new Font("Segoe UI", 9.5f);
 
             // লিঙ্ক
@@ -127,13 +132,14 @@ namespace FastDM
             {
                 Location = new Point(16, 32),
                 Size = new Size(628, 26),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 ReadOnly = true,
                 Text = AppLog.Redact(Uri.UnescapeDataString(rootUri.GetLeftPart(UriPartial.Path)))
             });
 
             // ফোল্ডারের নাম + একসাথে কয়টা ফাইল
             Controls.Add(new Label { Text = "Folder name", Location = new Point(16, 66), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 86), Size = new Size(320, 26), Text = DefaultName() };
+            txtName = new TextBox { Location = new Point(16, 86), Size = new Size(320, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = DefaultName() };
             Controls.Add(txtName);
 
             Controls.Add(new Label { Text = "Simultaneous files", Location = new Point(352, 66), AutoSize = true });
@@ -141,6 +147,7 @@ namespace FastDM
             {
                 Location = new Point(352, 86),
                 Width = 120,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Minimum = 1,
                 Maximum = 10,
                 Value = Math.Clamp(simultaneous, 1, 10)
@@ -149,9 +156,9 @@ namespace FastDM
 
             // সেভ লোকেশন
             Controls.Add(new Label { Text = "Save to", Location = new Point(16, 120), AutoSize = true });
-            txtLocation = new TextBox { Location = new Point(16, 140), Size = new Size(528, 26), Text = defaultLocation };
+            txtLocation = new TextBox { Location = new Point(16, 140), Size = new Size(528, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = defaultLocation };
             Controls.Add(txtLocation);
-            var browse = new Button { Text = "Browse…", Location = new Point(552, 139), Size = new Size(92, 28) };
+            var browse = new Button { Text = "Browse…", Location = new Point(552, 139), Size = new Size(92, 28), Anchor = AnchorStyles.Top | AnchorStyles.Right };
             browse.Click += (s, e) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtLocation.Text };
@@ -166,7 +173,7 @@ namespace FastDM
                 Location = new Point(16, 176),
                 AutoSize = true
             });
-            txtFilter = new TextBox { Location = new Point(16, 196), Size = new Size(628, 26) };
+            txtFilter = new TextBox { Location = new Point(16, 196), Size = new Size(628, 26), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             txtFilter.TextChanged += (s, e) => ApplyFilter();
             Controls.Add(txtFilter);
 
@@ -183,7 +190,7 @@ namespace FastDM
                 Uri? parent = ParentUri(currentUri);
                 if (parent != null) await NavigateAsync(parent, rememberCurrent: true);
             };
-            lblPath = new Label { Location = new Point(184, 231), Size = new Size(460, 22), AutoEllipsis = true, Text = DisplayPath(currentUri) };
+            lblPath = new Label { Location = new Point(184, 231), Size = new Size(460, 22), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, AutoEllipsis = true, Text = DisplayPath(currentUri) };
             Controls.Add(btnBack);
             Controls.Add(btnUp);
             Controls.Add(lblPath);
@@ -193,6 +200,7 @@ namespace FastDM
             {
                 Location = new Point(16, 260),
                 Size = new Size(628, 272),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 CheckBoxes = true,
                 HideSelection = false,
                 ShowLines = true
@@ -214,8 +222,8 @@ namespace FastDM
             };
             Controls.Add(tree);
 
-            var all = new Button { Text = "Select all", Location = new Point(16, 540), Size = new Size(100, 28) };
-            var none = new Button { Text = "Select none", Location = new Point(122, 540), Size = new Size(100, 28) };
+            var all = new Button { Text = "Select all", Location = new Point(16, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var none = new Button { Text = "Select none", Location = new Point(122, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             all.Click += (s, e) => { txtFilter.Text = ""; SetAll(true); };
             none.Click += (s, e) => SetAll(false);
             Controls.Add(all); Controls.Add(none);
@@ -224,6 +232,7 @@ namespace FastDM
             {
                 Location = new Point(236, 546),
                 Size = new Size(408, 22),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Text = "Scanning…"
             };
             Controls.Add(lblStatus);
@@ -234,6 +243,7 @@ namespace FastDM
                 Text = "Also create a local playlist (.m3u8) in the download folder",
                 Location = new Point(16, 578),
                 Size = new Size(628, 24),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Checked = false
             };
             Controls.Add(chkLocalPlaylist);
@@ -243,13 +253,14 @@ namespace FastDM
                 Text = "Save stream playlist…",
                 Location = new Point(16, 628),
                 Size = new Size(190, 34),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
                 Enabled = false
             };
             btnStream.Click += OnSaveStreamPlaylist;
             Controls.Add(btnStream);
 
-            btnOk = new Button { Text = "Download", Location = new Point(444, 628), Size = new Size(110, 34), Enabled = false };
-            var cancel = new Button { Text = "Cancel", Location = new Point(560, 628), Size = new Size(84, 34), DialogResult = DialogResult.Cancel };
+            btnOk = new Button { Text = "Download", Location = new Point(444, 628), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Enabled = false };
+            var cancel = new Button { Text = "Cancel", Location = new Point(560, 628), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             btnOk.Click += OnOk;
             Controls.Add(btnOk); Controls.Add(cancel);
             AcceptButton = playlistMode ? btnStream : btnOk;

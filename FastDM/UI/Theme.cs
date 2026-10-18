@@ -20,6 +20,43 @@ namespace FastDM
     // ====================== Theme Manager ======================
     public static class Theme
     {
+        static readonly SizeF LogicalDpi = new SizeF(96f, 96f);
+
+        // Programmatic forms use the same 96 DPI design baseline as designer forms.
+        // This keeps control bounds and fonts in one coordinate system as Windows DPI changes.
+        public static void ConfigureForm(Form form, bool clampToWorkArea = true)
+        {
+            if (form == null) return;
+            form.AutoScaleDimensions = LogicalDpi;
+            form.AutoScaleMode = AutoScaleMode.Dpi;
+            if (clampToWorkArea)
+            {
+                form.Shown -= ClampInitialDialog;
+                form.Shown += ClampInitialDialog;
+            }
+        }
+
+        public static int Scale(Control control, int logicalPixels)
+        {
+            int dpi = control?.DeviceDpi ?? 96;
+            return Math.Max(1, (int)Math.Round(logicalPixels * dpi / 96.0));
+        }
+
+        static void ClampInitialDialog(object? sender, EventArgs e)
+        {
+            if (sender is not Form form || form.IsDisposed) return;
+            Rectangle area = Screen.FromControl(form).WorkingArea;
+            int maxWidth = Math.Max(320, (int)(area.Width * 0.9));
+            int maxHeight = Math.Max(240, (int)(area.Height * 0.9));
+            int width = Math.Min(form.Width, maxWidth);
+            int height = Math.Min(form.Height, maxHeight);
+            if (width < form.Width || height < form.Height)
+            {
+                form.MinimumSize = new Size(Math.Min(form.MinimumSize.Width, width), Math.Min(form.MinimumSize.Height, height));
+                form.Size = new Size(width, height);
+            }
+        }
+
         public static readonly Palette Light = new Palette
         {
             Window = ColorTranslator.FromHtml("#FFFFFF"),
@@ -133,6 +170,8 @@ namespace FastDM
         // ---------- Apply theme to all controls in the form/dialog ----------
         public static void Apply(Form f)
         {
+            if (f.AutoScaleMode != AutoScaleMode.Dpi)
+                ConfigureForm(f);
             f.BackColor = P.Window;
             f.ForeColor = P.Text;
             SetTitleBar(f);

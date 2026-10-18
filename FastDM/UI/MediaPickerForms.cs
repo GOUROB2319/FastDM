@@ -28,24 +28,26 @@ namespace FastDM
 
         public MediaPickerForm(MediaOptions options, string defaultFolder)
         {
+            Theme.ConfigureForm(this);
             o = options;
 
             Text = (o.Kind == "hls" ? "HLS" : "DASH") + " stream — choose quality";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(560, 440);
+            MinimumSize = new Size(480, 400);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 14), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(16, 36), Width = 528, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVideo = new ComboBox { Location = new Point(16, 36), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (var v in o.Videos) cmbVideo.Items.Add(new OptItem { Text = v.Label, Tag = v });
             if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;
             cmbVideo.SelectedIndexChanged += (a, b) => RefreshAudio();
             Controls.Add(cmbVideo);
 
             Controls.Add(new Label { Text = "Audio track", Location = new Point(16, 74), AutoSize = true });
-            cmbAudio = new ComboBox { Location = new Point(16, 96), Width = 528, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAudio = new ComboBox { Location = new Point(16, 96), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
             Controls.Add(cmbAudio);
 
             chkAudioOnly = new CheckBox { Text = "Audio only (save as .m4a)", Location = new Point(16, 134), AutoSize = true };
@@ -53,13 +55,13 @@ namespace FastDM
             Controls.Add(chkAudioOnly);
 
             Controls.Add(new Label { Text = "File name", Location = new Point(16, 172), AutoSize = true });
-            txtName = new TextBox { Location = new Point(16, 194), Width = 528, Text = DefaultName() };
+            txtName = new TextBox { Location = new Point(16, 194), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = DefaultName() };
             Controls.Add(txtName);
 
             Controls.Add(new Label { Text = "Save to", Location = new Point(16, 230), AutoSize = true });
-            txtFolder = new TextBox { Location = new Point(16, 252), Width = 436, Text = defaultFolder };
+            txtFolder = new TextBox { Location = new Point(16, 252), Width = 436, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
             Controls.Add(txtFolder);
-            var browse = new Button { Text = "Browse…", Location = new Point(460, 251), Size = new Size(84, 28) };
+            var browse = new Button { Text = "Browse…", Location = new Point(460, 251), Size = new Size(84, 28), Anchor = AnchorStyles.Top | AnchorStyles.Right };
             browse.Click += (a, b) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
@@ -74,18 +76,20 @@ namespace FastDM
                     ? "ffmpeg found: the result will be one MP4 file (streams are copied, nothing is re-encoded)."
                     : "ffmpeg was not found: audio and video will be saved as separate files.",
                 Location = new Point(16, 296),
-                Size = new Size(528, 44)
+                Size = new Size(528, 44),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
             Controls.Add(new Label
             {
                 Text = "DRM-protected streams cannot be downloaded.",
                 Location = new Point(16, 344),
-                Size = new Size(528, 22)
+                Size = new Size(528, 22),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            var ok = new Button { Text = "Download", Location = new Point(330, 388), Size = new Size(110, 36) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(446, 388), Size = new Size(98, 36), DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "Download", Location = new Point(330, 388), Size = new Size(110, 36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(446, 388), Size = new Size(98, 36), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             ok.Click += OnOk;
             Controls.Add(ok); Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;
@@ -189,28 +193,31 @@ namespace FastDM
 
         public CandidateForm(List<MediaCandidate> candidates)
         {
+            Theme.ConfigureForm(this);
             Text = "Videos found on this page";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(620, 360);
+            MinimumSize = new Size(480, 300);
             Font = new Font("Segoe UI", 9.5f);
 
             Controls.Add(new Label
             {
                 Text = "Several videos were found. Choose the one to download:",
                 Location = new Point(16, 14),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 AutoSize = true
             });
 
-            list = new ListBox { Location = new Point(16, 40), Size = new Size(588, 260), HorizontalScrollbar = true };
+            list = new ListBox { Location = new Point(16, 40), Size = new Size(588, 260), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, HorizontalScrollbar = true };
             foreach (var c in candidates) list.Items.Add(c);
             if (list.Items.Count > 0) list.SelectedIndex = 0;
             list.DoubleClick += (a, b) => Accept();
             Controls.Add(list);
 
-            var ok = new Button { Text = "Next", Location = new Point(404, 312), Size = new Size(100, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(510, 312), Size = new Size(94, 34), DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "Next", Location = new Point(404, 312), Size = new Size(100, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(510, 312), Size = new Size(94, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             ok.Click += (a, b) => Accept();
             Controls.Add(ok); Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;

@@ -29,7 +29,8 @@
         private void InitializeComponent()
         {
             components = new System.ComponentModel.Container();
-            AutoScaleMode = AutoScaleMode.Font;
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(800, 450);
             Text = "MainForm";
         }

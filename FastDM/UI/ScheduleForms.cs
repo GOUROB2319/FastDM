@@ -18,12 +18,14 @@ namespace FastDM
 
         public ScheduleForm(AppSettings settings)
         {
+            Theme.ConfigureForm(this);
             s = settings;
             Text = "Scheduler";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            MaximizeBox = true; MinimizeBox = false; ShowInTaskbar = false;
             ClientSize = new Size(480, 340);
+            MinimumSize = new Size(460, 320);
             Font = new Font("Segoe UI", 9.5f);
 
             chkEnable = new CheckBox
@@ -31,6 +33,7 @@ namespace FastDM
                 Text = "Enable scheduler (download only during the time window below)",
                 Location = new Point(16, 16),
                 AutoSize = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Checked = s.SchedulerEnabled
             };
             Controls.Add(chkEnable);
@@ -84,11 +87,12 @@ namespace FastDM
                 Text = "A window that crosses midnight works too (for example 22:00 to 06:00).\n" +
                        "Right-click a download and choose \"Start now\" to ignore the schedule for it.",
                 Location = new Point(16, 238),
-                Size = new Size(450, 44)
+                Size = new Size(450, 44),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            var ok = new Button { Text = "OK", Location = new Point(290, 292), Size = new Size(90, 34) };
-            var cancel = new Button { Text = "Cancel", Location = new Point(386, 292), Size = new Size(84, 34), DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Location = new Point(290, 292), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(386, 292), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             ok.Click += OnOk;
             Controls.Add(ok); Controls.Add(cancel);
             AcceptButton = ok; CancelButton = cancel;
@@ -141,6 +145,7 @@ namespace FastDM
 
         public CountdownForm(PostAction action, int seconds)
         {
+            Theme.ConfigureForm(this);
             act = action;
             left = seconds;
 
