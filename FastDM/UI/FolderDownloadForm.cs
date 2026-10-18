@@ -374,11 +374,18 @@ namespace FastDM
         {
             suppress = true;
             tree.BeginUpdate();
-            tree.Nodes.Clear();
-            AddChildren(tree.Nodes, root);
-            foreach (TreeNode n in tree.Nodes) if (n.Nodes.Count > 0) n.Expand();
-            tree.EndUpdate();
-            suppress = false;
+            try
+            {
+                tree.Nodes.Clear();
+                bool hasMedia = EnumerateRemote(root).Any(x => !x.IsDir && PlaylistBuilder.IsMedia(x.Name));
+                AddChildren(tree.Nodes, root, hasMedia);
+                foreach (TreeNode n in tree.Nodes) if (n.Nodes.Count > 0) n.Expand();
+            }
+            finally
+            {
+                tree.EndUpdate();
+                suppress = false;
+            }
 
             if (tree.Nodes.Count == 0)
             {
@@ -388,7 +395,17 @@ namespace FastDM
             if (txtFilter.Text.Trim().Length > 0) ApplyFilter(); else UpdateSummary();
         }
 
-        void AddChildren(TreeNodeCollection col, RemoteNode n)
+        static IEnumerable<RemoteNode> EnumerateRemote(RemoteNode node)
+        {
+            foreach (var child in node.Children)
+            {
+                yield return child;
+                if (child.IsDir)
+                    foreach (var descendant in EnumerateRemote(child)) yield return descendant;
+            }
+        }
+
+        void AddChildren(TreeNodeCollection col, RemoteNode n, bool hasMedia)
         {
             foreach (var c in n.Children
                 .OrderByDescending(x => x.IsDir)
@@ -398,8 +415,15 @@ namespace FastDM
                             : c.Size > 0 ? c.Name + "   (" + Fmt(c.Size) + ")" : c.Name;
                 var tn = new TreeNode(text) { Tag = c };
                 col.Add(tn);
-                tn.Checked = true;
-                if (c.IsDir) AddChildren(tn.Nodes, c);
+                if (c.IsDir)
+                {
+                    AddChildren(tn.Nodes, c, hasMedia);
+                    tn.Checked = tn.Nodes.Count == 0 ? !hasMedia : tn.Nodes.Cast<TreeNode>().All(x => x.Checked);
+                }
+                else
+                {
+                    tn.Checked = !hasMedia || PlaylistBuilder.IsMedia(c.Name);
+                }
             }
         }
 
@@ -408,12 +432,15 @@ namespace FastDM
         {
             if (suppress || e.Action == TreeViewAction.Unknown) return;
             suppress = true;
-            var node = e.Node;
-            if (node == null) return;
-            SetChildren(node, node.Checked);
-            for (var p = node.Parent; p != null; p = p.Parent)
-                p.Checked = p.Nodes.Cast<TreeNode>().Any(x => x.Checked);
-            suppress = false;
+            try
+            {
+                var node = e.Node;
+                if (node == null) return;
+                SetChildren(node, node.Checked);
+                for (var p = node.Parent; p != null; p = p.Parent)
+                    p.Checked = p.Nodes.Count > 0 && p.Nodes.Cast<TreeNode>().All(x => x.Checked);
+            }
+            finally { suppress = false; }
             UpdateSummary();
         }
 
@@ -425,8 +452,11 @@ namespace FastDM
         void SetAll(bool on)
         {
             suppress = true;
-            foreach (TreeNode n in tree.Nodes) { n.Checked = on; SetChildren(n, on); }
-            suppress = false;
+            try
+            {
+                foreach (TreeNode n in tree.Nodes) { n.Checked = on; SetChildren(n, on); }
+            }
+            finally { suppress = false; }
             UpdateSummary();
         }
 
@@ -439,8 +469,11 @@ namespace FastDM
                 .ToHashSet();
 
             suppress = true;
-            foreach (TreeNode n in tree.Nodes) ApplyFilterNode(n, exts);
-            suppress = false;
+            try
+            {
+                foreach (TreeNode n in tree.Nodes) ApplyFilterNode(n, exts);
+            }
+            finally { suppress = false; }
             UpdateSummary();
         }
 
@@ -453,21 +486,30 @@ namespace FastDM
                 n.Checked = on;
                 return on;
             }
-            bool any = false;
-            foreach (TreeNode c in n.Nodes) any |= ApplyFilterNode(c, exts);
-            n.Checked = any || n.Nodes.Count == 0;
+            foreach (TreeNode c in n.Nodes) ApplyFilterNode(c, exts);
+            n.Checked = n.Nodes.Count == 0 ? exts.Count == 0 : n.Nodes.Cast<TreeNode>().All(x => x.Checked);
             return n.Checked;
         }
 
         void UpdateSummary()
         {
             int files = 0, folders = 0; long size = 0; bool unknown = false;
-            foreach (TreeNode node in tree.Nodes)
+            void Count(TreeNode node)
             {
-                if (!node.Checked || node.Tag is not RemoteNode remote) continue;
-                if (remote.IsDir) { folders++; unknown = true; }
-                else { files++; if (remote.Size > 0) size += remote.Size; else unknown = true; }
+                if (node.Tag is not RemoteNode remote) return;
+                if (node.Checked && remote.IsDir) folders++;
+                if (node.Checked && !remote.IsDir)
+                {
+                    files++;
+                    if (remote.Size > 0) size += remote.Size; else unknown = true;
+                }
+                else if (node.Checked && remote.IsDir && node.Nodes.Count == 0)
+                {
+                    unknown = true;
+                }
+                foreach (TreeNode child in node.Nodes) Count(child);
             }
+            foreach (TreeNode node in tree.Nodes) Count(node);
 
             string t = files + " file(s), " + folders + " folder(s) selected";
             if (size > 0) t += " — " + Fmt(size) + (unknown ? "+" : "");
@@ -519,23 +561,47 @@ namespace FastDM
         {
             string relative = RelativePath(rootUri, currentUri);
             var filter = ParseFilter();
-            int selectedFolders = tree.Nodes.Cast<TreeNode>().Count(n => n.Checked && n.Tag is RemoteNode rn && rn.IsDir);
+            int selectedFolders = CountSelectedFolders(tree.Nodes);
             int completed = 0;
             foreach (TreeNode n in tree.Nodes)
+                await CollectSelectedNodeAsync(n, relative, files, filter, selectedFolders, () => ++completed, token);
+        }
+
+        static int CountSelectedFolders(TreeNodeCollection nodes)
+        {
+            int count = 0;
+            foreach (TreeNode node in nodes)
             {
-                if (!n.Checked || n.Tag is not RemoteNode item) continue;
-                token.ThrowIfCancellationRequested();
-                if (!item.IsDir)
-                {
-                    if (!MatchesFilter(item.Name, filter)) continue;
+                if (node.Tag is RemoteNode { IsDir: true } && node.Checked) count++;
+                else count += CountSelectedFolders(node.Nodes);
+            }
+            return count;
+        }
+
+        async Task CollectSelectedNodeAsync(TreeNode node, string relative, List<PickedFile> files,
+            HashSet<string> filter, int selectedFolders, Func<int> nextFolder, CancellationToken token)
+        {
+            if (node.Tag is not RemoteNode item) return;
+            token.ThrowIfCancellationRequested();
+            if (!item.IsDir)
+            {
+                if (node.Checked && MatchesFilter(item.Name, filter))
                     files.Add(new PickedFile { Url = item.Url, Name = item.Name, Size = item.Size, RelDir = relative });
-                    continue;
-                }
-                lblStatus.Text = "Scanning selected folder " + (++completed) + " of " + selectedFolders + "…";
+                return;
+            }
+
+            string nestedRelative = Path.Combine(relative, SafeSeg(item.Name));
+            if (node.Checked)
+            {
+                lblStatus.Text = "Scanning selected folder " + nextFolder() + " of " + selectedFolders + "…";
                 var progress = new Progress<int>(count => lblStatus.Text = "Scanning selected folder… " + count + " file(s) found");
                 var subtree = await ScanWithCredentialsAsync(new Uri(item.Url), progress, token);
-                CollectRemote(subtree, Path.Combine(relative, SafeSeg(item.Name)), files, filter);
+                CollectRemote(subtree, nestedRelative, files, filter);
+                return;
             }
+
+            foreach (TreeNode child in node.Nodes)
+                await CollectSelectedNodeAsync(child, nestedRelative, files, filter, selectedFolders, nextFolder, token);
         }
 
         HashSet<string> ParseFilter() => txtFilter.Text

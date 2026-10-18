@@ -760,31 +760,38 @@ namespace FastDM
             }
             else if (e.ColumnIndex == 2)
             {
+                var labelRect = new Rectangle(
+                    r.Right - 48,
+                    r.Y,
+                    44,
+                    r.Height);
                 var bar = new Rectangle(
                     r.X + 6,
                     r.Y + (r.Height - 18) / 2,
-                    r.Width - 14,
+                    Math.Max(0, labelRect.Left - (r.X + 10)),
                     18);
 
                 g.SmoothingMode =
                     SmoothingMode.AntiAlias;
 
-                using (var gp = RoundRect(bar, 8))
+                int trackRadius = Math.Min(8, Math.Min(bar.Width / 2, bar.Height / 2));
                 using (var b = new SolidBrush(p.Track))
                 {
-                    g.FillPath(b, gp);
+                    if (trackRadius == 0) g.FillRectangle(b, bar);
+                    else
+                    {
+                        using var gp = RoundRect(bar, trackRadius);
+                        g.FillPath(b, gp);
+                    }
                 }
 
                 string label;
 
                 if (it.TotalBytes > 0)
                 {
-                    int w = (int)(
-                        bar.Width *
-                        it.Percent /
-                        100.0);
+                    int w = Math.Clamp((int)Math.Round(bar.Width * it.Percent / 100.0), 0, bar.Width);
 
-                    if (w > 6)
+                    if (w > 0)
                     {
                         var fill = new Rectangle(
                             bar.X,
@@ -792,20 +799,26 @@ namespace FastDM
                             w,
                             bar.Height);
 
-                        using (var gp =
-                               RoundRect(fill, 8))
-                        using (var b =
-                               new SolidBrush(
-                                   RowColor(it)))
+                        int fillRadius = Math.Min(8, Math.Min(fill.Width / 2, fill.Height / 2));
+                        using (var b = new SolidBrush(RowColor(it)))
                         {
-                            g.FillPath(b, gp);
+                            if (fillRadius == 0)
+                                g.FillRectangle(b, fill);
+                            else
+                            {
+                                using var gp = RoundRect(fill, fillRadius);
+                                g.FillPath(b, gp);
+                            }
                         }
                     }
-
-                    label =
-                        it.Percent.ToString("0.0") +
-                        "%";
                 }
+
+                if (it.State == DlState.Error)
+                    label = "Error";
+                else if (it.State == DlState.Paused)
+                    label = "Paused";
+                else if (it.TotalBytes > 0)
+                    label = it.Percent.ToString("0") + "%";
                 else
                 {
                     label =
@@ -818,10 +831,11 @@ namespace FastDM
                     g,
                     label,
                     BarFont,
-                    bar,
+                    labelRect,
                     p.Text,
                     TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.HorizontalCenter);
+                    TextFormatFlags.Right |
+                    TextFormatFlags.EndEllipsis);
             }
             else
             {

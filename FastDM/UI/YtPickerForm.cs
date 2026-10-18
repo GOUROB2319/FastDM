@@ -37,6 +37,7 @@ namespace FastDM
         readonly int maxPlaylistEntries;
         readonly bool ignoreCookies;
         readonly CancellationTokenSource previewCts = new CancellationTokenSource();
+        readonly Font mergeFont;
         readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
         readonly PictureBox thumbnail;
         readonly Panel singlePanel, playlistPanel;
@@ -64,6 +65,7 @@ namespace FastDM
             ShowInTaskbar = false;
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = new Font("Segoe UI", 9.5f);
+            mergeFont = new Font(Font.FontFamily, 8.5f, FontStyle.Regular);
             ClientSize = new Size(760, 650);
             MinimumSize = new Size(660, 590);
 
@@ -146,7 +148,7 @@ namespace FastDM
             singlePanel.Controls.Add(cmbAudio);
             lblSize = new Label { Location = new Point(0, 96), Size = new Size(690, 24), AutoEllipsis = true };
             singlePanel.Controls.Add(lblSize);
-            lblMerge = new Label { Location = new Point(0, 122), Size = new Size(690, 24), AutoEllipsis = true };
+            lblMerge = new Label { Location = new Point(0, 122), Size = new Size(690, 24), AutoEllipsis = true, Font = mergeFont, ForeColor = Theme.P.SubText };
             singlePanel.Controls.Add(lblMerge);
 
             lblCount = new Label { Dock = DockStyle.Top, Height = 26, Text = "Loading playlist entries…", AutoEllipsis = true };
@@ -232,6 +234,7 @@ namespace FastDM
             {
                 thumbnail.Image?.Dispose();
                 previewCts.Dispose();
+                mergeFont.Dispose();
             };
             Shown += async (s, e) => await LoadPreviewAsync();
         }
@@ -417,14 +420,22 @@ namespace FastDM
                 return;
             }
             var option = (cmbVideo.SelectedItem as OptItem)?.Tag as YtVideoOpt;
-            lblSize.Text = option != null && option.EstBytes > 0
+            var visibleOptions = cmbVideo.Items.Cast<OptItem>()
+                .Select(x => x.Tag as YtVideoOpt)
+                .Where(x => x != null)
+                .Cast<YtVideoOpt>()
+                .ToList();
+            bool estimatesRepeat = visibleOptions.Count > 1 &&
+                visibleOptions.All(x => x.EstBytes > 0) &&
+                visibleOptions.Select(x => x.EstBytes).Distinct().Count() == 1;
+            lblSize.Text = option != null && option.EstBytes > 0 && !estimatesRepeat
                 ? "Estimated download size: about " + YtDlpInfo.Fmt(option.EstBytes)
                 : "Estimated download size: unknown";
             lblMerge.Text = option?.RequiresMerge == true && FfmpegLocator.Find() != null
-                ? "This format downloads separate video and audio streams, then merges them with FFmpeg."
+                ? "Video and audio will be joined after download."
                 : FfmpegLocator.Find() == null
                     ? "FFmpeg is unavailable; this format does not require a merge."
-                    : "This format is available as one stream; no merge is expected.";
+                    : "One stream; no merging needed.";
         }
 
         void OnPlaylistItemCheck(object? sender, ItemCheckEventArgs e)
