@@ -22,8 +22,20 @@ namespace FastDM.Tests
             T.Check("audio-only formats contribute a size estimate", info.HasAudio && info.BestAudioBytes == 2000000);
             T.Check("video choices retain merge need and estimated bytes", info.Videos.Any(x => x.Height == 1080 && x.RequiresMerge && x.EstBytes == 10000000));
             var merged = info.Videos.First(x => x.Height == 1080);
+            var bestAvailable = info.Videos.First(x => x.Height == 0);
+            T.Check("known video and audio sizes are summed for quality and best estimates",
+                merged.EstBytes == 10000000 && merged.Label.Contains("≈ 9.5 MB", StringComparison.Ordinal) &&
+                bestAvailable.EstBytes == 10000000 && bestAvailable.Label.Contains("≈ 9.5 MB", StringComparison.Ordinal));
+            T.Check("separate video and audio formats have a plain-language label",
+                merged.Label.Contains("video + audio merged", StringComparison.Ordinal) && !merged.Label.Contains("may need merging", StringComparison.Ordinal));
             T.Check("FFmpeg selection chooses merged selector, while no-merge selection is explicit", merged.GetSelector(true) == merged.Selector && merged.GetSelector(false) == "b[height<=1080]");
             T.Check("combined format can be chosen without a merge", info.Videos.Any(x => x.Height == 360 && !x.RequiresMerge && x.GetSelector(false) != null));
+
+            const string unknownSizeJson = """{"formats":[{"vcodec":"avc1","acodec":"none","height":1080,"ext":"mp4","tbr":1800},{"vcodec":"avc1","acodec":"none","height":720,"ext":"mp4","tbr":900},{"vcodec":"none","acodec":"mp4a.40.2","ext":"m4a","filesize_approx":19600000,"tbr":128}]}""";
+            var unknownSizeInfo = YtDlpMetadataParser.ParseVideo(unknownSizeJson);
+            T.Check("unknown video sizes omit quality and best available estimates despite known audio size",
+                unknownSizeInfo.BestAudioBytes == 19600000 && unknownSizeInfo.Videos.Count == 3 && unknownSizeInfo.Videos.All(x =>
+                    x.EstBytes == 0 && !x.Label.Contains("≈", StringComparison.Ordinal)));
         }
 
         static void PlaylistParsing()

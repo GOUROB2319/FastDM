@@ -145,7 +145,7 @@ namespace FastDM
             bool hasCombined = combinedByHeight.Count > 0;
             long bestEstimate = best.Value == null
                 ? 0
-                : best.Value.Bytes + (best.Value.Combined ? 0 : bestAudio);
+                : EstimateBytes(best.Value, bestAudio);
 
             if (byHeight.Count > 0)
             {
@@ -162,11 +162,11 @@ namespace FastDM
             foreach (int height in byHeight.Keys.OrderByDescending(x => x))
             {
                 var selected = byHeight[height];
-                long estimate = selected.Bytes + (selected.Combined ? 0 : bestAudio);
+                long estimate = EstimateBytes(selected, bestAudio);
                 string label = height + "p" + (selected.Fps > 30 ? selected.Fps.ToString(CultureInfo.InvariantCulture) : "") +
                     (selected.Ext.Length > 0 ? "  •  " + selected.Ext : "") +
                     (estimate > 0 ? "  •  ≈ " + Fmt(estimate) : "") +
-                    (!selected.Combined ? "  •  may need merging" : "");
+                    (!selected.Combined ? "  •  video + audio merged" : "");
                 info.Videos.Add(new YtVideoOpt
                 {
                     Label = label,
@@ -182,6 +182,11 @@ namespace FastDM
 
             return info;
         }
+
+        static long EstimateBytes(FormatInfo format, long bestAudio) =>
+            format.Bytes > 0
+                ? format.Bytes + (format.Combined ? 0 : bestAudio)
+                : 0;
 
         public static YtPlaylistInfo ParsePlaylist(string json)
         {

@@ -102,6 +102,7 @@ namespace FastDM
         readonly Button btnOk, btnStream, btnBack, btnUp;
         readonly FlowLayoutPanel breadcrumb;
         readonly ImageList treeImages;
+        readonly HashSet<TreeNode> partiallySelectedNodes = new HashSet<TreeNode>();
         readonly Stack<Uri> history = new Stack<Uri>();
         readonly CheckBox chkLocalPlaylist;
         CancellationTokenSource? cts;
@@ -219,11 +220,13 @@ namespace FastDM
                 CheckBoxes = true,
                 HideSelection = false,
                 ShowLines = true,
+                DrawMode = TreeViewDrawMode.OwnerDrawText,
                 ImageList = treeImages,
                 AccessibleName = "Remote folders and files",
                 AccessibleDescription = "Browse the remote folder tree. Use Space to select folders or files."
             };
             tree.AfterCheck += OnAfterCheck;
+            tree.DrawNode += DrawFolderNode;
             tree.NodeMouseDoubleClick += async (s, e) =>
             {
                 if (e.Node?.Tag is RemoteNode node && node.IsDir && Uri.TryCreate(node.Url, UriKind.Absolute, out var target))
@@ -517,6 +520,7 @@ namespace FastDM
             try
             {
                 tree.Nodes.Clear();
+                partiallySelectedNodes.Clear();
                 bool hasMedia = EnumerateRemote(root).Any(x => !x.IsDir && PlaylistBuilder.IsMedia(x.Name));
                 AddChildren(tree.Nodes, root, hasMedia);
                 foreach (TreeNode n in tree.Nodes) if (n.Nodes.Count > 0) n.Expand();
@@ -591,6 +595,78 @@ namespace FastDM
             foreach (TreeNode c in n.Nodes) { c.Checked = on; SetChildren(c, on); }
         }
 
+        void DrawFolderNode(object? sender, DrawTreeNodeEventArgs e)
+        {
+            TreeNode? node = e.Node;
+            if (node == null || !partiallySelectedNodes.Contains(node))
+            {
+                e.DrawDefault = true;
+                return;
+            }
+
+            e.DrawDefault = false;
+            const TextFormatFlags flags = TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter;
+            string suffix = " (partial)";
+            var bounds = e.Bounds;
+            int availableWidth = Math.Max(0, tree.ClientRectangle.Right - bounds.X - 2);
+            if (availableWidth == 0 || bounds.Height <= 0) return;
+
+            int suffixWidth = TextRenderer.MeasureText(suffix, tree.Font,
+                new Size(int.MaxValue, bounds.Height), flags).Width;
+            suffixWidth = Math.Min(suffixWidth, availableWidth);
+            int maximumTextWidth = Math.Max(0, availableWidth - suffixWidth);
+            int measuredTextWidth = TextRenderer.MeasureText(node.Text, tree.Font,
+                new Size(int.MaxValue, bounds.Height), flags).Width;
+            int textWidth = Math.Min(measuredTextWidth, maximumTextWidth);
+            int totalWidth = Math.Min(availableWidth, textWidth + suffixWidth);
+            var displayBounds = new Rectangle(bounds.X, bounds.Y, totalWidth, bounds.Height);
+            bool selected = (e.State & TreeNodeStates.Selected) != 0;
+            bool focused = (e.State & TreeNodeStates.Focused) != 0;
+            Color background = selected ? Theme.P.Accent : tree.BackColor;
+            Color foreground = selected
+                ? Theme.ContrastText(background)
+                : node.ForeColor.IsEmpty ? Theme.P.Text : node.ForeColor;
+
+            if (selected)
+                using (var selectionBrush = new SolidBrush(background))
+                    e.Graphics.FillRectangle(selectionBrush, displayBounds);
+
+            var textBounds = new Rectangle(bounds.X, bounds.Y, textWidth, bounds.Height);
+            var suffixBounds = new Rectangle(bounds.X + textWidth, bounds.Y, suffixWidth, bounds.Height);
+            TextRenderer.DrawText(e.Graphics, node.Text, tree.Font, textBounds, foreground, flags | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, suffix, tree.Font, suffixBounds,
+                selected ? foreground : Theme.P.SubText, flags);
+
+            if (focused)
+                ControlPaint.DrawFocusRectangle(e.Graphics, displayBounds, foreground, background);
+        }
+
+        (int Selected, int Total) CountSelectionUnits(TreeNode node)
+        {
+            if (node.Nodes.Count == 0)
+                return (node.Checked ? 1 : 0, 1);
+
+            int selected = 0;
+            int total = 0;
+            foreach (TreeNode child in node.Nodes)
+            {
+                var childCounts = CountSelectionUnits(child);
+                selected += childCounts.Selected;
+                total += childCounts.Total;
+            }
+
+            if (node.Tag is RemoteNode { IsDir: true } && selected > 0 && selected < total)
+                partiallySelectedNodes.Add(node);
+            return (selected, total);
+        }
+
+        void RefreshPartialSelectionStates()
+        {
+            partiallySelectedNodes.Clear();
+            foreach (TreeNode node in tree.Nodes) CountSelectionUnits(node);
+            tree.Invalidate();
+        }
+
         void SetAll(bool on)
         {
             suppress = true;
@@ -635,6 +711,7 @@ namespace FastDM
 
         void UpdateSummary()
         {
+            RefreshPartialSelectionStates();
             int files = 0, folders = 0; long size = 0; bool unknown = false;
             void Count(TreeNode node)
             {
