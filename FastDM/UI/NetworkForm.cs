@@ -102,7 +102,7 @@ namespace FastDM
                 MaximumSize = new Size(Theme.Scale(this, 440), 0),
                 Margin = new Padding(0, Theme.Scale(this, 8), 0, Theme.Scale(this, 4)),
                 AccessibleName = "Connection test result",
-                AccessibleRole = AccessibleRole.Status
+                AccessibleRole = AccessibleRole.Alert
             };
             lblTest.ContextMenuStrip = new ContextMenuStrip();
             lblTest.ContextMenuStrip.Items.Add("Copy", null, (a, b) =>
