@@ -184,11 +184,15 @@ namespace FastDM
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
         static extern int SetWindowTheme(IntPtr hwnd, string? appName, string? idList);
 
-        public static void StyleScroll(Control c)
+        public static void StyleScroll(Control c, bool darkModeExplorer = true)
         {
             void apply()
             {
-                try { SetWindowTheme(c.Handle, IsDark ? "DarkMode_Explorer" : "Explorer", null); }
+                try
+                {
+                    string? theme = darkModeExplorer ? (IsDark ? "DarkMode_Explorer" : "Explorer") : "";
+                    SetWindowTheme(c.Handle, theme, null);
+                }
                 catch (Exception exIgnored2) { AppLog.Write("Theme (ignored): " + exIgnored2.Message); }
             }
             if (c.IsHandleCreated) apply(); else c.HandleCreated += (s, e) => apply();
@@ -203,6 +207,7 @@ namespace FastDM
             ts.ForeColor = P.Text;
             foreach (ToolStripItem item in ts.Items)
             {
+                StyleStripItem(item);
                 if (item is ToolStripTextBox text)
                 {
                     text.BackColor = P.Input;
@@ -220,6 +225,20 @@ namespace FastDM
                         }
                 }
             }
+        }
+
+        static void StyleStripItem(ToolStripItem item)
+        {
+            if (item is ToolStripLabel label)
+            {
+                label.LinkColor = P.SubText;
+                label.ActiveLinkColor = P.Text;
+                label.VisitedLinkColor = P.SubText;
+                label.LinkBehavior = LinkBehavior.HoverUnderline;
+            }
+            if (item is ToolStripDropDownItem dropDown)
+                foreach (ToolStripItem child in dropDown.DropDownItems)
+                    StyleStripItem(child);
         }
 
         // ---------- Apply theme to all controls in the form/dialog ----------
@@ -366,10 +385,13 @@ namespace FastDM
                     case ValidationInputFrame frame:
                         frame.BackColor = P.Input;
                         break;
+                    case SearchInputFrame frame:
+                        frame.BackColor = P.Input;
+                        break;
                     case TextBoxBase t:
                         t.BackColor = P.Input;
                         t.ForeColor = P.Text;
-                        t.BorderStyle = t.Parent is ValidationInputFrame ? BorderStyle.None : BorderStyle.FixedSingle;
+                        t.BorderStyle = t.Parent is ValidationInputFrame or SearchInputFrame ? BorderStyle.None : BorderStyle.FixedSingle;
                         break;
                     case ComboBox cb:
                         cb.BackColor = P.Input;
@@ -417,9 +439,15 @@ namespace FastDM
                         }
                         break;
                     case ListView lv:
-                        lv.BackColor = P.Input;
+                        lv.BackColor = lv is BufferedListView ? P.Window : P.Input;
                         lv.ForeColor = P.Text;
-                        StyleScroll(lv);
+                        if (lv is BufferedListView buffered)
+                        {
+                            buffered.GridLines = false;
+                            StyleScroll(buffered, darkModeExplorer: false);
+                            buffered.InvalidateHeader();
+                        }
+                        else StyleScroll(lv);
                         break;
                     case TreeView tv:
                         tv.BackColor = P.Input;

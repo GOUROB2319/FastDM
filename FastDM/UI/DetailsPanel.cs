@@ -13,6 +13,9 @@ namespace FastDM
         public const int HistoryLength = 120;     // ০.৫ সেকেন্ড x ১২০ = ৬০ সেকেন্ড
 
         DownloadItem? item;
+        DownloadItem? lastRefreshItem;
+        string? lastRefreshValues;
+        double[] lastRefreshHistory = Array.Empty<double>();
         readonly Font bold;
         readonly Font underline;
         readonly ToolTip tips;
@@ -65,8 +68,33 @@ namespace FastDM
                 : string.Join(". ", BuildRows(it).ConvertAll(row => row[0] + ": " + row[1])) +
                   ". Use the scrollbar, mouse wheel, or Up and Down to scroll. Use Left and Right to select Save to or Link, then Enter or Space to activate. Right-click either value to copy it.";
             tips.SetToolTip(this, it == null ? null : "Use the mouse wheel or Up/Down to scroll. Tab to the details, then Left/Right and Enter to open an action. Right-click Save to or Link to copy its value.");
+            CaptureRefreshValues();
             Invalidate();
         }
+
+        public bool RefreshIfChanged()
+        {
+            if (item == null) return false;
+            string values = ValuesSignature(item);
+            double[] history = item.SpeedHistory.ToArray();
+            if (ReferenceEquals(lastRefreshItem, item) && lastRefreshValues == values &&
+                lastRefreshHistory.SequenceEqual(history)) return false;
+            lastRefreshItem = item;
+            lastRefreshValues = values;
+            lastRefreshHistory = history;
+            Invalidate();
+            return true;
+        }
+
+        void CaptureRefreshValues()
+        {
+            lastRefreshItem = item;
+            lastRefreshValues = item == null ? null : ValuesSignature(item);
+            lastRefreshHistory = item?.SpeedHistory.ToArray() ?? Array.Empty<double>();
+        }
+
+        string ValuesSignature(DownloadItem it) => string.Join("\u001f",
+            BuildRows(it).Select(row => row[0] + "\u001e" + row[1]));
 
         protected override AccessibleObject CreateAccessibilityInstance() => new DetailsAccessibleObject(this);
 

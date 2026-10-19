@@ -411,6 +411,7 @@ namespace FastDM
             lv.ForeColor = p.Text;
 
             sidebar.BackColor = p.SideBg;
+            sidebar.IntegralHeight = false;
             dragOverlay.BackColor = p.Selection;
             if (dragOverlay.Controls.Count > 0)
             {

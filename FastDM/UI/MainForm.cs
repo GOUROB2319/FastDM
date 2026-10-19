@@ -187,6 +187,7 @@ namespace FastDM
 
             DpiChanged += (s, e) => RefreshDpiMetrics();
             SizeChanged += (s, e) => RequestToolbarFit();
+            ResizeEnd += (s, e) => FitLastColumn();
 
             ApplyTheme();
             RebuildList();

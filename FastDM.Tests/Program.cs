@@ -18,6 +18,7 @@ HttpRangeValidationTests.Run();
 DownloadDisplayNameTests.Run();
 AddUrlValidationTests.Run();
 DownloadColumnLayoutTests.Run();
+DownloadRowRefreshPolicyTests.Run();
 ToolbarLayoutPolicyTests.Run();
 await BridgeServerTests.RunAsync();
 return T.Done();

@@ -147,13 +147,12 @@ namespace FastDM
             }
             else
             {
-                foreach (ListViewItem l in lv.Items)
+                for (int row = 0; row < lv.Items.Count; row++)
                 {
-                    if (l.Tag is DownloadItem item)
-                        FillRow(l, item);
+                    var l = lv.Items[row];
+                    if (l.Tag is DownloadItem item && FillRow(l, item))
+                        lv.RedrawItems(row, row, invalidateOnly: true);
                 }
-
-                lv.Invalidate();
             }
 
             int actNow =
@@ -166,16 +165,11 @@ namespace FastDM
                     i => i.State ==
                          DlState.Queued);
 
-            lblActive.Text =
-                "Active: " +
-                actNow +
-                "   Queued: " +
-                queNow;
+            string activeText = "Active: " + actNow + "   Queued: " + queNow;
+            if (lblActive.Text != activeText) lblActive.Text = activeText;
 
-            lblSpeed.Text =
-                "↓ " +
-                Fmt(total) +
-                "/s";
+            string speedText = "↓ " + Fmt(total) + "/s";
+            if (lblSpeed.Text != speedText) lblSpeed.Text = speedText;
 
             string limText =
                 settings.SpeedLimitKBps > 0
@@ -202,17 +196,12 @@ namespace FastDM
             if (lblSched.Text != schedText)
                 lblSched.Text = schedText;
 
-            if (details.Visible &&
-                details.Item != null)
-            {
-                details.Invalidate();
-            }
+            if (details.Visible) details.RefreshIfChanged();
 
             PeriodicMaintenance();
             PauseSlowDownloads();
 
-            UpdateSideCounts();
-            sidebar.Invalidate();
+            if (UpdateSideCounts()) sidebar.Invalidate();
 
             string tip =
                 actNow > 0

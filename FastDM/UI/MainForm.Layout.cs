@@ -46,6 +46,7 @@ namespace FastDM
                 FullRowSelect = true,
                 MultiSelect = true,
                 HideSelection = false,
+                GridLines = false,
                 OwnerDraw = true,
                 BorderStyle = BorderStyle.None,
                 ShowItemToolTips = true,
@@ -66,7 +67,7 @@ namespace FastDM
             lv.Columns.Add("Speed", 95);
             lv.Columns.Add("ETA", 80);
             lv.Columns.Add("Added", 150);
-            lv.ClientSizeChanged += (s, e) => FitLastColumn();
+            lv.SizeChanged += (s, e) => FitLastColumn();
 
             lv.DrawColumnHeader += DrawHeader;
             lv.DrawItem += (s, e) => { };
@@ -99,6 +100,7 @@ namespace FastDM
                     Sel().FirstOrDefault());
 
             listHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.P.Window };
+            listHost.SizeChanged += (s, e) => FitLastColumn();
             var listLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -130,7 +132,8 @@ namespace FastDM
             }, 0, 0);
             searchBox = new TextBox
             {
-                Dock = DockStyle.Fill,
+                AutoSize = true,
+                BorderStyle = BorderStyle.None,
                 PlaceholderText = "Filter by name or URL",
                 AccessibleName = "Search downloads"
             };
@@ -144,7 +147,17 @@ namespace FastDM
                     e.SuppressKeyPress = true;
                 }
             };
-            searchHeader.Controls.Add(searchBox, 1, 0);
+            var searchFrame = new SearchInputFrame { Dock = DockStyle.Fill };
+            searchFrame.Controls.Add(searchBox);
+            void CenterSearchBox()
+            {
+                searchBox.Width = Math.Max(0, searchFrame.ClientSize.Width - Theme.Scale(this, 8));
+                searchBox.Left = Theme.Scale(this, 4);
+                searchBox.Top = Math.Max(0, (searchFrame.ClientSize.Height - searchBox.Height) / 2);
+            }
+            searchFrame.Resize += (s, e) => CenterSearchBox();
+            searchFrame.Layout += (s, e) => CenterSearchBox();
+            searchHeader.Controls.Add(searchFrame, 1, 0);
             var clearSearch = new Button { Text = "Clear", Dock = DockStyle.Fill, Margin = new Padding(Theme.Scale(this, 8), 0, 0, 0) };
             clearSearch.Click += (s, e) => { searchBox.Clear(); searchBox.Focus(); };
             searchHeader.Controls.Add(clearSearch, 2, 0);
@@ -239,8 +252,10 @@ namespace FastDM
                 Dock = DockStyle.Left,
                 Width = Theme.Scale(this, 200),
                 BorderStyle = BorderStyle.None,
+                IntegralHeight = false,
                 DrawMode = DrawMode.OwnerDrawFixed,
                 ItemHeight = Theme.Scale(this, 40),
+                BackColor = Theme.P.SideBg,
                 AccessibleName = "Download filters",
                 AccessibleDescription = "Use the arrow keys to switch between download filters."
             };
@@ -889,10 +904,13 @@ namespace FastDM
             }
 
             bool sorted = e.ColumnIndex == sortColumn;
+            bool rightAligned = DownloadColumnLayout.IsRightAligned(e.ColumnIndex);
+            int padding = Theme.Scale(this, 8);
             var tr = new Rectangle(
-                e.Bounds.X + Theme.Scale(this, 8),
+                e.Bounds.X + padding,
                 e.Bounds.Y,
-                Math.Max(0, e.Bounds.Width - Theme.Scale(this, sorted ? 28 : 12)),
+                Math.Max(0, e.Bounds.Width - padding -
+                    (rightAligned ? padding : Theme.Scale(this, sorted ? 28 : 4))),
                 e.Bounds.Height);
             string headerText = (e.Header?.Text ?? "") +
                 (sorted ? (sortAscending ? "  \u25B2" : "  \u25BC") : "");
@@ -904,7 +922,7 @@ namespace FastDM
                 tr,
                 p.SubText,
                 TextFormatFlags.VerticalCenter |
-                TextFormatFlags.Left |
+                (rightAligned ? TextFormatFlags.Right : TextFormatFlags.Left) |
                 TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPrefix);
         }
@@ -972,15 +990,15 @@ namespace FastDM
             else if (e.ColumnIndex == 2)
             {
                 var labelRect = new Rectangle(
-                    r.Right - 48,
+                    r.Right - Theme.Scale(this, 48),
                     r.Y,
-                    44,
+                    Theme.Scale(this, 44),
                     r.Height);
                 var bar = new Rectangle(
-                    r.X + 6,
-                    r.Y + (r.Height - 18) / 2,
-                    Math.Max(0, labelRect.Left - (r.X + 10)),
-                    18);
+                    r.X + Theme.Scale(this, 6),
+                    r.Y + (r.Height - Theme.Scale(this, 18)) / 2,
+                    Math.Max(0, labelRect.Left - (r.X + Theme.Scale(this, 10))),
+                    Theme.Scale(this, 18));
 
                 g.SmoothingMode =
                     SmoothingMode.AntiAlias;
@@ -1050,10 +1068,12 @@ namespace FastDM
             }
             else
             {
+                bool rightAligned = DownloadColumnLayout.IsRightAligned(e.ColumnIndex);
+                int padding = Theme.Scale(this, 8);
                 var tr = new Rectangle(
-                    r.X + 6,
+                    r.X + (rightAligned ? padding : Theme.Scale(this, 6)),
                     r.Y,
-                    r.Width - 8,
+                    r.Width - (rightAligned ? padding * 2 : Theme.Scale(this, 8)),
                     r.Height);
 
                 TextRenderer.DrawText(
@@ -1062,8 +1082,13 @@ namespace FastDM
                     Font,
                     tr,
                     p.Text,
-                    flags);
+                    rightAligned
+                        ? (flags & ~TextFormatFlags.Left) | TextFormatFlags.Right
+                        : flags);
             }
+
+            using (var separator = new Pen(p.Border))
+                g.DrawLine(separator, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
         }
 
         static GraphicsPath RoundRect(
@@ -1110,20 +1135,27 @@ namespace FastDM
             return p;
         }
 
-        void UpdateSideCounts()
+        bool UpdateSideCounts()
         {
+            bool changed = false;
             for (int i = 0;
                  i < sideCounts.Length;
                  i++)
             {
                 int idx = i;
 
-                sideCounts[i] =
+                int count =
                     idx == DeletedFilter
                         ? deleted.Count
                         : items.Count(
                             x => Match(idx, x));
+                if (sideCounts[i] != count)
+                {
+                    sideCounts[i] = count;
+                    changed = true;
+                }
             }
+            return changed;
         }
 
         void OnMainKeyDown(object? sender, KeyEventArgs e)
@@ -1210,6 +1242,9 @@ namespace FastDM
                 else
                     sidebar.Invalidate();
 
+                try { BeginInvoke((Action)FitLastColumn); }
+                catch (InvalidOperationException) { FitLastColumn(); }
+
                 RequestToolbarFit();
             }
         }
@@ -1279,10 +1314,19 @@ namespace FastDM
                 lv.Columns.Count == 0)
                 return;
 
-            var widths = DownloadColumnLayout.Fit(Math.Max(0, lv.ClientSize.Width - 4));
+            var widths = DownloadColumnLayout.Fit(Math.Max(0, lv.ClientSize.Width), DeviceDpi);
+            bool changed = false;
             for (int i = 0; i < Math.Min(widths.Length, lv.Columns.Count); i++)
                 if (lv.Columns[i].Width != widths[i])
+                {
                     lv.Columns[i].Width = widths[i];
+                    changed = true;
+                }
+            if (changed)
+            {
+                lv.InvalidateHeader();
+                lv.Invalidate();
+            }
         }
     }
 }

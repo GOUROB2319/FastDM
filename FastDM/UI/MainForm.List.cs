@@ -390,26 +390,26 @@ namespace FastDM
                 }
             }
 
-            UpdateSideCounts();
-            sidebar.Invalidate();
+            if (UpdateSideCounts()) sidebar.Invalidate();
         }
 
-        static void SetIf(
+        static bool SetIf(
             ListViewItem l,
             int idx,
             string text)
         {
-            if (l.SubItems[idx].Text != text)
-                l.SubItems[idx].Text = text;
+            if (!DownloadRowRefreshPolicy.CellChanged(l.SubItems[idx].Text, text)) return false;
+            l.SubItems[idx].Text = text;
+            return true;
         }
 
-        static void FillDeletedRow(
+        static bool FillDeletedRow(
             ListViewItem l,
             DownloadItem it)
         {
-            SetIf(l, 0, DisplayFileName(it.FileName));
+            bool changed = SetIf(l, 0, DisplayFileName(it.FileName));
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 1,
                 it.TotalBytes > 0
@@ -418,32 +418,33 @@ namespace FastDM
                         ? Fmt(it.Downloaded)
                         : "\u2014");
 
-            SetIf(l, 2, it.Percent.ToString("0.0") + "%");
-            SetIf(l, 3, it.DeletedReason ?? "Deleted");
-            SetIf(l, 4, "");
-            SetIf(l, 5, "");
+            changed |= SetIf(l, 2, it.Percent.ToString("0.0") + "%");
+            changed |= SetIf(l, 3, it.DeletedReason ?? "Deleted");
+            changed |= SetIf(l, 4, "");
+            changed |= SetIf(l, 5, "");
             var date = it.DeletedAt ?? it.Added;
-            SetIf(l, 6, FormatListDate(date));
-            l.ToolTipText = AddListDetailsToTooltip(
+            changed |= SetIf(l, 6, FormatListDate(date));
+            string tooltip = AddListDetailsToTooltip(
                 AddDateToTooltip(it.Url, "Deleted", date), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
+            if (l.ToolTipText != tooltip) { l.ToolTipText = tooltip; changed = true; }
+            return changed;
         }
 
-        void FillRow(
+        bool FillRow(
             ListViewItem l,
             DownloadItem it)
         {
             if (it.DeletedAt.HasValue)
             {
-                FillDeletedRow(l, it);
-                return;
+                return FillDeletedRow(l, it);
             }
 
-            SetIf(
+            bool changed = SetIf(
                 l,
                 0,
                 DisplayFileName(it.FileName));
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 1,
                 it.TotalBytes > 0
@@ -455,14 +456,14 @@ namespace FastDM
                       Fmt(it.TotalBytes)
                     : "—");
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 2,
                 it.YtDlp != null && YtDlpRetryPolicy.IsProcessing(it.ProgressStage)
                     ? YtDlpRetryPolicy.StageLabel(it.ProgressStage) + "…"
                     : it.Percent.ToString("0.0") + "%");
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 3,
                 it.State == DlState.Downloading &&
@@ -477,7 +478,7 @@ namespace FastDM
                             ? "Paused (schedule)"
                             : StateText(it.State));
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 4,
                 it.State == DlState.Downloading &&
@@ -485,12 +486,12 @@ namespace FastDM
                     ? Fmt(it.Speed) + "/s"
                     : "");
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 5,
                 Eta(it));
 
-            SetIf(
+            changed |= SetIf(
                 l,
                 6,
                 FormatListDate(it.Added));
@@ -499,14 +500,29 @@ namespace FastDM
             {
                 var kind = YtDlpDiagnostics.Classify(it.Error);
                 var description = YtDlpDiagnostics.Describe(kind, UpdateChecker.IsPackaged);
-                l.ToolTipText = AppLog.Redact(description.Summary + "\n" + description.NextStep + "\n" + (it.Error ?? ""));
+                var baseTooltip = AppLog.Redact(description.Summary + "\n" + description.NextStep + "\n" + (it.Error ?? ""));
+                string fullTooltip = AddListDetailsToTooltip(
+                    AddDateToTooltip(baseTooltip, "Added", it.Added), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
+                if (l.ToolTipText != fullTooltip) { l.ToolTipText = fullTooltip; changed = true; }
             }
             else
             {
-                l.ToolTipText = it.State == DlState.Error ? AppLog.Redact(it.Error) : it.Url;
+                var baseTooltip = it.State == DlState.Error ? AppLog.Redact(it.Error) : it.Url;
+                string fullTooltip = AddListDetailsToTooltip(
+                    AddDateToTooltip(baseTooltip, "Added", it.Added), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
+                if (l.ToolTipText != fullTooltip) { l.ToolTipText = fullTooltip; changed = true; }
             }
-            l.ToolTipText = AddListDetailsToTooltip(
-                AddDateToTooltip(l.ToolTipText, "Added", it.Added), it, l.SubItems[3].Text, l.SubItems[1].Text, l.SubItems[4].Text, l.SubItems[5].Text);
+
+            int progressWidth = Math.Max(0, lv.Columns.Count > 2 ? lv.Columns[2].Width - Theme.Scale(this, 58) : 0);
+            int fillWidth = it.TotalBytes > 0
+                ? Math.Clamp((int)Math.Round(progressWidth * it.Percent / 100.0), 0, progressWidth)
+                : 0;
+            if (DownloadRowRefreshPolicy.ShouldRedraw(false, l.SubItems[2].Tag, fillWidth))
+            {
+                l.SubItems[2].Tag = fillWidth;
+                changed = true;
+            }
+            return changed;
         }
 
         static string AddListDetailsToTooltip(string? tooltip, DownloadItem it, string status, string size, string speed, string eta)

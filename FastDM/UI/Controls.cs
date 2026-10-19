@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -143,6 +144,27 @@ namespace FastDM
         }
     }
 
+    class SearchInputFrame : Panel
+    {
+        public SearchInputFrame()
+        {
+            DoubleBuffered = true;
+            Padding = new Padding(2);
+            BackColor = Theme.P.Input;
+            SetStyle(ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var bounds = ClientRectangle;
+            bounds.Width--;
+            bounds.Height--;
+            using var pen = new Pen(Theme.P.Border);
+            e.Graphics.DrawRectangle(pen, bounds);
+        }
+    }
+
     class ValidationMessageLabel : Label
     {
         public ValidationMessageLabel()
@@ -155,23 +177,194 @@ namespace FastDM
     // ====================== ফ্লিকার-ফ্রি ListView ======================
     class BufferedListView : ListView
     {
+        const int WmEraseBkgnd = 0x0014;
+        const int LvmGetHeader = 0x101F;
+        const int LvmGetExtendedListViewStyle = 0x1037;
+        const int LvmSetExtendedListViewStyle = 0x1036;
+        const int LvsExGridLines = 0x00000001;
+        const int LvsExDoubleBuffer = 0x00010000;
+        ThemedListViewHeader? themedHeader;
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
         public BufferedListView()
         {
             DoubleBuffered = true;
+            GridLines = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+
+            long current = SendMessage(Handle, LvmGetExtendedListViewStyle, IntPtr.Zero, IntPtr.Zero).ToInt64();
+            long requested = (current | LvsExDoubleBuffer) & ~LvsExGridLines;
+            SendMessage(Handle, LvmSetExtendedListViewStyle,
+                new IntPtr(LvsExGridLines | LvsExDoubleBuffer), new IntPtr(requested));
+            long verified = SendMessage(Handle, LvmGetExtendedListViewStyle, IntPtr.Zero, IntPtr.Zero).ToInt64();
+            System.Diagnostics.Debug.Assert((verified & LvsExDoubleBuffer) != 0 && (verified & LvsExGridLines) == 0,
+                "The download list must be double buffered with native grid lines disabled.");
+
+            IntPtr header = SendMessage(Handle, LvmGetHeader, IntPtr.Zero, IntPtr.Zero);
+            if (header != IntPtr.Zero)
+            {
+                themedHeader?.Dispose();
+                themedHeader = new ThemedListViewHeader(header);
+            }
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            themedHeader?.Dispose();
+            themedHeader = null;
+            base.OnHandleDestroyed(e);
+        }
+
+        internal void InvalidateHeader() => themedHeader?.Invalidate();
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WmEraseBkgnd && m.WParam != IntPtr.Zero)
+            {
+                using var graphics = Graphics.FromHdc(m.WParam);
+                using var brush = new SolidBrush(Theme.P.Window);
+                graphics.FillRectangle(brush, ClientRectangle);
+                m.Result = new IntPtr(1);
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        sealed class ThemedListViewHeader : NativeWindow, IDisposable
+        {
+            const int WmPaint = 0x000F;
+            const int WmEraseBkgnd = 0x0014;
+            const int HdmGetItemCount = 0x1200;
+            const int HdmGetItemRect = 0x1207;
+
+            [StructLayout(LayoutKind.Sequential)]
+            struct NativeRect
+            {
+                public int Left, Top, Right, Bottom;
+            }
+
+            [DllImport("user32.dll", SetLastError = true)]
+            static extern bool GetClientRect(IntPtr hWnd, out NativeRect rect);
+
+            [DllImport("user32.dll")]
+            static extern IntPtr GetDC(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+
+            [DllImport("user32.dll", CharSet = CharSet.Auto)]
+            static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+            [DllImport("user32.dll")]
+            static extern bool InvalidateRect(IntPtr hWnd, IntPtr rect, bool erase);
+
+            public ThemedListViewHeader(IntPtr handle) => AssignHandle(handle);
+
+            public void Invalidate()
+            {
+                if (Handle != IntPtr.Zero) InvalidateRect(Handle, IntPtr.Zero, true);
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == WmEraseBkgnd && m.WParam != IntPtr.Zero)
+                {
+                    FillBackground(m.WParam);
+                    m.Result = new IntPtr(1);
+                    return;
+                }
+
+                if (m.Msg == WmPaint)
+                {
+                    base.WndProc(ref m);
+                    PaintFiller();
+                    return;
+                }
+
+                base.WndProc(ref m);
+            }
+
+            void FillBackground(IntPtr hdc)
+            {
+                if (!GetClientRect(Handle, out var client)) return;
+                using var graphics = Graphics.FromHdc(hdc);
+                using var brush = new SolidBrush(Theme.P.Header);
+                graphics.FillRectangle(brush, client.Left, client.Top,
+                    Math.Max(0, client.Right - client.Left), Math.Max(0, client.Bottom - client.Top));
+            }
+
+            void PaintFiller()
+            {
+                if (Handle == IntPtr.Zero || !GetClientRect(Handle, out var client)) return;
+                int left = client.Left;
+                int count = (int)SendMessage(Handle, HdmGetItemCount, IntPtr.Zero, IntPtr.Zero).ToInt64();
+                if (count > 0)
+                {
+                    IntPtr memory = Marshal.AllocHGlobal(Marshal.SizeOf<NativeRect>());
+                    try
+                    {
+                        if (SendMessage(Handle, HdmGetItemRect, new IntPtr(count - 1), memory) != IntPtr.Zero)
+                            left = Marshal.PtrToStructure<NativeRect>(memory).Right;
+                    }
+                    finally { Marshal.FreeHGlobal(memory); }
+                }
+
+                if (left >= client.Right) return;
+                IntPtr hdc = GetDC(Handle);
+                if (hdc == IntPtr.Zero) return;
+                try
+                {
+                    using var graphics = Graphics.FromHdc(hdc);
+                    using var brush = new SolidBrush(Theme.P.Header);
+                    using var border = new Pen(Theme.P.Border);
+                    graphics.FillRectangle(brush, left, client.Top, client.Right - left, client.Bottom - client.Top);
+                    graphics.DrawLine(border, left, client.Bottom - 1, client.Right, client.Bottom - 1);
+                }
+                finally { ReleaseDC(Handle, hdc); }
+            }
+
+            public void Dispose()
+            {
+                if (Handle != IntPtr.Zero) ReleaseHandle();
+            }
         }
     }
 
     class BufferedListBox : ListBox
     {
+        const int WmEraseBkgnd = 0x0014;
+
         public BufferedListBox()
         {
             DoubleBuffered = true;
 
             SetStyle(
+                ControlStyles.UserPaint |
                 ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.ResizeRedraw,
                 true);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WmEraseBkgnd && m.WParam != IntPtr.Zero)
+            {
+                using var graphics = Graphics.FromHdc(m.WParam);
+                using var brush = new SolidBrush(BackColor);
+                graphics.FillRectangle(brush, ClientRectangle);
+                m.Result = new IntPtr(1);
+                return;
+            }
+            base.WndProc(ref m);
         }
     }
 }
