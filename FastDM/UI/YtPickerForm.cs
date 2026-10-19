@@ -403,10 +403,11 @@ namespace FastDM
             {
                 if (IsDisposed || Disposing) return;
                 loading = false;
-                string message = ex.GetBaseException().Message;
-                ErrorMessage = ex is YtDlpProcessException processException && !string.IsNullOrWhiteSpace(processException.DiagnosticText)
+                string message = AppLog.Redact(ex.GetBaseException().Message);
+                string diagnostic = ex is YtDlpProcessException processException && !string.IsNullOrWhiteSpace(processException.DiagnosticText)
                     ? processException.DiagnosticText
                     : message;
+                ErrorMessage = AppLog.Redact(diagnostic);
                 lblStatus.Text = "Couldn't load video information. Check the link or connection, then retry.";
                 btnStart.Enabled = false;
                 btnLater.Enabled = false;

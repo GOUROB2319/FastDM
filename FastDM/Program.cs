@@ -94,7 +94,7 @@ namespace FastDM
             try
             {
                 MessageBox.Show(
-                    "FastDM hit an unexpected error:\n\n" + (ex?.Message ?? "unknown error"),
+                    "FastDM hit an unexpected error:\n\n" + AppLog.Redact(ex?.Message ?? "unknown error"),
                     "FastDM",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);

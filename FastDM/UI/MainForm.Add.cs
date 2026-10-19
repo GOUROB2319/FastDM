@@ -848,7 +848,7 @@ namespace FastDM
                     ThemeDialog.Show(
                         this,
                         "Could not read this stream.\n\n" +
-                        ex.GetBaseException().Message,
+                        AppLog.Redact(ex.GetBaseException().Message),
                         "Video",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);

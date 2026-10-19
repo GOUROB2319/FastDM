@@ -17,6 +17,8 @@ namespace FastDM
     // ====================== লিঙ্ক ধরন চেনা + ওয়েবপেজ থেকে ভিডিও খোঁজা ======================
     public static class MediaDetector
     {
+        const int MaxCandidates = 500;
+
         static readonly HashSet<string> DirectExt = new HashSet<string>
         { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".flv", ".wmv", ".m4v", ".ts" };
 
@@ -105,6 +107,7 @@ namespace FastDM
                 var kind = KindFromUrl(u.AbsoluteUri);
                 if (kind == MediaKind.None) return;
                 if (!seen.Add(u.AbsoluteUri)) return;
+                if (result.Candidates.Count >= MaxCandidates) return;
 
                 string name = Uri.UnescapeDataString(Path.GetFileName(u.AbsolutePath));
                 string tag = kind == MediaKind.Hls ? "HLS stream" : kind == MediaKind.Dash ? "DASH stream" : "Video file";
@@ -127,6 +130,7 @@ namespace FastDM
                     title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText;
                 if (!string.IsNullOrWhiteSpace(title))
                     result.Title = HtmlEntity.DeEntitize(title).Trim();
+                if (result.Title?.Length > 512) result.Title = result.Title.Substring(0, 512);
 
                 foreach (var n in doc.DocumentNode.SelectNodes("//video[@src]|//source[@src]") ?? new HtmlNodeCollection(null))
                     Add(HtmlEntity.DeEntitize(n.GetAttributeValue("src", "")));
@@ -147,9 +151,13 @@ namespace FastDM
     // ====================== নেটওয়ার্ক হেল্পার ======================
     public static class MediaNet
     {
+        const int MaxTextBytes = 4_000_000;
+
         public static async Task<string> GetTextAsync(string url, string? referer, CancellationToken ct,
                                                        int maxBytes = 4_000_000, HttpClient? client = null)
         {
+            if (maxBytes < 1) throw new ArgumentOutOfRangeException(nameof(maxBytes));
+            maxBytes = Math.Min(maxBytes, MaxTextBytes);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(referer))
             {
@@ -160,15 +168,18 @@ namespace FastDM
             using var resp = await (client ?? DownloadEngine.SharedClient).SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             DownloadEngine.CheckAuth(resp);
             resp.EnsureSuccessStatusCode();
+            if (resp.Content.Headers.ContentLength is long contentLength && contentLength > maxBytes)
+                throw new InvalidDataException("The media manifest exceeds FastDM's 4 MB safety limit.");
 
             using var st = await resp.Content.ReadAsStreamAsync(ct);
             using var ms = new MemoryStream();
             var buf = new byte[81920];
             int n;
-            while ((n = await st.ReadAsync(buf.AsMemory(), ct)) > 0)
+            while ((n = await st.ReadAsync(buf.AsMemory(0, Math.Min(buf.Length, maxBytes - (int)ms.Length + 1)), ct)) > 0)
             {
+                if (n > maxBytes - ms.Length)
+                    throw new InvalidDataException("The media manifest exceeds FastDM's 4 MB safety limit.");
                 ms.Write(buf, 0, n);
-                if (ms.Length >= maxBytes) break;
             }
             return Encoding.UTF8.GetString(ms.ToArray()).TrimStart('\uFEFF');
         }

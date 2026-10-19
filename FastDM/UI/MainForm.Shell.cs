@@ -197,6 +197,7 @@ namespace FastDM
 
         void Cleanup()
         {
+            SshHostKeys.FirstUseConfirmation = null;
             try
             {
                 SystemEvents.UserPreferenceChanged -=

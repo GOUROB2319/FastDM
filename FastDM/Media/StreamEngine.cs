@@ -16,6 +16,8 @@ namespace FastDM
     // HLS / DASH স্ট্রিম ডাউনলোড: সেগমেন্ট আলাদা আলাদা ফাইলে নামিয়ে (resume করা যায়), শেষে ffmpeg দিয়ে জোড়া লাগায়
     public static class StreamEngine
     {
+        const int MaxEncryptedSegmentBytes = 16 * 1024 * 1024;
+
         class PartSeg
         {
             public string Url = "", File = "";
@@ -70,13 +72,14 @@ namespace FastDM
             it.StatusNote = "";
 
             var keys = new ConcurrentDictionary<string, byte[]>();
+            using var encryptedSlots = new SemaphoreSlim(1, 1);
             int par = Math.Clamp(connections, 1, 16);
 
             await Parallel.ForEachAsync(todo,
                 new ParallelOptions { MaxDegreeOfParallelism = par, CancellationToken = ct },
                 async (seg, token) =>
                 {
-                    await DownloadSegmentAsync(client, it, seg, spec.Referer, keys, token);
+                    await DownloadSegmentAsync(client, it, seg, spec.Referer, keys, encryptedSlots, token);
                     int d = Interlocked.Increment(ref done);
                     it.StreamDone = d;
                     UpdateEstimate(it);
@@ -172,56 +175,145 @@ namespace FastDM
 
         // ---------- একটা সেগমেন্ট নামানো (+ দরকার হলে AES-128 ডিক্রিপ্ট) ----------
         static async Task DownloadSegmentAsync(HttpClient client, DownloadItem it, PartSeg s, string? referer,
-                                               ConcurrentDictionary<string, byte[]> keys, CancellationToken ct)
+                                               ConcurrentDictionary<string, byte[]> keys, SemaphoreSlim encryptedSlots,
+                                               CancellationToken ct)
         {
             int attempt = 0;
+            bool encrypted = !string.IsNullOrEmpty(s.KeyUrl);
+            string tmp = s.File + ".tmp";
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
                 long counted = 0;
+                bool slotHeld = false;
                 try
                 {
+                    if (encrypted)
+                    {
+                        await encryptedSlots.WaitAsync(ct);
+                        slotHeld = true;
+                    }
+
                     using var req = new HttpRequestMessage(HttpMethod.Get, s.Url);
                     if (!string.IsNullOrEmpty(referer))
                     {
                         try { req.Headers.Referrer = new Uri(referer); } catch (Exception exIgnored2) { AppLog.Write("StreamEngine (ignored): " + exIgnored2.Message); }
                     }
-                    if (s.Start >= 0 && s.Len > 0)
-                        req.Headers.Range = new RangeHeaderValue(s.Start, s.Start + s.Len - 1);
+                    bool ranged = s.Start >= 0 && s.Len > 0;
+                    long rangeEnd = 0;
+                    if (ranged)
+                    {
+                        rangeEnd = checked(s.Start + s.Len - 1);
+                        req.Headers.Range = new RangeHeaderValue(s.Start, rangeEnd);
+                    }
                     DownloadEngine.ApplyAuth(req);
 
                     using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
                     DownloadEngine.CheckAuth(resp);
                     resp.EnsureSuccessStatusCode();
+                    if (ranged)
+                    {
+                        var range = resp.Content.Headers.ContentRange;
+                        if (resp.StatusCode != System.Net.HttpStatusCode.PartialContent || range == null ||
+                            !string.Equals(range.Unit, "bytes", StringComparison.OrdinalIgnoreCase) ||
+                            range.From != s.Start || range.To != rangeEnd ||
+                            (resp.Content.Headers.ContentLength is long rangeLength && rangeLength != s.Len))
+                            throw new InvalidDataException("The server returned a mismatched HLS byte range.");
+                    }
+                    if (encrypted && resp.Content.Headers.ContentLength is long encryptedLength && encryptedLength > MaxEncryptedSegmentBytes)
+                        throw new InvalidDataException("The encrypted stream segment exceeds FastDM's 16 MB safety limit.");
 
                     using var st = await resp.Content.ReadAsStreamAsync(ct);
-                    using var ms = new MemoryStream();
                     var buf = new byte[1 << 16];
-                    int n;
-                    while ((n = await st.ReadAsync(buf.AsMemory(), ct)) > 0)
+                    if (encrypted)
                     {
-                        ms.Write(buf, 0, n);
-                        counted += n;
-                        it.AddDownloaded(n);
-                        await SpeedLimiter.ThrottleAsync(n, ct);
+                        using var ms = new MemoryStream();
+                        int n;
+                        while ((n = await st.ReadAsync(buf.AsMemory(), ct)) > 0)
+                        {
+                            if (ms.Length + n > MaxEncryptedSegmentBytes)
+                                throw new InvalidDataException("The encrypted stream segment exceeds FastDM's 16 MB safety limit.");
+                            ms.Write(buf, 0, n);
+                            counted += n;
+                            it.AddDownloaded(n);
+                            await SpeedLimiter.ThrottleAsync(n, ct);
+                        }
+                        if (ranged && counted != s.Len)
+                            throw new InvalidDataException("The server returned an incomplete HLS byte range.");
+
+                        byte[] data = await DecryptAsync(client, ms.ToArray(), s, referer, keys, ct);
+                        await File.WriteAllBytesAsync(tmp, data, ct);
+                    }
+                    else
+                    {
+                        await using var output = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read,
+                            1 << 16, FileOptions.Asynchronous);
+                        int n;
+                        while ((n = await st.ReadAsync(buf.AsMemory(), ct)) > 0)
+                        {
+                            if (ranged && counted + n > s.Len)
+                                throw new InvalidDataException("The server returned more bytes than the requested HLS range.");
+                            await output.WriteAsync(buf.AsMemory(0, n), ct);
+                            counted += n;
+                            it.AddDownloaded(n);
+                            await SpeedLimiter.ThrottleAsync(n, ct);
+                        }
+                        if (ranged && counted != s.Len)
+                            throw new InvalidDataException("The server returned an incomplete HLS byte range.");
                     }
 
-                    byte[] data = ms.ToArray();
-                    if (!string.IsNullOrEmpty(s.KeyUrl)) data = await DecryptAsync(client, data, s, referer, keys, ct);
-
-                    string tmp = s.File + ".tmp";
-                    await File.WriteAllBytesAsync(tmp, data, ct);
                     File.Move(tmp, s.File, true);
                     return;
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (AuthRequiredException) { throw; }
+                catch (OperationCanceledException)
+                {
+                    it.AddDownloaded(-counted);
+                    TryDeleteTemp(tmp);
+                    throw;
+                }
+                catch (AuthRequiredException)
+                {
+                    it.AddDownloaded(-counted);
+                    TryDeleteTemp(tmp);
+                    throw;
+                }
+                catch (InvalidDataException)
+                {
+                    it.AddDownloaded(-counted);
+                    TryDeleteTemp(tmp);
+                    throw;
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode is { } code &&
+                    (int)code >= 400 && (int)code < 500 && code != System.Net.HttpStatusCode.RequestTimeout &&
+                    code != System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    it.AddDownloaded(-counted);
+                    TryDeleteTemp(tmp);
+                    throw;
+                }
                 catch when (++attempt < 5)
                 {
                     it.AddDownloaded(-counted);            // আবার চেষ্টার আগে গোনা বাইট ফেরত
+                    TryDeleteTemp(tmp);
                     await Task.Delay(1000 * attempt, ct);
                 }
+                catch
+                {
+                    it.AddDownloaded(-counted);
+                    TryDeleteTemp(tmp);
+                    throw;
+                }
+                finally
+                {
+                    if (slotHeld) encryptedSlots.Release();
+                }
             }
+        }
+
+        static void TryDeleteTemp(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch (Exception ex) { AppLog.Write("StreamEngine temp cleanup failed: " + ex.Message); }
         }
 
         static async Task<byte[]> DecryptAsync(HttpClient client, byte[] data, PartSeg s, string? referer,
@@ -239,8 +331,19 @@ namespace FastDM
                 using var resp = await client.SendAsync(req, ct);
                 DownloadEngine.CheckAuth(resp);
                 resp.EnsureSuccessStatusCode();
-                key = await resp.Content.ReadAsByteArrayAsync(ct);
-                if (key.Length != 16) throw new InvalidDataException("Unsupported encryption key.");
+                if (resp.Content.Headers.ContentLength is long keyLength && keyLength != 16)
+                    throw new InvalidDataException("Unsupported encryption key.");
+                using var keyStream = await resp.Content.ReadAsStreamAsync(ct);
+                var keyBuffer = new byte[17];
+                int keyBytes = 0;
+                while (keyBytes < keyBuffer.Length)
+                {
+                    int n = await keyStream.ReadAsync(keyBuffer.AsMemory(keyBytes), ct);
+                    if (n == 0) break;
+                    keyBytes += n;
+                }
+                if (keyBytes != 16) throw new InvalidDataException("Unsupported encryption key.");
+                key = keyBuffer.AsSpan(0, 16).ToArray();
                 keys[keyUrl] = key;
             }
 
@@ -362,17 +465,22 @@ namespace FastDM
 
             using var p = new Process { StartInfo = psi };
             var sb = new StringBuilder();
-            p.ErrorDataReceived += (s, e) => { if (e.Data != null && sb.Length < 4000) sb.AppendLine(e.Data); };
-            p.OutputDataReceived += (s, e) => { };
-
             p.Start();
-            p.BeginErrorReadLine();
-            p.BeginOutputReadLine();
+            Task output = ProcessOutput.DrainLinesAsync(p.StandardOutput, _ => { });
+            Task error = ProcessOutput.DrainLinesAsync(p.StandardError, line => ProcessOutput.AppendBoundedTail(sb, line, 4000));
 
             using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored5) { AppLog.Write("StreamEngine (ignored): " + exIgnored5.Message); } }))
             {
-                await p.WaitForExitAsync(ct);
+                try { await p.WaitForExitAsync(ct); }
+                catch
+                {
+                    try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored6) { AppLog.Write("StreamEngine cleanup failed: " + exIgnored6.Message); }
+                    await p.WaitForExitAsync(CancellationToken.None);
+                    await Task.WhenAll(output, error);
+                    throw;
+                }
             }
+            await Task.WhenAll(output, error);
             return new KeyValuePair<int, string>(p.ExitCode, sb.ToString());
         }
     }

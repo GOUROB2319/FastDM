@@ -10,6 +10,14 @@ if (args.Length == 1 && args[0] == "--emit-unicode")
     Console.WriteLine("ASCII you’re not a bot — বাংলা ভিডিও");
     return 0;
 }
+if (args.Length == 1 && args[0] == "--emit-large-line")
+{
+    Console.Out.Write(new string('o', 2 * 1024 * 1024));
+    Console.Out.WriteLine();
+    Console.Error.Write(new string('e', 2 * 1024 * 1024));
+    Console.Error.WriteLine();
+    return 0;
+}
 if (args.Length == 1 && args[0] == "--sleep")
 {
     await Task.Delay(TimeSpan.FromSeconds(30));
@@ -48,6 +56,50 @@ try
     Check("yt-dlp process runner decodes ASCII, Unicode punctuation and Bangla output (exit " + unicodeExit + "; " + unicodeOutput.ToString().Trim() + "; " + unicodeError.ToString().Trim() + ")",
         unicodeExit == 0 && unicodeOutput.ToString().Contains("ASCII you’re not a bot — বাংলা ভিডিও"));
 
+    string? largeStdout = null;
+    string? largeStderr = null;
+    int largeLineExit = await YtDlpRunner.RunAsync(processHost,
+        new[] { "--emit-large-line" },
+        line => largeStdout = line, line => largeStderr = line, CancellationToken.None);
+    Check("yt-dlp process runner bounds a single huge line on both output streams",
+        largeLineExit == 0 && largeStdout != null && largeStdout.Length < 70_000 && largeStderr != null && largeStderr.Length < 70_000 &&
+        largeStdout.Contains("output line truncated", StringComparison.Ordinal) &&
+        largeStderr.Contains("output line truncated", StringComparison.Ordinal));
+
+    bool hlsSegmentsCapped = false;
+    try
+    {
+        string hls = "#EXTM3U\n#EXT-X-ENDLIST\n" + string.Join("\n", Enumerable.Repeat("segment.ts", 10_001));
+        Hls.ParseMedia(hls, new Uri("https://media.example/playlist.m3u8"));
+    }
+    catch (InvalidDataException) { hlsSegmentsCapped = true; }
+    Check("HLS parser rejects manifests with more than 10,000 segments", hlsSegmentsCapped);
+
+    const string dashTemplate = "<MPD mediaPresentationDuration=\"PT10S\"><Period><AdaptationSet mimeType=\"video/mp4\" contentType=\"video\"><SegmentTemplate duration=\"1\" media=\"segment-$Number$.m4s\"/><Representation id=\"v1\"/></AdaptationSet></Period></MPD>";
+    var dashParsed = Dash.Parse(dashTemplate, new Uri("https://media.example/manifest.mpd"));
+    Check("DASH template expansion produces the expected bounded segment list", dashParsed.Reps.Count == 1 && dashParsed.Reps[0].SegUrls.Count == 10);
+
+    bool dashSegmentsCapped = false;
+    try
+    {
+        Dash.Parse(dashTemplate.Replace("PT10S", "PT20001S", StringComparison.Ordinal), new Uri("https://media.example/manifest.mpd"));
+    }
+    catch (InvalidDataException) { dashSegmentsCapped = true; }
+    Check("DASH parser rejects template expansion above 20,000 segments", dashSegmentsCapped);
+
+    bool dtdRejected = false;
+    try
+    {
+        Dash.Parse("<!DOCTYPE MPD [<!ENTITY xxe SYSTEM 'file:///C:/Windows/win.ini'>]><MPD>&xxe;</MPD>", new Uri("https://media.example/manifest.mpd"));
+    }
+    catch (System.Xml.XmlException) { dtdRejected = true; }
+    Check("DASH parser prohibits DTD and external entity resolution", dtdRejected);
+
+    bool dashSizeCapped = false;
+    try { Dash.Parse(new string(' ', 4_000_001), new Uri("https://media.example/manifest.mpd")); }
+    catch (InvalidDataException) { dashSizeCapped = true; }
+    Check("DASH parser rejects XML over 4 MB before parsing", dashSizeCapped);
+
     bool processCancelled = false;
     using (var processCancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200)))
     {
@@ -79,6 +131,11 @@ try
     await using var server = new LocalServer(payload);
     await server.StartAsync();
 
+    bool oversizedManifestRejected = false;
+    try { await MediaNet.GetTextAsync(server.Url("/oversized-text"), null, CancellationToken.None); }
+    catch (InvalidDataException) { oversizedManifestRejected = true; }
+    Check("media manifest reader rejects oversized chunked responses instead of parsing a truncated prefix", oversizedManifestRejected);
+
     var stateItem = NewItem("https://user:secret@example.test/file?signature=keep", root, "state.bin");
     stateItem.Cookies = new List<BridgeCookie> { new() { Name = "session", Value = "private-cookie", Domain = "example.test", Path = "/" } };
     string stateJson = System.Text.Json.JsonSerializer.Serialize(stateItem);
@@ -88,6 +145,15 @@ try
     await DownloadEngine.ProbeAsync(ranged, CancellationToken.None);
     await DownloadEngine.RunAsync(ranged, 1, CancellationToken.None);
     Check("loopback range download writes the exact response bytes", File.ReadAllBytes(ranged.SavePath).SequenceEqual(payload));
+
+    var changedRepresentation = NewItem(server.Url("/etag-change"), root, "changed.bin");
+    await DownloadEngine.ProbeAsync(changedRepresentation, CancellationToken.None);
+    bool rejectedChangedRepresentation = false;
+    try { await DownloadEngine.RunAsync(changedRepresentation, 1, CancellationToken.None); }
+    catch (InvalidDataException) { rejectedChangedRepresentation = true; }
+    Check("resumed ranges send If-Range and reject a changed representation before finalizing",
+        changedRepresentation.Validator == "etag:\"v1\"" && server.EtagIfRangeRequests > 0 &&
+        rejectedChangedRepresentation && !File.Exists(changedRepresentation.SavePath));
 
     var redirected = NewItem(server.Url("/redirect"), root, "redirect.bin");
     await DownloadEngine.ProbeAsync(redirected, CancellationToken.None);
@@ -247,6 +313,7 @@ sealed class LocalServer : IAsyncDisposable
     readonly byte[] payload;
     readonly HttpListener listener = new();
     int retryRequests;
+    int etagIfRangeRequests;
     int activeSlow;
     int maxSlow;
     int subdirectoryRequests;
@@ -255,6 +322,7 @@ sealed class LocalServer : IAsyncDisposable
     public int Port { get; private set; }
     public int MaxSlowConcurrent => Volatile.Read(ref maxSlow);
     public int SubdirectoryRequests => Volatile.Read(ref subdirectoryRequests);
+    public int EtagIfRangeRequests => Volatile.Read(ref etagIfRangeRequests);
     public string Url(string path) => $"http://127.0.0.1:{Port}{path}";
 
     public LocalServer(byte[] payload) => this.payload = payload;
@@ -314,6 +382,34 @@ sealed class LocalServer : IAsyncDisposable
     {
         var req = context.Request;
         var res = context.Response;
+        if (path == "/etag-change")
+        {
+            if (req.Headers["Range"] == "bytes=0-0")
+            {
+                res.Headers[HttpResponseHeader.ETag] = "\"v1\"";
+                res.StatusCode = (int)HttpStatusCode.PartialContent;
+                res.Headers[HttpResponseHeader.ContentRange] = $"bytes 0-0/{payload.Length}";
+                res.ContentLength64 = 1;
+                await res.OutputStream.WriteAsync(payload.AsMemory(0, 1));
+            }
+            else
+            {
+                if (req.Headers["If-Range"] == "\"v1\"") Interlocked.Increment(ref etagIfRangeRequests);
+                res.Headers[HttpResponseHeader.ETag] = "\"v2\"";
+                res.StatusCode = (int)HttpStatusCode.OK;
+                res.ContentLength64 = payload.Length;
+                await res.OutputStream.WriteAsync(payload);
+            }
+            res.Close();
+            return;
+        }
+        if (path == "/oversized-text")
+        {
+            res.SendChunked = true;
+            await WriteBytesAsync(res, Encoding.ASCII.GetBytes(new string('x', 4_000_001)), 0, 4_000_001, slow: false);
+            res.Close();
+            return;
+        }
         if (path == "/index/" || path == "/index/sub/" || path == "/not-index/" || path == "/index/huge/" || path == "/index/oversize/")
         {
             if (path == "/index/sub/") Interlocked.Increment(ref subdirectoryRequests);
@@ -382,6 +478,7 @@ sealed class LocalServer : IAsyncDisposable
             res.Close();
             return;
         }
+        res.Headers[HttpResponseHeader.ETag] = "\"stable\"";
         if (rangeHeader == null || path == "/no-range")
         {
             res.StatusCode = (int)HttpStatusCode.OK;

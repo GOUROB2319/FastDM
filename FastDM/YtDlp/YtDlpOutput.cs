@@ -18,6 +18,7 @@ namespace FastDM
         public static string ItemDirName(string itemId) =>
             ".fastdm-" + (itemId.Length >= 8 ? itemId.Substring(0, 8) : itemId);
 
+
         // The newest finished file in the folder, or null.
         public static string? FindFinal(string dir)
         {

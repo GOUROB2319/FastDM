@@ -116,7 +116,7 @@ namespace FastDM
                 r.Ok = true;
             }
             catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { r.Error = ex.Message; }
+            catch (Exception ex) { r.Error = AppLog.Redact(ex.Message); }
             return r;
         }
 
@@ -158,7 +158,7 @@ namespace FastDM
             }
             catch (Exception ex)
             {
-                r = new Result { Error = ex.Message };
+                r = new Result { Error = AppLog.Redact(ex.Message) };
             }
 
             if (!r.Ok)

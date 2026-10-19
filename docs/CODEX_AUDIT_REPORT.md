@@ -87,6 +87,38 @@ The package manifest check reported desktop app `1.0.13` and MSIX `1.0.13.0`; th
 
 The master plan remains the source of task requirements; this report records the current implementation and verified outcomes.
 
+## Current-state security and release re-audit - 2026-10-19
+
+This dated addendum records the follow-up implementation and checks. At inspection start the branch was `master`, HEAD was `62f2c5a`, and the worktree was clean. Local ignored tools and existing build outputs were preserved. The changes below are uncommitted; no commit, push, signing, installation, or publication was performed.
+
+### Findings and implemented changes
+
+- **SFTP trust on first use:** the first host key now requires explicit user approval that presents its SHA-256 fingerprint. Declined keys, changed keys, corrupt/unreadable trust files, and failures to persist an approved key are refused. Trust-file updates use a temporary file and atomic move. Automated tests cover approval, decline, matching and changed keys, corrupt state, and save failure. No live SFTP server was available for interactive verification.
+- **HTTP range resume integrity:** byte-range downloads require a strong ETag or Last-Modified validator. Each range request sends `If-Range`, and malformed ranges or a server response indicating a changed representation fail before a final file is created. The validator is stored on the download item for persisted resume state. A loopback regression test changes the ETag between probe and transfer and verifies rejection.
+- **Untrusted media and child output bounds:** process output lines and retained diagnostics are bounded; HLS/DASH manifests, expansions, templates and media candidates have explicit limits; XML DTD/entity resolution is disabled; oversized chunked manifests are rejected; media segment range lengths are checked; clear HLS segments are streamed to disk and encrypted payloads are capped.
+- **Secret handling:** surfaced error messages and updater/video-preview diagnostics pass through the existing redaction helper. Regression coverage exercises URLs, query values, cookies, authorization headers, proxy passwords and Unicode diagnostics.
+- **Package identity:** manifest checks report app version `1.0.13` and package version `1.0.13.0`. The clean-source package build succeeded without ignored local tools.
+
+### Verification run on 2026-10-19
+
+| Command/check | Result |
+| --- | --- |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; Debug desktop build (0 warnings/errors), package/version/tool-copy checks, 345 .NET tests, 30 loopback/process integration checks (0 failures), and 20 extension tests. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only Release build (0 warnings/errors), package checks, unsigned MSIX bundle, 345 .NET tests, 30 integration checks (0 failures), 20 extension tests, and extension ZIP. |
+| Clean-workspace MSIX bundle | **PASS as package generation only**; `FastDM.Package_1.0.13.0_x64.msixbundle`, 73,391,291 bytes. It was unsigned, not installed, and not submitted. |
+| Clean-workspace extension ZIP | **PASS**; `FastDM-Extension-0.1.0.zip`, 34,467 bytes. |
+| `node --test tests/ui-state.test.mjs` in `FastDM.Extension` | **PASS**; 2 tests. |
+| NuGet vulnerability audit for app, unit-test, and integration-test projects | **PASS**; all three `dotnet list ... package --vulnerable --include-transitive` checks reported no vulnerable packages from configured sources. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-ToolProvenance.ps1 -ForRelease` | **BLOCKED as intended**; exit 1 for `ffmpeg.exe`, `ffprobe.exe`, `avcodec-62.dll`, `avdevice-62.dll`, `avfilter-11.dll`, `avformat-62.dll`, `avutil-60.dll`, `swresample-6.dll`, and `swscale-9.dll`. Hashes/versions match the local lock, but upstream origin and redistribution provenance remain unverified. yt-dlp and Deno passed their local hash/version checks; Deno's Authenticode signature is valid. |
+| `git diff --check` | **PASS after source and documentation edits**; no whitespace errors. Git emitted line-ending conversion notices only. |
+
+### Release and manual checks still open
+
+The current strict tool-provenance failure remains a release gate. FFmpeg's official legal guidance says optional GPL components can change the license and describes source, build configuration, dynamic-linking, and notice steps for its LGPL checklist; the current local FFmpeg bundle's origin, exact source/build, complete notices and redistribution terms have not been verified. See [FFmpeg legal guidance](https://www.ffmpeg.org/legal.html). The generated MSIX verifies packaging only; code-signing, installation, Store certification and submission were not performed. Microsoft Store policy 10.2.4 requires disclosure of non-integrated software dependencies in product metadata; policy version 7.20 is listed as effective 2026-10-22, after this audit date. Recheck it at submission in [Microsoft Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies).
+
+The manual matrix in [`TESTING.md`](TESTING.md) remains unrun for live browser rendering/pairing and cookie profiles, screen-reader/high-contrast/high-DPI interaction, first-use SFTP prompt on a real server, FTP/SFTP authentication/navigation/cancellation, live YouTube extraction, reviewed FFmpeg merge scenarios, and signed Store install/upgrade/uninstall. The screenshots were not reproduced against live browser profiles. Automated tests and package creation do not establish those outcomes.
+
 ## UI/UX remediation follow-up — 2026-10-18
 
 The audit above records the earlier full engineering and security review. This follow-up completes the separate five-phase UI/UX plan and keeps its stated boundary: dialogs, controls, theme, accessibility and user-visible presentation. It does not claim new changes to the download engine, network stack, browser bridge or extension.

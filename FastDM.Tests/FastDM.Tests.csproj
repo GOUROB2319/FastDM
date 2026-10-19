@@ -42,6 +42,8 @@
 		<Compile Include="..\FastDM\YtDlp\YtDlpProcessEnvironment.cs" Link="Linked\YtDlpProcessEnvironment.cs" />
 		<Compile Include="..\FastDM\UI\DownloadDisplayName.cs" Link="Linked\DownloadDisplayName.cs" />
 		<Compile Include="..\FastDM\UI\DownloadColumnLayout.cs" Link="Linked\DownloadColumnLayout.cs" />
+		<Compile Include="..\FastDM\Network\SshHostKeys.cs" Link="Linked\SshHostKeys.cs" />
+		<Compile Include="..\FastDM\Core\ProcessOutput.cs" Link="Linked\ProcessOutput.cs" />
 		<Compile Include="..\FastDM\UI\AddUrlValidation.cs" Link="Linked\AddUrlValidation.cs" />
 	</ItemGroup>
 

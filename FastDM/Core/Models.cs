@@ -231,6 +231,7 @@ namespace FastDM
         public bool RequeueAfterPause { get; set; }     // ধীর বলে সরানো হলো: পজের পর লাইনের শেষে Queued
         public long TotalBytes { get; set; }
         public bool SupportsRange { get; set; }
+        public string? Validator { get; set; }             // strong ETag or Last-Modified used to guard ranged resume
         public bool PausedBySchedule { get; set; }      // শিডিউলার পজ করেছে, উইন্ডো খুললে আবার চলবে
         public bool NeedsProbe { get; set; }            // ফোল্ডার ডাউনলোডের আইটেম: শুরুর সময় সাইজ/resume জানবে
         public StreamSpec? Stream { get; set; }          // HLS/DASH ভিডিও আইটেম (সাধারণ ফাইলে null)

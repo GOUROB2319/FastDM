@@ -59,6 +59,13 @@ namespace FastDM.Tests
                 T.Check("target folder is created when missing", File.Exists(made));
 
                 T.Check("private folder name is short and stable", YtDlpOutput.ItemDirName("0123456789abcdef") == ".fastdm-01234567" && YtDlpOutput.ItemDirName("abc") == ".fastdm-abc");
+
+                T.Section("yt-dlp updater output bound");
+                var updateOutput = new System.Text.StringBuilder();
+                ProcessOutput.AppendBoundedTail(updateOutput, new string('x', 100), 32);
+                T.Check("a huge updater output line stays within the configured cap", updateOutput.Length == 32);
+                ProcessOutput.AppendBoundedTail(updateOutput, "ERROR: final update error", 32);
+                T.Check("bounded updater output retains the newest failure details", updateOutput.Length <= 32 && updateOutput.ToString().Contains("final update error", StringComparison.Ordinal));
             }
             finally
             {

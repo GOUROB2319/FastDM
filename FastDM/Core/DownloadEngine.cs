@@ -146,11 +146,12 @@ namespace FastDM
 
             it.ContentType = resp.Content.Headers.ContentType?.MediaType;
             it.ServerTime = resp.Content.Headers.LastModified;
+            it.Validator = HttpRangeValidation.GetValidator(resp);
 
             if (HttpRangeValidation.IsProbeResponse(resp, out long probedTotal))
             {
                 it.TotalBytes = probedTotal;
-                it.SupportsRange = true;
+                it.SupportsRange = HttpRangeValidation.IsValidValidator(it.Validator);
             }
             else
             {
@@ -188,9 +189,15 @@ namespace FastDM
             Directory.CreateDirectory(it.Folder);
             using var client = CreateCookieClient(it.Url, it.Cookies ?? it.Stream?.Cookies);
 
+            if (!HttpRangeValidation.IsValidValidator(it.Validator))
+            {
+                it.Validator = null;
+                it.SupportsRange = false;
+            }
             bool fresh =
                 it.Segments.Count == 0 ||
                 !it.SupportsRange ||
+                it.Validator == null ||
                 !File.Exists(it.TempPath) ||
                 new FileInfo(it.TempPath).Length != it.TotalBytes;
 
@@ -388,8 +395,12 @@ namespace FastDM
                         it.Url);
 
                     if (it.SupportsRange)
+                    {
                         req.Headers.Range =
                             new RangeHeaderValue(pos, seg.End);
+                        if (!HttpRangeValidation.ApplyIfRange(req, it.Validator))
+                            throw new InvalidDataException("A ranged resume has no valid resource validator.");
+                    }
 
                     ApplyAuth(req);
                     ApplyItemHeaders(req, it);
@@ -410,6 +421,8 @@ namespace FastDM
                     long expectedRangeBytes = it.SupportsRange
                         ? HttpRangeValidation.ValidateSegmentResponse(resp, pos, seg.End, it.TotalBytes)
                         : -1;
+                    if (it.SupportsRange && !HttpRangeValidation.MatchesValidator(resp, it.Validator))
+                        throw new InvalidDataException("The remote file changed during a ranged download; partial data was not combined.");
 
                     using var input =
                         await resp.Content.ReadAsStreamAsync(stall.Token)

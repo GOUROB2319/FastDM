@@ -343,3 +343,21 @@ These checks require a Windows interactive desktop and representative servers. A
 | Store package | Follow [`STORE_RELEASE_CHECKLIST.md`](STORE_RELEASE_CHECKLIST.md), including install/upgrade/uninstall, identity, privacy and Partner Center listing review. |
 
 Record each manual outcome and Windows/tool version before release. The Add URL, preview, folder-picker, dialog accessibility, and second-pass responsive UI checks above were not executed in the automated run. Popup/options state behavior has automated logic tests, but no live browser rendering check was run. No live browser cookie or FTP/SFTP server matrix was executed for this audit.
+
+## 10. Current verification record - 2026-10-19
+
+These results were recorded after the current source changes. The initial repository state was clean on `master` at `62f2c5a`; ignored local tools were preserved.
+
+| Command/check | Verified result |
+| --- | --- |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; Debug app build, manifest/version/tool-copy checks, 345 .NET regression tests, 30 local integration checks, and 20 extension tests. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only Release build, package checks, MSIX bundle, .NET and integration suites, extension tests and ZIP. The temporary tree is removed by the script. |
+| Clean-workspace MSIX | **PASS as unsigned package generation**; `FastDM.Package_1.0.13.0_x64.msixbundle`, 73,391,291 bytes. Not installed or submitted. |
+| Clean-workspace extension package | **PASS**; `FastDM-Extension-0.1.0.zip`, 34,467 bytes. |
+| `node --test tests/ui-state.test.mjs` from `FastDM.Extension` | **PASS**; 2 tests. |
+| NuGet vulnerability audit: `FastDM`, `FastDM.Tests`, `FastDM.IntegrationTests` | **PASS**; no vulnerable packages were reported for any project by `dotnet list ... package --vulnerable --include-transitive`. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-ToolProvenance.ps1 -ForRelease` | **BLOCKED as intended**; exit 1 because the nine FFmpeg/ffprobe executables and DLLs listed in [`CODEX_AUDIT_REPORT.md`](CODEX_AUDIT_REPORT.md) have unverified upstream provenance/redistribution terms. Their hashes and reported versions match the local lock. |
+| `git diff --check` | **PASS after source and documentation edits**; no whitespace errors. Git emitted line-ending conversion notices only. |
+
+The integration suite includes a changed-ETag resume case: it verifies `If-Range` is sent and the changed representation is not finalized. It also covers bounded child-process lines, oversized media manifests, HLS/DASH limits, DTD rejection, range integrity, cookies, directory-listing bounds, concurrency and cancel/resume. Automated tests do not replace the live browser, accessibility, FTP/SFTP, YouTube, merge-with-reviewed-FFmpeg, signing, installation or Store checks in the manual matrix above.

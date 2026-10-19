@@ -168,6 +168,7 @@ namespace FastDM
         public MainForm()
         {
             InitializeComponent();
+            SshHostKeys.FirstUseConfirmation = ConfirmSftpHostKey;
             Theme.ConfigureForm(this, clampToWorkArea: false);
 
             LoadState();
@@ -292,6 +293,30 @@ namespace FastDM
                     Program.ReportError("MainForm.ctor Shown", exGuard);
                 }
             };
+        }
+
+        bool ConfirmSftpHostKey(string host, int port, string fingerprint)
+        {
+            bool Ask()
+            {
+                if (IsDisposed || Disposing) return false;
+                RestoreFromTray();
+                var result = ThemeDialog.Show(
+                    this,
+                    "FastDM has not connected to this SFTP server before. Its identity cannot be verified from this connection alone. " +
+                    "Only trust this key if you have checked the fingerprint with the server administrator.\n\n" +
+                    "Server: " + host + ":" + port + "\nFingerprint: " + fingerprint +
+                    "\n\nTrust and save this key for future connections?",
+                    "FastDM — new SFTP server key",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+                return result == DialogResult.Yes;
+            }
+
+            if (!InvokeRequired) return Ask();
+            try { return (bool)Invoke(new Func<bool>(Ask)); }
+            catch { return false; }
         }
 
         // ---------- toolbar: every button stays on one row ----------

@@ -17,6 +17,11 @@ namespace FastDM
     // ====================== HLS পার্সার ======================
     public static class Hls
     {
+        const int MaxManifestCharacters = 4_000_000;
+        const int MaxPlaylistLines = 20_000;
+        const int MaxSegments = 10_000;
+        const int MaxMasterEntries = 256;
+
         public class Variant { public string Url = ""; public string? Codecs, AudioGroup; public long Bandwidth; public int W, H; }
         public class AudioTrack { public string Url = ""; public string? Group, Name, Lang; public bool Default; }
         public class Master { public List<Variant> Variants = new List<Variant>(); public List<AudioTrack> Audios = new List<AudioTrack>(); }
@@ -50,25 +55,56 @@ namespace FastDM
         {
             len = -1; off = -1;
             var p = s.Split('@');
-            long.TryParse(p[0], out len);
-            if (p.Length > 1) long.TryParse(p[1], out off);
+            if (p.Length > 2 || !long.TryParse(p[0], NumberStyles.None, CultureInfo.InvariantCulture, out len) || len <= 0)
+            { len = -1; return; }
+            if (p.Length > 1 && (!long.TryParse(p[1], NumberStyles.None, CultureInfo.InvariantCulture, out off) || off < 0))
+            { len = -1; off = -1; return; }
+            if (off > long.MaxValue - len) { len = -1; off = -1; }
+        }
+
+        static List<string> ReadLines(string text)
+        {
+            if (text.Length > MaxManifestCharacters)
+                throw new InvalidDataException("The HLS manifest exceeds FastDM's 4 MB safety limit.");
+            var lines = new List<string>();
+            using var reader = new StringReader(text);
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (lines.Count >= MaxPlaylistLines)
+                    throw new InvalidDataException("The HLS manifest exceeds FastDM's 20,000 line limit.");
+                lines.Add(line.Trim());
+            }
+            return lines;
+        }
+
+        static Uri Resolve(Uri baseUri, string reference)
+        {
+            if (reference.Length > 8192 || !Uri.TryCreate(baseUri, reference, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                throw new InvalidDataException("The HLS manifest contains an invalid or unsupported URL.");
+            return uri;
         }
 
         public static Master ParseMaster(string text, Uri baseUri)
         {
             var m = new Master();
-            var lines = text.Split('\n').Select(l => l.Trim()).ToArray();
-            for (int i = 0; i < lines.Length; i++)
+            if (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidDataException("HLS requires an HTTP or HTTPS manifest URL.");
+            var lines = ReadLines(text);
+            for (int i = 0; i < lines.Count; i++)
             {
                 string l = lines[i];
                 if (l.StartsWith("#EXT-X-STREAM-INF:"))
                 {
                     var a = Attrs(l.Substring(18));
                     int j = i + 1;
-                    while (j < lines.Length && (lines[j].Length == 0 || lines[j].StartsWith("#"))) j++;
-                    if (j >= lines.Length) break;
+                    while (j < lines.Count && (lines[j].Length == 0 || lines[j].StartsWith("#"))) j++;
+                    if (j >= lines.Count) break;
 
-                    var v = new Variant { Url = new Uri(baseUri, lines[j]).AbsoluteUri };
+                    if (m.Variants.Count >= MaxMasterEntries)
+                        throw new InvalidDataException("The HLS master manifest exceeds FastDM's 256 variant limit.");
+                    var v = new Variant { Url = Resolve(baseUri, lines[j]).AbsoluteUri };
                     if (a.TryGetValue("BANDWIDTH", out var bw)) long.TryParse(bw, out v.Bandwidth);
                     if (a.TryGetValue("RESOLUTION", out var res))
                     {
@@ -87,7 +123,9 @@ namespace FastDM
                     {
                         a.TryGetValue("URI", out var uri);
                         if (string.IsNullOrEmpty(uri)) continue;     // ভিডিওর ভেতরেই অডিও আছে
-                        var t = new AudioTrack { Url = new Uri(baseUri, uri).AbsoluteUri };
+                        if (m.Audios.Count >= MaxMasterEntries)
+                            throw new InvalidDataException("The HLS master manifest exceeds FastDM's 256 audio track limit.");
+                        var t = new AudioTrack { Url = Resolve(baseUri, uri).AbsoluteUri };
                         a.TryGetValue("GROUP-ID", out t.Group);
                         a.TryGetValue("NAME", out t.Name);
                         a.TryGetValue("LANGUAGE", out t.Lang);
@@ -102,12 +140,14 @@ namespace FastDM
         public static MediaPlaylist ParseMedia(string text, Uri baseUri)
         {
             var pl = new MediaPlaylist();
-            long seq = 0, lastEnd = 0, pendLen = -1, pendOff = -1;
+            if (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidDataException("HLS requires an HTTP or HTTPS manifest URL.");
+            long seq = 0, pendLen = -1, pendOff = -1;
             string? keyUrl = null, keyIv = null;
+            var rangeEnds = new Dictionary<string, long>(StringComparer.Ordinal);
 
-            foreach (var raw in text.Split('\n'))
+            foreach (var l in ReadLines(text))
             {
-                string l = raw.Trim();
                 if (l.Length == 0) continue;
 
                 if (l.StartsWith("#EXT-X-MEDIA-SEQUENCE:"))
@@ -122,7 +162,7 @@ namespace FastDM
                     else if (string.Equals(method, "AES-128", StringComparison.OrdinalIgnoreCase))
                     {
                         a.TryGetValue("URI", out var ku);
-                        keyUrl = ku == null ? null : new Uri(baseUri, ku).AbsoluteUri;
+                        keyUrl = ku == null ? null : Resolve(baseUri, ku).AbsoluteUri;
                         a.TryGetValue("IV", out keyIv);
                     }
                     else pl.Unsupported = "This stream uses " + method + " encryption (DRM), which is not supported.";
@@ -132,11 +172,13 @@ namespace FastDM
                     var a = Attrs(l.Substring(11));
                     if (a.TryGetValue("URI", out var mu))
                     {
-                        pl.Init = new Seg { Url = new Uri(baseUri, mu).AbsoluteUri, Seq = -1 };
+                        pl.Init = new Seg { Url = Resolve(baseUri, mu).AbsoluteUri, Seq = -1 };
                         if (a.TryGetValue("BYTERANGE", out var br))
                         {
                             ParseRange(br, out long len, out long off);
-                            if (len >= 0) { pl.Init.RangeLen = len; pl.Init.RangeStart = off >= 0 ? off : 0; }
+                            if (len <= 0) throw new InvalidDataException("The HLS initialization section contains an invalid byte range.");
+                            pl.Init.RangeLen = len;
+                            pl.Init.RangeStart = off >= 0 ? off : 0;
                         }
                         pl.Fmp4 = true;
                     }
@@ -144,6 +186,7 @@ namespace FastDM
                 else if (l.StartsWith("#EXT-X-BYTERANGE:"))
                 {
                     ParseRange(l.Substring(17), out pendLen, out pendOff);
+                    if (pendLen <= 0) throw new InvalidDataException("The HLS playlist contains an invalid byte range.");
                 }
                 else if (l.StartsWith("#EXT-X-ENDLIST"))
                 {
@@ -151,13 +194,20 @@ namespace FastDM
                 }
                 else if (!l.StartsWith("#"))
                 {
-                    var s = new Seg { Url = new Uri(baseUri, l).AbsoluteUri, KeyUrl = keyUrl, IvHex = keyIv, Seq = seq++ };
+                    if (pl.Segs.Count >= MaxSegments)
+                        throw new InvalidDataException("The HLS media playlist exceeds FastDM's 10,000 segment limit.");
+                    var s = new Seg { Url = Resolve(baseUri, l).AbsoluteUri, KeyUrl = keyUrl, IvHex = keyIv, Seq = seq++ };
                     if (pendLen >= 0)
                     {
-                        long off = pendOff >= 0 ? pendOff : lastEnd;
+                        long off;
+                        if (pendOff >= 0) off = pendOff;
+                        else if (!rangeEnds.TryGetValue(s.Url, out off))
+                            throw new InvalidDataException("The HLS byte range has no offset or previous range for this resource.");
                         s.RangeStart = off;
                         s.RangeLen = pendLen;
-                        lastEnd = off + pendLen;
+                        if (off < 0 || off > long.MaxValue - pendLen)
+                            throw new InvalidDataException("The HLS playlist contains an invalid byte range.");
+                        rangeEnds[s.Url] = off + pendLen;
                         pendLen = -1; pendOff = -1;
                     }
                     pl.Segs.Add(s);
@@ -179,6 +229,10 @@ namespace FastDM
     // ====================== DASH পার্সার ======================
     public static class Dash
     {
+        const int MaxManifestCharacters = 4_000_000;
+        const int MaxRepresentations = 100;
+        const int MaxSegments = 20_000;
+
         public class Rep
         {
             public string Id = "", Kind = "", Mime = "", InitUrl = ""; public string? Codecs, Lang;
@@ -201,7 +255,53 @@ namespace FastDM
         static Uri Base(Uri cur, XElement e)
         {
             string? b = El(e, "BaseURL")?.Value?.Trim();
-            return string.IsNullOrEmpty(b) ? cur : new Uri(cur, b);
+            if (string.IsNullOrEmpty(b)) return cur;
+            if (b.Length > 8192 || !Uri.TryCreate(cur, b, out var resolved) ||
+                (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps))
+                throw new InvalidDataException("The DASH manifest contains an invalid or unsupported BaseURL.");
+            return resolved;
+        }
+
+        static Uri Resolve(Uri baseUri, string reference)
+        {
+            if (reference.Length > 8192 || !Uri.TryCreate(baseUri, reference, out var resolved) ||
+                (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps))
+                throw new InvalidDataException("The DASH manifest contains an invalid or unsupported URL.");
+            return resolved;
+        }
+
+        static XElement? ParseRoot(string xml)
+        {
+            if (xml.Length > MaxManifestCharacters)
+                throw new InvalidDataException("The DASH manifest exceeds FastDM's 4 MB safety limit.");
+            var settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = MaxManifestCharacters,
+                MaxCharactersFromEntities = MaxManifestCharacters
+            };
+            using var input = new StringReader(xml);
+            using var reader = XmlReader.Create(input, settings);
+            return XDocument.Load(reader).Root;
+        }
+
+        static int BoundedCount(double count, int remaining)
+        {
+            if (!double.IsFinite(count) || count < 0)
+                throw new InvalidDataException("The DASH manifest contains an invalid segment count.");
+            double rounded = Math.Ceiling(count);
+            if (rounded > remaining)
+                throw new InvalidDataException("The DASH manifest exceeds FastDM's 20,000 segment limit.");
+            return (int)rounded;
+        }
+
+        static void AddSegment(Rep rep, string url, ref int totalSegments)
+        {
+            if (totalSegments >= MaxSegments)
+                throw new InvalidDataException("The DASH manifest exceeds FastDM's 20,000 segment limit.");
+            rep.SegUrls.Add(url);
+            totalSegments++;
         }
 
         static double ParseDur(string? s)
@@ -213,7 +313,9 @@ namespace FastDM
         public static Mpd Parse(string xml, Uri mpdUri)
         {
             var res = new Mpd();
-            var root = XDocument.Parse(xml).Root;
+            if (mpdUri.Scheme != Uri.UriSchemeHttp && mpdUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidDataException("DASH requires an HTTP or HTTPS manifest URL.");
+            var root = ParseRoot(xml);
             if (root == null) throw new InvalidDataException("The MPD has no root element.");
 
             if (At(root, "type") == "dynamic") { res.Unsupported = "Live DASH streams are not supported yet."; return res; }
@@ -231,6 +333,8 @@ namespace FastDM
             double pDur = ParseDur(At(period, "duration"));
             if (pDur <= 0) pDur = total;
             var pBase = Base(mpdBase, period);
+            int representationCount = 0;
+            int totalSegments = 0;
 
             foreach (var asEl in Els(period, "AdaptationSet"))
             {
@@ -240,15 +344,20 @@ namespace FastDM
 
                 foreach (var rEl in Els(asEl, "Representation"))
                 {
+                    if (++representationCount > MaxRepresentations)
+                        throw new InvalidDataException("The DASH manifest exceeds FastDM's 100 representation limit.");
                     string mime = At(rEl, "mimeType") ?? asMime ?? "";
                     string? kind = At(asEl, "contentType");
                     if (string.IsNullOrEmpty(kind))
                         kind = mime.StartsWith("video") ? "video" : mime.StartsWith("audio") ? "audio" : "";
                     if (kind != "video" && kind != "audio") continue;
 
+                    string repId = At(rEl, "id") ?? "";
+                    if (repId.Length > 256)
+                        throw new InvalidDataException("A DASH representation ID is too long.");
                     var rep = new Rep
                     {
-                        Id = At(rEl, "id") ?? "",
+                        Id = repId,
                         Kind = kind,
                         Mime = mime,
                         Codecs = At(rEl, "codecs") ?? asCodecs,
@@ -262,9 +371,9 @@ namespace FastDM
                     var rTpl = El(rEl, "SegmentTemplate");
                     var list = El(rEl, "SegmentList") ?? El(asEl, "SegmentList");
 
-                    if (rTpl != null || asTpl != null) BuildFromTemplate(rep, rTpl, asTpl, rBase, pDur);
-                    else if (list != null) BuildFromList(rep, list, rBase);
-                    else if (rBase != mpdUri) rep.SegUrls.Add(rBase.AbsoluteUri);      // একটাই ফাইল (BaseURL)
+                    if (rTpl != null || asTpl != null) BuildFromTemplate(rep, rTpl, asTpl, rBase, pDur, ref totalSegments);
+                    else if (list != null) BuildFromList(rep, list, rBase, ref totalSegments);
+                    else if (rBase != mpdUri) AddSegment(rep, rBase.AbsoluteUri, ref totalSegments);      // one BaseURL file
 
                     if (rep.SegUrls.Count > 0) res.Reps.Add(rep);
                 }
@@ -274,7 +383,7 @@ namespace FastDM
             return res;
         }
 
-        static void BuildFromTemplate(Rep rep, XElement? rT, XElement? aT, Uri baseUri, double periodSec)
+        static void BuildFromTemplate(Rep rep, XElement? rT, XElement? aT, Uri baseUri, double periodSec, ref int totalSegments)
         {
             string? TA(string a) => At(rT, a) ?? At(aT, a);
 
@@ -282,12 +391,14 @@ namespace FastDM
             string? media = TA("media");
             double timescale = double.TryParse(TA("timescale"), NumberStyles.Float, CultureInfo.InvariantCulture, out var ts) && ts > 0 ? ts : 1;
             long startNumber = long.TryParse(TA("startNumber"), out var sn) ? sn : 1;
+            if (startNumber < 0)
+                throw new InvalidDataException("The DASH manifest contains an invalid segment number.");
 
             XElement? tl = rT != null ? El(rT, "SegmentTimeline") : null;
             if (tl == null && aT != null) tl = El(aT, "SegmentTimeline");
 
             if (!string.IsNullOrEmpty(init))
-                rep.InitUrl = new Uri(baseUri, Subst(init, rep.Id, rep.Bandwidth, 0, 0)).AbsoluteUri;
+                rep.InitUrl = Resolve(baseUri, Subst(init, rep.Id, rep.Bandwidth, 0, 0)).AbsoluteUri;
             if (string.IsNullOrEmpty(media)) return;
 
             if (tl != null)
@@ -298,10 +409,22 @@ namespace FastDM
                     if (long.TryParse(At(s, "t"), out var t)) time = t;
                     if (!long.TryParse(At(s, "d"), out var d) || d <= 0) continue;
                     long r = long.TryParse(At(s, "r"), out var rr) ? rr : 0;
-                    long count = r >= 0 ? r + 1 : (long)Math.Ceiling((periodSec * timescale - time) / d);
-                    for (long i = 0; i < count; i++)
+                    int remaining = MaxSegments - totalSegments;
+                    int count;
+                    if (r >= 0)
                     {
-                        rep.SegUrls.Add(new Uri(baseUri, Subst(media, rep.Id, rep.Bandwidth, number, time)).AbsoluteUri);
+                        if (r >= remaining) throw new InvalidDataException("The DASH manifest exceeds FastDM's 20,000 segment limit.");
+                        count = (int)r + 1;
+                    }
+                    else if (r == -1)
+                        count = BoundedCount((periodSec * timescale - time) / d, remaining);
+                    else throw new InvalidDataException("The DASH manifest contains an invalid segment repeat count.");
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        AddSegment(rep, Resolve(baseUri, Subst(media, rep.Id, rep.Bandwidth, number, time)).AbsoluteUri, ref totalSegments);
+                        if (time > long.MaxValue - d || number == long.MaxValue)
+                            throw new InvalidDataException("The DASH manifest contains an overflowing segment timeline.");
                         time += d;
                         number++;
                     }
@@ -311,20 +434,24 @@ namespace FastDM
             {
                 double dur = double.TryParse(TA("duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var du) ? du : 0;
                 if (dur <= 0 || periodSec <= 0) return;
-                long count = (long)Math.Ceiling(periodSec * timescale / dur);
-                for (long i = 0; i < count; i++)
-                    rep.SegUrls.Add(new Uri(baseUri, Subst(media, rep.Id, rep.Bandwidth, startNumber + i, 0)).AbsoluteUri);
+                int count = BoundedCount(periodSec * timescale / dur, MaxSegments - totalSegments);
+                for (int i = 0; i < count; i++)
+                {
+                    if (startNumber > long.MaxValue - i)
+                        throw new InvalidDataException("The DASH manifest contains an overflowing segment number.");
+                    AddSegment(rep, Resolve(baseUri, Subst(media, rep.Id, rep.Bandwidth, startNumber + i, 0)).AbsoluteUri, ref totalSegments);
+                }
             }
         }
 
-        static void BuildFromList(Rep rep, XElement list, Uri baseUri)
+        static void BuildFromList(Rep rep, XElement list, Uri baseUri, ref int totalSegments)
         {
             string? initSrc = At(El(list, "Initialization"), "sourceURL");
-            if (!string.IsNullOrEmpty(initSrc)) rep.InitUrl = new Uri(baseUri, initSrc).AbsoluteUri;
+            if (!string.IsNullOrEmpty(initSrc)) rep.InitUrl = Resolve(baseUri, initSrc).AbsoluteUri;
             foreach (var su in Els(list, "SegmentURL"))
             {
                 string? m = At(su, "media");
-                if (!string.IsNullOrEmpty(m)) rep.SegUrls.Add(new Uri(baseUri, m).AbsoluteUri);
+                if (!string.IsNullOrEmpty(m)) AddSegment(rep, Resolve(baseUri, m).AbsoluteUri, ref totalSegments);
             }
         }
 
@@ -339,7 +466,11 @@ namespace FastDM
                            : key == "Bandwidth" ? bw.ToString()
                            : time.ToString();
                 if (m.Groups[2].Success && key != "RepresentationID")
-                    val = val.PadLeft(int.Parse(m.Groups[2].Value), '0');
+                {
+                    if (!int.TryParse(m.Groups[2].Value, out int width) || width > 20)
+                        throw new InvalidDataException("The DASH segment template uses an invalid number width.");
+                    val = val.PadLeft(width, '0');
+                }
                 return val;
             });
         }

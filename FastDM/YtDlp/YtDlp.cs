@@ -182,12 +182,13 @@ namespace FastDM
 
         public static async Task<int> RunAsync(string exe, IEnumerable<string> args,
                                                Action<string> onOut, Action<string> onErr, CancellationToken ct,
-                                               string? standardInput = null)
+                                               string? standardInput = null,
+                                               int maxOutputLineCharacters = ProcessOutput.DefaultMaxLineCharacters)
         {
             await WaitForProcessSlotAsync(ct);
             try
             {
-                return await RunProcessAsync(exe, args, onOut, onErr, ct, standardInput);
+                return await RunProcessAsync(exe, args, onOut, onErr, ct, standardInput, maxOutputLineCharacters);
             }
             finally { ProcessLimit.Release(); }
         }
@@ -206,7 +207,7 @@ namespace FastDM
             {
                 for (; acquiredSlots < ProcessCapacity; acquiredSlots++)
                     await ProcessLimit.WaitAsync(ct);
-                return await RunProcessAsync(exe, args, onOut, onErr, ct, null);
+                return await RunProcessAsync(exe, args, onOut, onErr, ct, null, ProcessOutput.DefaultMaxLineCharacters);
             }
             finally
             {
@@ -231,15 +232,12 @@ namespace FastDM
 
         static async Task<int> RunProcessAsync(string exe, IEnumerable<string> args,
                                                 Action<string> onOut, Action<string> onErr, CancellationToken ct,
-                                                string? standardInput)
+                                                string? standardInput, int maxOutputLineCharacters)
         {
             using var p = new Process { StartInfo = Build(exe, args, standardInput != null) };
-            p.OutputDataReceived += (s, e) => { if (e.Data != null) onOut?.Invoke(e.Data); };
-            p.ErrorDataReceived += (s, e) => { if (e.Data != null) onErr?.Invoke(e.Data); };
-
             p.Start();
-            p.BeginOutputReadLine();
-            p.BeginErrorReadLine();
+            Task output = ProcessOutput.DrainLinesAsync(p.StandardOutput, onOut, maxOutputLineCharacters);
+            Task error = ProcessOutput.DrainLinesAsync(p.StandardError, onErr, maxOutputLineCharacters);
 
             using (ct.Register(() => { try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored2) { AppLog.Write("YtDlp (ignored): " + exIgnored2.Message); } }))
             {
@@ -257,17 +255,18 @@ namespace FastDM
                 {
                     try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored3) { AppLog.Write("YtDlp (ignored): " + exIgnored3.Message); }
                     await p.WaitForExitAsync(CancellationToken.None);
-                    p.WaitForExit();
+                    await Task.WhenAll(output, error);
                     throw;
                 }
                 catch
                 {
                     try { if (!p.HasExited) p.Kill(true); } catch (Exception exIgnored4) { AppLog.Write("YtDlp cleanup failed: " + exIgnored4.Message); }
                     await p.WaitForExitAsync(CancellationToken.None);
+                    await Task.WhenAll(output, error);
                     throw;
                 }
             }
-            p.WaitForExit(); // drain async stdout/stderr callbacks before returning
+            await Task.WhenAll(output, error);
             return p.ExitCode;
         }
 
@@ -367,7 +366,7 @@ namespace FastDM
                     lock (err) if (err.Length < 32000) err.AppendLine(line);
                     string label = YtDlpDiagnostics.ProgressLabel(line);
                     if (label.Length > 0) progress?.Report(label);
-                }, ct, standardInput);
+                }, ct, standardInput, MaxMetadataBytes);
             watch.Stop();
 
             string runtime = YtDlpLocator.FindQuickJs() != null ? "quickjs" : YtDlpLocator.FindDeno() != null ? "deno" : "none";
@@ -407,7 +406,8 @@ namespace FastDM
 
             var sb = new StringBuilder();
             int code = await YtDlpRunner.RunExclusiveUpdateAsync(exe, new[] { "--ignore-config", "-U" },
-                l => { lock (sb) sb.AppendLine(l); }, l => { lock (sb) sb.AppendLine(l); }, ct);
+                l => ProcessOutput.AppendBoundedTail(sb, l, 64 * 1024),
+                l => ProcessOutput.AppendBoundedTail(sb, l, 64 * 1024), ct);
             string s = sb.ToString().Trim();
             if (code != 0)
                 throw new InvalidOperationException("yt-dlp update failed (exit code " + code + "): " + YtDlpRunner.ExtractError(s));
