@@ -186,6 +186,7 @@ namespace FastDM
             BuildTray();
 
             DpiChanged += (s, e) => RefreshDpiMetrics();
+            SizeChanged += (s, e) => RequestToolbarFit();
 
             ApplyTheme();
             RebuildList();
@@ -321,6 +322,7 @@ namespace FastDM
 
         // ---------- toolbar: every button stays on one row ----------
         System.Windows.Forms.Timer? toolbarFitTimer;
+        bool toolbarFitQueued;
 
         // Id of the download that was just added: the next list rebuild selects it, so the details panel shows it.
         string? selectNewId;

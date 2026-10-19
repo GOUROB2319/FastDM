@@ -67,10 +67,7 @@ namespace FastDM
                 Icons.Available;
 
             doneMenu =
-                new ToolStripDropDownButton(
-                    icons
-                        ? "When done"
-                        : "⏻  When done")
+                new ToolStripDropDownButton("After downloads")
                 {
                     DisplayStyle = icons
                         ? ToolStripItemDisplayStyle.ImageAndText
@@ -144,7 +141,8 @@ namespace FastDM
             string action = afterAll == PostAction.None
                 ? "Do nothing"
                 : PowerActions.Name(afterAll);
-            doneMenu.Text = "After downloads: " + action;
+            doneMenu.Text = "After downloads";
+            doneMenu.ToolTipText = "Current action: " + action;
             RequestToolbarFit();
         }
 

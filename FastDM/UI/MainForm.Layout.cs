@@ -377,26 +377,6 @@ namespace FastDM
 
             tools.Items.Add(
                 Btn(
-                    "Resume",
-                    "▶  ",
-                    "\uE768",
-                    false,
-                    (s, e) => ResumeSelected(),
-                    false));
-
-            tools.Items.Add(
-                Btn(
-                    "Pause",
-                    "❚❚  ",
-                    "\uE769",
-                    false,
-                    (s, e) => PauseSelected(),
-                    false));
-
-            tools.Items.Add(new ToolStripSeparator());
-
-            tools.Items.Add(
-                Btn(
                     "Resume All",
                     "▶  ",
                     "\uE768",
@@ -586,28 +566,43 @@ namespace FastDM
                      .Cast<ToolStripItem>()
                      .FirstOrDefault(i => i.ToolTipText == tip);
 
-            var wanted = new List<ToolStripItem?>
-            {
-                // Keep the file/folder actions visible as long as possible; if the window is
-                // narrower than their icon widths, ToolStrip's keyboard-accessible overflow
-                // remains the final fallback.
-                ByTip("Schedule"), doneMenu, ByTip("Remove"), ByTip("Resume"),
-                ByTip("Pause"), ByTip("Resume All"), ByTip("Pause All"), modeMenu,
-                ByTip("Details"), ByTip("Settings and updates"),
-                ByTip("Open File"), ByTip("Open Folder")
-            };
-
-            wanted.Insert(0, ByTip("Show/Hide sidebar"));
-
-            return wanted.Where(i => i != null).Select(i => i!).ToList();
+            return ToolbarLayoutPolicy.CollapseOrder
+                .Where(tip => !ToolbarLayoutPolicy.MustKeepText(tip))
+                .Select(ByTip)
+                .Where(i => i != null)
+                .Select(i => i!)
+                .ToList();
         }
 
         // 1) normal spacing  2) tighter spacing  3) icon only for the least used buttons, one by one,
         // until nothing is pushed into the "»" overflow menu.
         void FitToolbar()
         {
-            if (tools == null || !tools.IsHandleCreated)
+            if (tools == null || !tools.IsHandleCreated || toolbarFitQueued || IsDisposed)
                 return;
+
+            // Parent sizing, sidebar animation, and DPI changes can still be in flight when
+            // their events run. Measure overflow on the next UI turn after the layout settles.
+            toolbarFitQueued = true;
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    toolbarFitQueued = false;
+                    if (IsDisposed || tools == null || !tools.IsHandleCreated) return;
+                    FitToolbarAfterLayout();
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                toolbarFitQueued = false;
+            }
+        }
+
+        void FitToolbarAfterLayout()
+        {
+            PerformLayout();
+            tools.PerformLayout();
 
             var all = tools.Items.Cast<ToolStripItem>().ToList();
             var order = ToolbarCollapseOrder();
@@ -624,14 +619,6 @@ namespace FastDM
 
             foreach (var i in order)
             {
-                if (i.ToolTipText == "Show/Hide sidebar")
-                {
-                    i.DisplayStyle = Icons.Available
-                        ? ToolStripItemDisplayStyle.Image
-                        : ToolStripItemDisplayStyle.Text;
-                    continue;
-                }
-
                 i.DisplayStyle =
                     Icons.Available
                         ? ToolStripItemDisplayStyle.ImageAndText
@@ -639,6 +626,7 @@ namespace FastDM
             }
 
             tools.ResumeLayout(true);
+            PerformLayout();
             tools.PerformLayout();
 
             if (ToolbarOverflows())
@@ -662,10 +650,14 @@ namespace FastDM
                 if (!ToolbarOverflows())
                     break;
 
+                if (ToolbarLayoutPolicy.MustKeepText(i.ToolTipText))
+                    continue;
+
                 if (string.IsNullOrEmpty(i.ToolTipText) || i is ToolStripDropDownButton)
                     i.ToolTipText = i.Text;
 
                 i.DisplayStyle = ToolStripItemDisplayStyle.Image;
+                PerformLayout();
                 tools.PerformLayout();
             }
         }
@@ -1217,6 +1209,8 @@ namespace FastDM
                     sidebar.Visible = false;
                 else
                     sidebar.Invalidate();
+
+                RequestToolbarFit();
             }
         }
 
@@ -1275,6 +1269,7 @@ namespace FastDM
             ApplyCompactView();
             RefreshToolIcons();
             FitLastColumn();
+            RequestToolbarFit();
         }
 
         // নামের কলাম বাদে শেষ কলাম বাকি জায়গা ভরবে
