@@ -165,6 +165,8 @@ namespace FastDM
         }
     }
 
+    class ThumbnailPlaceholderLabel : Label { }
+
     class ValidationMessageLabel : Label
     {
         public ValidationMessageLabel()
@@ -365,6 +367,71 @@ namespace FastDM
                 return;
             }
             base.WndProc(ref m);
+        }
+    }
+
+    class ScreenBoundComboBox : ComboBox
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        struct NativeRect
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct ComboBoxInfo
+        {
+            public int Size;
+            public NativeRect Item, Button;
+            public int ButtonState;
+            public IntPtr Combo, ItemWindow, List;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool GetComboBoxInfo(IntPtr combo, ref ComboBoxInfo info);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+        const uint SwpNoZOrder = 0x0004;
+        const uint SwpNoActivate = 0x0010;
+
+        public ScreenBoundComboBox()
+        {
+            MaxDropDownItems = 7;
+            IntegralHeight = false;
+        }
+
+        public void FitDropdownToDialog(int dialogMaxWidth)
+        {
+            Rectangle work = Screen.FromControl(this).WorkingArea;
+            MaxDropDownItems = 7;
+            DropDownHeight = Math.Min(Theme.Scale(this, 220), DropDownPlacementPolicy.MaximumHeight(work.Height));
+            int screenX = PointToScreen(Point.Empty).X;
+            int rightRoom = Math.Max(1, work.Right - Math.Max(work.Left, screenX));
+            DropDownWidth = Math.Max(1, Math.Min(Math.Min(dialogMaxWidth, work.Width), rightRoom));
+        }
+
+        protected override void OnDropDown(EventArgs e)
+        {
+            base.OnDropDown(e);
+            if (!IsHandleCreated || IsDisposed) return;
+            try { BeginInvoke((Action)KeepDropDownOnScreen); }
+            catch (InvalidOperationException) { }
+        }
+
+        void KeepDropDownOnScreen()
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            var info = new ComboBoxInfo { Size = Marshal.SizeOf<ComboBoxInfo>() };
+            if (!GetComboBoxInfo(Handle, ref info) || info.List == IntPtr.Zero || !GetWindowRect(info.List, out var rect)) return;
+            Point comboTop = PointToScreen(Point.Empty);
+            var popup = new Rectangle(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+            Rectangle fitted = DropDownPlacementPolicy.Fit(popup, Screen.FromControl(this).WorkingArea, comboTop.Y);
+            SetWindowPos(info.List, IntPtr.Zero, fitted.X, fitted.Y, fitted.Width, fitted.Height, SwpNoZOrder | SwpNoActivate);
         }
     }
 }

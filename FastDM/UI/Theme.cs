@@ -14,7 +14,7 @@ namespace FastDM
     {
         public Color Window, RowAlt, Text, SubText, Border, Accent, Selection, Track,
                      Header, Toolbar, Hover, Pressed, Input, Button, Success, Warning, Error,
-                     SideBg, SideSel, SideText, SideCount;
+                     SideBg, SideSel, SideText, SideCount, DisabledText;
     }
 
     // ====================== Theme Manager ======================
@@ -87,7 +87,8 @@ namespace FastDM
             SideBg = ColorTranslator.FromHtml("#1E2233"),
             SideSel = ColorTranslator.FromHtml("#2F3550"),
             SideText = ColorTranslator.FromHtml("#FFFFFF"),
-            SideCount = ColorTranslator.FromHtml("#A0A8C8")
+            SideCount = ColorTranslator.FromHtml("#A0A8C8"),
+            DisabledText = ThemeContrastPolicy.LightDisabledText
         };
 
         public static readonly Palette Dark = new Palette
@@ -112,29 +113,16 @@ namespace FastDM
             SideBg = ColorTranslator.FromHtml("#11131B"),
             SideSel = ColorTranslator.FromHtml("#23283D"),
             SideText = ColorTranslator.FromHtml("#FFFFFF"),
-            SideCount = ColorTranslator.FromHtml("#8C93B3")
+            SideCount = ColorTranslator.FromHtml("#8C93B3"),
+            DisabledText = ThemeContrastPolicy.DarkDisabledText
         };
 
         public static ThemeMode Mode { get; private set; } = ThemeMode.System;
         public static Palette P { get; private set; } = Light;
         public static bool IsDark { get; private set; }
 
-        static double Luminance(Color color)
-        {
-            static double Linear(byte value)
-            {
-                double c = value / 255.0;
-                return c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
-            }
-            return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
-        }
-
-        public static double ContrastRatio(Color foreground, Color background)
-        {
-            double a = Luminance(foreground);
-            double b = Luminance(background);
-            return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
-        }
+        public static double ContrastRatio(Color foreground, Color background) =>
+            ThemeContrastPolicy.ContrastRatio(foreground, background);
 
         public static Color ContrastText(Color background) =>
             ContrastRatio(Color.White, background) >= ContrastRatio(Color.Black, background)
@@ -388,6 +376,10 @@ namespace FastDM
                     case SearchInputFrame frame:
                         frame.BackColor = P.Input;
                         break;
+                    case ThumbnailPlaceholderLabel placeholder:
+                        placeholder.BackColor = P.Header;
+                        placeholder.ForeColor = P.SubText;
+                        break;
                     case TextBoxBase t:
                         t.BackColor = P.Input;
                         t.ForeColor = P.Text;
@@ -473,16 +465,22 @@ namespace FastDM
                     case CheckBox check:
                         check.BackColor = P.Window;
                         check.ForeColor = P.Text;
+                        check.UseVisualStyleBackColor = false;
                         check.FlatStyle = FlatStyle.Flat;
                         check.FlatAppearance.MouseOverBackColor = P.Hover;
                         check.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        check.Paint -= DrawThemedCheckBox;
+                        check.Paint += DrawThemedCheckBox;
                         break;
                     case RadioButton radio:
                         radio.BackColor = P.Window;
                         radio.ForeColor = P.Text;
+                        radio.UseVisualStyleBackColor = false;
                         radio.FlatStyle = FlatStyle.Flat;
                         radio.FlatAppearance.MouseOverBackColor = P.Hover;
                         radio.FlatAppearance.MouseDownBackColor = P.Pressed;
+                        radio.Paint -= DrawThemedRadioButton;
+                        radio.Paint += DrawThemedRadioButton;
                         break;
                     case GroupBox group:
                         group.BackColor = P.Window;
@@ -510,6 +508,8 @@ namespace FastDM
             button.GotFocus -= ButtonFocusChanged;
             button.LostFocus -= ButtonFocusChanged;
             button.Paint -= DrawButtonFocus;
+            button.Paint -= DrawDisabledButton;
+            button.Paint += DrawDisabledButton;
             button.GotFocus += ButtonFocusChanged;
             button.LostFocus += ButtonFocusChanged;
             button.Paint += DrawButtonFocus;
@@ -533,12 +533,88 @@ namespace FastDM
                 ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(button.ClientRectangle, -4, -4), button.ForeColor, button.BackColor);
         }
 
+        static void DrawDisabledButton(object? sender, PaintEventArgs e)
+        {
+            if (sender is not Button button || button.Enabled) return;
+            var bounds = button.ClientRectangle;
+            bounds.Width--;
+            bounds.Height--;
+            using (var background = new SolidBrush(P.Button)) e.Graphics.FillRectangle(background, button.ClientRectangle);
+            using (var border = new Pen(P.Border)) e.Graphics.DrawRectangle(border, bounds);
+            TextRenderer.DrawText(e.Graphics, button.Text, button.Font, button.ClientRectangle,
+                P.DisabledText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (button.Focused)
+                ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(button.ClientRectangle, -4, -4), P.DisabledText, P.Button);
+        }
+
+        static void DrawThemedCheckBox(object? sender, PaintEventArgs e)
+        {
+            if (sender is not CheckBox check) return;
+            var g = e.Graphics;
+            g.Clear(check.BackColor);
+            int size = Math.Min(Theme.Scale(check, 14), Math.Max(1, check.ClientSize.Height - Theme.Scale(check, 4)));
+            int x = check.RightToLeft == RightToLeft.Yes ? check.ClientSize.Width - size - Theme.Scale(check, 4) : Theme.Scale(check, 4);
+            int y = Math.Max(0, (check.ClientSize.Height - size) / 2);
+            var box = new Rectangle(x, y, size, size);
+            Color glyph = check.Enabled ? P.SubText : P.DisabledText;
+            using (var brush = new SolidBrush(check.BackColor)) g.FillRectangle(brush, box);
+            using (var pen = new Pen(glyph)) g.DrawRectangle(pen, box);
+            if (check.CheckState == CheckState.Indeterminate)
+            {
+                using var mark = new SolidBrush(check.Enabled ? P.Accent : P.DisabledText);
+                g.FillRectangle(mark, Rectangle.Inflate(box, -Theme.Scale(check, 4), -Theme.Scale(check, 4)));
+            }
+            else if (check.Checked)
+            {
+                using var pen = new Pen(check.Enabled ? P.Accent : P.DisabledText, Math.Max(1f, Theme.Scale(check, 2)));
+                g.DrawLines(pen, new[] { new Point(box.Left + size / 4, box.Top + size / 2),
+                    new Point(box.Left + size * 2 / 5, box.Bottom - size / 4), new Point(box.Right - size / 5, box.Top + size / 5) });
+            }
+            int textX = check.RightToLeft == RightToLeft.Yes ? Theme.Scale(check, 4) : box.Right + Theme.Scale(check, 6);
+            int textWidth = Math.Max(0, check.ClientSize.Width - textX - Theme.Scale(check, 4) - (check.RightToLeft == RightToLeft.Yes ? size + Theme.Scale(check, 6) : 0));
+            TextRenderer.DrawText(g, check.Text, check.Font,
+                new Rectangle(textX, 0, textWidth, check.ClientSize.Height),
+                check.Enabled ? P.Text : P.DisabledText,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (check.Focused)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(check.ClientRectangle, -1, -1), check.Enabled ? P.Text : P.DisabledText, check.BackColor);
+        }
+
+        static void DrawThemedRadioButton(object? sender, PaintEventArgs e)
+        {
+            if (sender is not RadioButton radio) return;
+            var g = e.Graphics;
+            g.Clear(radio.BackColor);
+            int size = Math.Min(Theme.Scale(radio, 15), Math.Max(1, radio.ClientSize.Height - Theme.Scale(radio, 4)));
+            int x = radio.RightToLeft == RightToLeft.Yes ? radio.ClientSize.Width - size - Theme.Scale(radio, 4) : Theme.Scale(radio, 4);
+            int y = Math.Max(0, (radio.ClientSize.Height - size) / 2);
+            var circle = new Rectangle(x, y, size, size);
+            Color glyph = radio.Enabled ? P.SubText : P.DisabledText;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using (var pen = new Pen(glyph)) g.DrawEllipse(pen, circle);
+            if (radio.Checked)
+            {
+                int inset = Theme.Scale(radio, 4);
+                using var dot = new SolidBrush(radio.Enabled ? P.Accent : P.DisabledText);
+                g.FillEllipse(dot, Rectangle.Inflate(circle, -inset, -inset));
+            }
+            int textX = radio.RightToLeft == RightToLeft.Yes ? Theme.Scale(radio, 4) : circle.Right + Theme.Scale(radio, 6);
+            int textWidth = Math.Max(0, radio.ClientSize.Width - textX - Theme.Scale(radio, 4) - (radio.RightToLeft == RightToLeft.Yes ? size + Theme.Scale(radio, 6) : 0));
+            TextRenderer.DrawText(g, radio.Text, radio.Font,
+                new Rectangle(textX, 0, textWidth, radio.ClientSize.Height),
+                radio.Enabled ? P.Text : P.DisabledText,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (radio.Focused)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(radio.ClientRectangle, -1, -1), radio.Enabled ? P.Text : P.DisabledText, radio.BackColor);
+        }
+
         static void DrawComboItem(object? sender, DrawItemEventArgs e)
         {
             if (sender is not ComboBox combo || e.Bounds.Width <= 0 || e.Bounds.Height <= 0) return;
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            Color back = selected ? P.Accent : P.Input;
-            Color fore = selected ? ContrastText(P.Accent) : P.Text;
+            Color back = !combo.Enabled ? P.Input : selected ? P.Accent : P.Input;
+            Color fore = !combo.Enabled ? P.DisabledText : selected ? ContrastText(P.Accent) : P.Text;
             using (var brush = new SolidBrush(back)) e.Graphics.FillRectangle(brush, e.Bounds);
             string text = (e.Index >= 0 && e.Index < combo.Items.Count
                 ? combo.GetItemText(combo.Items[e.Index])

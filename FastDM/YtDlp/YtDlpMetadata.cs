@@ -23,6 +23,7 @@ namespace FastDM
     {
         public string Title = "video";
         public string? Extractor, Uploader, Thumbnail;
+        public bool ThumbnailNeedsYtDlpConversion;
         public double Duration;
         public bool HasAudio;
         public long BestAudioBytes;
@@ -90,14 +91,15 @@ namespace FastDM
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            string? extractor = String(root, "extractor_key") ?? String(root, "extractor");
             var info = new YtInfo
             {
                 Title = String(root, "title") ?? "video",
-                Extractor = String(root, "extractor_key") ?? String(root, "extractor"),
+                Extractor = extractor,
                 Uploader = String(root, "uploader") ?? String(root, "channel"),
-                Duration = Number(root, "duration"),
-                Thumbnail = Thumbnail(root)
+                Duration = Number(root, "duration")
             };
+            info.Thumbnail = Thumbnail(root, extractor, out info.ThumbnailNeedsYtDlpConversion);
 
             if (!root.TryGetProperty("formats", out var formats) || formats.ValueKind != JsonValueKind.Array)
                 return info;
@@ -331,16 +333,24 @@ namespace FastDM
                 formats[height] = candidate;
         }
 
-        static string? Thumbnail(JsonElement root)
+        static string? Thumbnail(JsonElement root, string? extractor, out bool needsConversion)
         {
-            string? direct = String(root, "thumbnail");
-            if (direct != null) return AbsoluteHttpUrl(direct);
-            if (!root.TryGetProperty("thumbnails", out var thumbnails) || thumbnails.ValueKind != JsonValueKind.Array)
-                return null;
-            return thumbnails.EnumerateArray()
-                .Where(x => x.ValueKind == JsonValueKind.Object)
-                .Select(x => AbsoluteHttpUrl(String(x, "url")))
-                .LastOrDefault(x => x != null);
+            var candidates = new List<YtThumbnailCandidate>();
+            string? direct = AbsoluteHttpUrl(String(root, "thumbnail"));
+            if (direct != null)
+                candidates.Add(new YtThumbnailCandidate(direct, (int)Math.Clamp(Number(root, "thumbnail_width"), 0, int.MaxValue)));
+            if (root.TryGetProperty("thumbnails", out var thumbnails) && thumbnails.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in thumbnails.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+                    string? candidate = AbsoluteHttpUrl(String(item, "url"));
+                    if (candidate != null)
+                        candidates.Add(new YtThumbnailCandidate(candidate, (int)Math.Clamp(Number(item, "width"), 0, int.MaxValue)));
+                }
+            }
+            string selected = YtThumbnailPolicy.SelectBestCandidate(candidates, IsYouTubeExtractor(extractor), out needsConversion);
+            return selected.Length == 0 ? null : selected;
         }
 
         static string? AbsoluteHttpUrl(string? value) =>

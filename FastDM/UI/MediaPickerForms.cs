@@ -18,7 +18,7 @@ namespace FastDM
         }
 
         readonly MediaOptions o;
-        readonly ComboBox cmbVideo, cmbAudio;
+        readonly ScreenBoundComboBox cmbVideo, cmbAudio;
         readonly CheckBox chkAudioOnly;
         readonly TextBox txtName, txtFolder;
 
@@ -40,14 +40,15 @@ namespace FastDM
             Font = Theme.CreateFont(Theme.FontBody);
 
             Controls.Add(new Label { Text = "Video quality", Location = new Point(16, 14), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(16, 36), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVideo = new ScreenBoundComboBox { Location = new Point(16, 36), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (var v in o.Videos) cmbVideo.Items.Add(new OptItem { Text = v.Label, Tag = v });
             if (cmbVideo.Items.Count > 0) cmbVideo.SelectedIndex = 0;
             cmbVideo.SelectedIndexChanged += (a, b) => RefreshAudio();
             Controls.Add(cmbVideo);
 
             Controls.Add(new Label { Text = "Audio track", Location = new Point(16, 74), AutoSize = true });
-            cmbAudio = new ComboBox { Location = new Point(16, 96), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAudio = new ScreenBoundComboBox { Location = new Point(16, 96), Width = 528, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            Resize += (a, b) => UpdateComboDropdownWidths();
             Controls.Add(cmbAudio);
 
             chkAudioOnly = new CheckBox { Text = "Audio only (save as .m4a)", Location = new Point(16, 134), AutoSize = true };
@@ -101,6 +102,7 @@ namespace FastDM
                 chkAudioOnly.Enabled = false;
             }
             RefreshAudio();
+            UpdateComboDropdownWidths();
         }
 
         string DefaultName()
@@ -142,6 +144,13 @@ namespace FastDM
             }
             cmbAudio.SelectedIndex = 0;
             cmbAudio.Enabled = cmbAudio.Items.Count > 1;
+        }
+
+        void UpdateComboDropdownWidths()
+        {
+            int available = Math.Max(120, ClientSize.Width - Theme.Scale(this, 32));
+            cmbVideo.FitDropdownToDialog(available);
+            cmbAudio.FitDropdownToDialog(available);
         }
 
         void OnOk(object? sender, EventArgs e)

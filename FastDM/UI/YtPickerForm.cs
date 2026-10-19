@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -28,17 +29,21 @@ namespace FastDM
             }
         }
 
-        static readonly HttpClient ThumbnailClient = new HttpClient(new SocketsHttpHandler
+        sealed class ThumbnailFetchResult
         {
-            AllowAutoRedirect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(4)
-        }) { Timeout = TimeSpan.FromSeconds(5), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
+            public byte[]? Bytes;
+            public string Host = "unknown";
+            public string Reason = "unknown";
+            public System.Net.HttpStatusCode? Status;
+            public bool IsWebp;
+        }
+
         readonly string url;
         readonly int maxPlaylistEntries;
         readonly bool ignoreCookies;
         CancellationTokenSource previewCts = new CancellationTokenSource();
         readonly Font mergeFont;
-        readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount;
+        readonly Label lblTitle, lblSource, lblStatus, lblSize, lblMerge, lblCount, thumbnailPlaceholder;
         readonly Label lblPlaylistQuality, lblName;
         readonly PictureBox thumbnail;
         readonly ThumbnailSkeleton thumbnailSkeleton;
@@ -46,7 +51,7 @@ namespace FastDM
         readonly Panel singlePanel, playlistPanel;
         readonly TableLayoutPanel options;
         readonly RadioButton rbVideo, rbAudio;
-        readonly ComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
+        readonly ScreenBoundComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
         readonly CheckedListBox playlistEntries;
         readonly TextBox txtName, txtFolder;
         readonly Button btnStart, btnLater;
@@ -116,6 +121,18 @@ namespace FastDM
                 BackColor = Theme.P.Hover
             };
             previewPanel.Controls.Add(thumbnailSkeleton);
+            thumbnailPlaceholder = new ThumbnailPlaceholderLabel
+            {
+                Location = new Point(0, 2),
+                Size = new Size(144, 82),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = Theme.CreateFont(24, FontStyle.Bold),
+                ForeColor = Theme.P.SubText,
+                BackColor = Theme.P.Header,
+                Visible = false,
+                AccessibleName = "Video thumbnail placeholder"
+            };
+            previewPanel.Controls.Add(thumbnailPlaceholder);
             lblSource = new Label
             {
                 Location = new Point(158, 2),
@@ -182,10 +199,10 @@ namespace FastDM
             singlePanel.Controls.Add(rbVideo);
             singlePanel.Controls.Add(rbAudio);
             singlePanel.Controls.Add(new Label { Text = "Format and quality", Location = new Point(0, 38), AutoSize = true });
-            cmbVideo = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVideo = new ScreenBoundComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList };
             cmbVideo.SelectedIndexChanged += (s, e) => UpdateSizeAndMerge();
             singlePanel.Controls.Add(cmbVideo);
-            cmbAudio = new ComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
+            cmbAudio = new ScreenBoundComboBox { Location = new Point(0, 60), Width = 690, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
             cmbAudio.Items.Add(new OptItem { Text = "M4A — best available audio", Tag = "m4a" });
             cmbAudio.Items.Add(new OptItem { Text = "MP3 — converted audio", Tag = "mp3" });
             cmbAudio.SelectedIndex = 0;
@@ -231,7 +248,7 @@ namespace FastDM
             options.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
             lblPlaylistQuality = new Label { Text = "Playlist quality", AutoSize = true, Visible = false };
             options.Controls.Add(lblPlaylistQuality, 0, 0);
-            cmbPlaylistQuality = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbPlaylistQuality = new ScreenBoundComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
             cmbPlaylistQuality.Items.AddRange(BatchQuality.Presets);
             cmbPlaylistQuality.SelectedIndex = 0;
             cmbPlaylistQuality.Visible = false;
@@ -291,6 +308,7 @@ namespace FastDM
             FormClosed += (s, e) =>
             {
                 thumbnail.Image?.Dispose();
+                thumbnailPlaceholder.Font.Dispose();
                 previewCts.Dispose();
                 mergeFont.Dispose();
             };
@@ -314,6 +332,7 @@ namespace FastDM
             thumbnail.Image = null;
             previousImage?.Dispose();
             thumbnailSkeleton.Visible = true;
+            thumbnailPlaceholder.Visible = false;
             info = null;
             playlist = null;
             preview = null;
@@ -383,8 +402,13 @@ namespace FastDM
                 loadingProgress.Visible = false;
                 btnRetry.Visible = !canAccept;
                 if (!canAccept) SetPreviewControlsEnabled(false);
-                if (info?.Thumbnail is string imageUrl) _ = LoadThumbnailAsync(imageUrl, previewCts.Token);
-                else thumbnailSkeleton.Visible = false;
+                if (info?.Thumbnail is string imageUrl)
+                    _ = LoadThumbnailAsync(imageUrl, previewCts.Token, info.ThumbnailNeedsYtDlpConversion);
+                else
+                {
+                    ShowThumbnailPlaceholder();
+                    LogThumbnailFailure(ThumbnailHost(url), null, "thumbnail_candidate_missing");
+                }
             }
             catch (OperationCanceledException) when (previewCts.IsCancellationRequested)
             {
@@ -398,6 +422,7 @@ namespace FastDM
                 loadingProgress.Visible = false;
                 btnRetry.Visible = true;
                 Text = "Video preview could not be loaded";
+                ShowThumbnailPlaceholder();
             }
             catch (Exception ex)
             {
@@ -415,6 +440,7 @@ namespace FastDM
                 loadingProgress.Visible = false;
                 btnRetry.Visible = true;
                 Text = "Video preview could not be loaded";
+                ShowThumbnailPlaceholder();
             }
         }
 
@@ -533,7 +559,7 @@ namespace FastDM
         {
             int available = Math.Max(120, ClientSize.Width - Theme.Scale(this, 32));
             foreach (var combo in new[] { cmbVideo, cmbAudio, cmbPlaylistQuality })
-                combo.DropDownWidth = Math.Min(available, Math.Max(combo.Width, combo.DropDownWidth));
+                combo.FitDropdownToDialog(available);
         }
 
         void UpdateSizeAndMerge()
@@ -658,76 +684,254 @@ namespace FastDM
             return true;
         }
 
-        async Task LoadThumbnailAsync(string imageUrl, CancellationToken ct)
+        async Task LoadThumbnailAsync(string imageUrl, CancellationToken ct, bool requiresConversion = false)
         {
+            string host = ThumbnailHost(imageUrl);
+            System.Net.HttpStatusCode? status = null;
+            string reason = "unknown";
+            bool webp = requiresConversion || YtThumbnailPolicy.IsWebp(imageUrl);
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                ct = timeout.Token;
-                if (!TryTrustedThumbnailUri(imageUrl, out var current)) return;
-                HttpResponseMessage? response = null;
-                for (int redirect = 0; redirect <= 3; redirect++)
+                timeout.CancelAfter(YtThumbnailPolicy.Timeout);
+                byte[]? bytes = null;
+                if (!webp)
                 {
-                    response = await ThumbnailClient.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
-                    if (!IsRedirect(response.StatusCode)) break;
-                    Uri? next = response.Headers.Location == null ? null : response.Headers.Location.IsAbsoluteUri
-                        ? response.Headers.Location
-                        : new Uri(current, response.Headers.Location);
-                    response.Dispose();
-                    response = null;
-                    if (next == null || !TryTrustedThumbnailUri(next.AbsoluteUri, out current)) return;
+                    var fetched = await FetchThumbnailAsync(imageUrl, timeout.Token);
+                    host = fetched.Host;
+                    status = fetched.Status;
+                    reason = fetched.Reason;
+                    bytes = fetched.Bytes;
+                    webp |= fetched.IsWebp;
+                    if (bytes != null && TryDisplayThumbnail(bytes, out reason)) return;
                 }
-                if (response == null) return;
-                using (response)
+                else reason = "webp_requires_yt_dlp_conversion";
+
+                if (webp)
                 {
-                    if (!response.IsSuccessStatusCode || response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true) return;
-                if (response.Content.Headers.ContentLength > 2 * 1024 * 1024) return;
-                using var stream = await response.Content.ReadAsStreamAsync(ct);
-                using var memory = new MemoryStream();
-                var buffer = new byte[8192];
-                int total = 0;
-                while (true)
-                {
-                    int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
-                    if (count == 0) break;
-                    total += count;
-                    if (total > 2 * 1024 * 1024) return;
-                    memory.Write(buffer, 0, count);
+                    var converted = await ConvertThumbnailWithYtDlpAsync(timeout.Token);
+                    if (converted.Bytes != null && TryDisplayThumbnail(converted.Bytes, out reason)) return;
+                    if (converted.Reason.Length > 0) reason = converted.Reason;
                 }
-                memory.Position = 0;
+            }
+            catch (OperationCanceledException)
+            {
+                reason = ct.IsCancellationRequested ? "cancelled" : "timeout_15s";
+            }
+            catch (Exception ex)
+            {
+                reason = "thumbnail_error: " + AppLog.Redact(ex.GetBaseException().Message);
+            }
+
+            ShowThumbnailPlaceholder();
+            LogThumbnailFailure(host, status, reason);
+        }
+
+        static string ThumbnailHost(string imageUrl) =>
+            YtThumbnailPolicy.TryParseHttpsUri(imageUrl, out var uri, out _) ? uri.DnsSafeHost : "invalid";
+
+        static void LogThumbnailFailure(string host, System.Net.HttpStatusCode? status, string reason) =>
+            AppLog.Write(AppLog.Redact("Video preview thumbnail unavailable (host=" + host + ", status=" +
+                (status.HasValue ? ((int)status.Value).ToString() : "none") + ", reason=" + reason + ")"));
+
+        async Task<ThumbnailFetchResult> FetchThumbnailAsync(string imageUrl, CancellationToken cancellationToken)
+        {
+            var result = new ThumbnailFetchResult { Host = ThumbnailHost(imageUrl), Reason = "unknown" };
+            if (!YtThumbnailPolicy.TryParseHttpsUri(imageUrl, out var start, out var urlReason))
+            {
+                result.Reason = urlReason;
+                return result;
+            }
+
+            using var client = CreateThumbnailClient();
+            for (int attempt = 0; attempt < YtThumbnailPolicy.MaxFetchAttempts; attempt++)
+            {
+                Uri current = start;
+                int redirects = 0;
+                try
+                {
+                    while (true)
+                    {
+                        result.Host = current.DnsSafeHost;
+                        var check = await YtThumbnailPolicy.CheckHostAsync(current,
+                            (name, token) => System.Net.Dns.GetHostAddressesAsync(name, token), cancellationToken);
+                        if (!check.Allowed)
+                        {
+                            result.Reason = check.Reason;
+                            return result;
+                        }
+
+                        using var response = await client.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                        result.Status = response.StatusCode;
+                        if (IsRedirect(response.StatusCode))
+                        {
+                            string? location = response.Headers.Location?.OriginalString;
+                            if (!YtThumbnailPolicy.TryResolveRedirect(current, location, redirects, out var next, out var redirectReason))
+                            {
+                                result.Reason = redirectReason;
+                                return result;
+                            }
+                            current = next;
+                            redirects++;
+                            continue;
+                        }
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            result.Reason = "http_status_" + (int)response.StatusCode;
+                            break;
+                        }
+
+                        string? mediaType = response.Content.Headers.ContentType?.MediaType;
+                        if (mediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true)
+                        {
+                            result.Reason = "content_type_not_image";
+                            break;
+                        }
+                        result.IsWebp = string.Equals(mediaType, "image/webp", StringComparison.OrdinalIgnoreCase);
+                        if (result.IsWebp)
+                        {
+                            result.Reason = "webp_requires_yt_dlp_conversion";
+                            return result;
+                        }
+                        if (response.Content.Headers.ContentLength > YtThumbnailPolicy.MaxImageBytes)
+                        {
+                            result.Reason = "content_length_over_2mb";
+                            return result;
+                        }
+
+                        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                        using var memory = new MemoryStream();
+                        var buffer = new byte[8192];
+                        int total = 0;
+                        while (true)
+                        {
+                            int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                            if (count == 0) break;
+                            total += count;
+                            if (total > YtThumbnailPolicy.MaxImageBytes)
+                            {
+                                result.Reason = "body_over_2mb";
+                                return result;
+                            }
+                            memory.Write(buffer, 0, count);
+                        }
+                        result.Bytes = memory.ToArray();
+                        result.Reason = "";
+                        return result;
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (OperationCanceledException) { result.Reason = "timeout_15s"; }
+                catch (HttpRequestException ex) { result.Reason = "network_error: " + AppLog.Redact(ex.GetBaseException().Message); }
+                if (attempt + 1 < YtThumbnailPolicy.MaxFetchAttempts) continue;
+            }
+            return result;
+        }
+
+        static HttpClient CreateThumbnailClient()
+        {
+            var mode = ProxyConfig.Mode;
+            var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                ConnectTimeout = YtThumbnailPolicy.Timeout,
+                UseProxy = mode != ProxyMode.None,
+                Proxy = mode == ProxyMode.None ? null : DynamicProxy.Instance
+            };
+            return new HttpClient(handler)
+            {
+                Timeout = YtThumbnailPolicy.Timeout,
+                MaxResponseContentBufferSize = YtThumbnailPolicy.MaxImageBytes
+            };
+        }
+
+        bool TryDisplayThumbnail(byte[] bytes, out string reason)
+        {
+            try
+            {
+                using var memory = new MemoryStream(bytes, writable: false);
                 using var image = Image.FromStream(memory);
-                if (image.Width <= 0 || image.Height <= 0 || image.Width > 4096 || image.Height > 4096 || (long)image.Width * image.Height > 16_000_000)
-                    return;
+                if (!YtThumbnailPolicy.IsSafeImageDimensions(image.Width, image.Height))
+                {
+                    reason = "image_dimensions_over_limit";
+                    return false;
+                }
                 var copy = new Bitmap(image);
-                if (IsDisposed) { copy.Dispose(); return; }
+                if (IsDisposed || Disposing) { copy.Dispose(); reason = "form_closed"; return false; }
                 var old = thumbnail.Image;
                 thumbnail.Image = copy;
                 old?.Dispose();
                 thumbnailSkeleton.Visible = false;
-                }
+                thumbnailPlaceholder.Visible = false;
+                reason = "";
+                return true;
             }
             catch (Exception ex)
             {
-                if (!IsDisposed) thumbnailSkeleton.Visible = false;
-                AppLog.Write("Video preview thumbnail unavailable: " + ex.Message);
+                reason = "image_decode_failed: " + AppLog.Redact(ex.GetBaseException().Message);
+                return false;
             }
         }
 
-        static bool TryTrustedThumbnailUri(string value, out Uri uri)
+        async Task<(byte[]? Bytes, string Reason)> ConvertThumbnailWithYtDlpAsync(CancellationToken ct)
         {
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps ||
-                !string.IsNullOrEmpty(parsed.UserInfo))
+            string? exe = YtDlpLocator.Find();
+            if (exe == null) return (null, "yt_dlp_unavailable_for_webp_conversion");
+            string folder = Path.Combine(Path.GetTempPath(), "FastDM-thumbnail-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var diagnostic = new StringBuilder();
+            var diagnosticLock = new object();
+            try
             {
-                uri = null!;
-                return false;
+                var args = YtDlpRunner.CommonArgs(ignoreCookies);
+                args.AddRange(new[] { "--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg", "--no-part", "-o", Path.Combine(folder, "%(id)s.%(ext)s") });
+                var input = YtDlpUrlInput.Create(url);
+                args.AddRange(input.Arguments);
+                int exitCode = await YtDlpRunner.RunAsync(exe, args,
+                    line => { lock (diagnosticLock) if (diagnostic.Length < 8000) diagnostic.AppendLine(line); },
+                    line => { lock (diagnosticLock) if (diagnostic.Length < 8000) diagnostic.AppendLine(line); },
+                    ct, input.StandardInput, maxOutputLineCharacters: 4096);
+                string details;
+                lock (diagnosticLock) details = AppLog.Redact(diagnostic.ToString().Trim());
+                if (exitCode != 0)
+                    return (null, "yt_dlp_conversion_exit_" + exitCode + (details.Length == 0 ? "" : ": " + details));
+
+                string? file = Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                    .FirstOrDefault(path => Path.GetExtension(path).Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                        Path.GetExtension(path).Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                        Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase));
+                if (file == null) return (null, "yt_dlp_converted_thumbnail_missing" + (details.Length == 0 ? "" : ": " + details));
+                var fileInfo = new FileInfo(file);
+                if (fileInfo.Length > YtThumbnailPolicy.MaxImageBytes) return (null, "converted_thumbnail_over_2mb");
+                return (await File.ReadAllBytesAsync(file, ct), "");
             }
-            uri = parsed;
-            string host = parsed.IdnHost;
-            return host.Equals("ytimg.com", StringComparison.OrdinalIgnoreCase) ||
-                host.EndsWith(".ytimg.com", StringComparison.OrdinalIgnoreCase) ||
-                host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
-                host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { return (null, "yt_dlp_conversion_failed: " + AppLog.Redact(ex.GetBaseException().Message)); }
+            finally
+            {
+                try { Directory.Delete(folder, recursive: true); }
+                catch (Exception ex) { AppLog.Write("Temporary thumbnail cleanup failed: " + AppLog.Redact(ex.Message)); }
+            }
+        }
+
+        void ShowThumbnailPlaceholder()
+        {
+            if (IsDisposed || Disposing) return;
+            thumbnailSkeleton.Visible = false;
+            if (thumbnailPlaceholder.Text.Length == 0) thumbnailPlaceholder.Text = ThumbnailInitial();
+            thumbnailPlaceholder.Visible = true;
+            thumbnailPlaceholder.BringToFront();
+        }
+
+        string ThumbnailInitial()
+        {
+            try
+            {
+                string host = new Uri(url).DnsSafeHost;
+                if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase)) host = host.Substring(4);
+                return host.Length == 0 ? "▶" : host.Substring(0, 1).ToUpperInvariant();
+            }
+            catch { return "▶"; }
         }
 
         static bool IsRedirect(System.Net.HttpStatusCode status) =>

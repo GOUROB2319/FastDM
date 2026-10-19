@@ -19,6 +19,17 @@ namespace FastDM.Tests
             const string json = """{"title":"Example lesson","extractor_key":"Youtube","uploader":"Example Channel","duration":125,"thumbnail":"https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg","formats":[{"format_id":"137","vcodec":"avc1","acodec":"none","height":1080,"fps":30,"ext":"mp4","filesize":8000000,"tbr":1800},{"format_id":"140","vcodec":"none","acodec":"mp4a.40.2","ext":"m4a","filesize_approx":2000000,"tbr":128},{"format_id":"18","vcodec":"avc1","acodec":"mp4a.40.2","height":360,"ext":"mp4","filesize":4000000,"tbr":500}]}""";
             var info = YtDlpMetadataParser.ParseVideo(json);
             T.Check("video title, uploader, source, duration and thumbnail are parsed", info.Title == "Example lesson" && info.Uploader == "Example Channel" && info.Extractor == "Youtube" && info.Duration == 125 && info.Thumbnail?.StartsWith("https://") == true);
+            const string thumbnailsJson = """{"extractor_key":"Youtube","thumbnail":"https://i.ytimg.com/vi_webp/abcdefghijk/maxresdefault.webp","thumbnails":[{"url":"https://i.ytimg.com/vi_webp/abcdefghijk/maxresdefault.webp","width":1920},{"url":"https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg","width":480},{"url":"https://i.ytimg.com/vi/abcdefghijk/sddefault.jpg","width":1280}],"formats":[]}""";
+            T.Check("thumbnail choice prefers the widest JPG over a larger WebP candidate",
+                YtDlpMetadataParser.ParseVideo(thumbnailsJson).Thumbnail == "https://i.ytimg.com/vi/abcdefghijk/sddefault.jpg");
+            const string youtubeWebpJson = """{"extractor_key":"Youtube","thumbnail":"https://i.ytimg.com/vi_webp/abcdefghijk/maxresdefault.webp","formats":[]}""";
+            T.Check("YouTube vi_webp candidates map to the equivalent JPG endpoint",
+                YtDlpMetadataParser.ParseVideo(youtubeWebpJson).Thumbnail == "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg");
+            T.Check("YouTube WebP-only metadata marks the yt-dlp decoder fallback",
+                YtDlpMetadataParser.ParseVideo(youtubeWebpJson).ThumbnailNeedsYtDlpConversion);
+            const string genericWebpJson = """{"extractor_key":"Example","thumbnail":"https://cdn.example.test/thumb.webp","formats":[]}""";
+            T.Check("non-YouTube WebP candidates remain available for the yt-dlp conversion fallback",
+                YtDlpMetadataParser.ParseVideo(genericWebpJson).Thumbnail == "https://cdn.example.test/thumb.webp");
             T.Check("audio-only formats contribute a size estimate", info.HasAudio && info.BestAudioBytes == 2000000);
             T.Check("video choices retain merge need and estimated bytes", info.Videos.Any(x => x.Height == 1080 && x.RequiresMerge && x.EstBytes == 10000000));
             var merged = info.Videos.First(x => x.Height == 1080);
