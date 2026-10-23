@@ -46,6 +46,7 @@
 		<Compile Include="..\FastDM\UI\DownloadColumnLayout.cs" Link="Linked\DownloadColumnLayout.cs" />
 		<Compile Include="..\FastDM\UI\DownloadRowRefreshPolicy.cs" Link="Linked\DownloadRowRefreshPolicy.cs" />
 		<Compile Include="..\FastDM\UI\DropDownPlacementPolicy.cs" Link="Linked\DropDownPlacementPolicy.cs" />
+		<Compile Include="..\FastDM\UI\FolderDownloadLayoutPolicy.cs" Link="Linked\FolderDownloadLayoutPolicy.cs" />
 		<Compile Include="..\FastDM\UI\ThemeContrastPolicy.cs" Link="Linked\ThemeContrastPolicy.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtThumbnailPolicy.cs" Link="Linked\YtThumbnailPolicy.cs" />
 		<Compile Include="..\FastDM\UI\ToolbarLayoutPolicy.cs" Link="Linked\ToolbarLayoutPolicy.cs" />

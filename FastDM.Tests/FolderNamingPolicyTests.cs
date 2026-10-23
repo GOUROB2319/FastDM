@@ -14,6 +14,17 @@ namespace FastDM.Tests
             string relative = "";
             foreach (string segment in nestedFtpFixture) relative = FolderNamingPolicy.AppendRelative(relative, segment);
             T.Check("nested FTP fixture preserves its three-level relative folder path", System.IO.Path.Combine("C:\\Downloads", relative) == "C:\\Downloads\\remote\\one\\two");
+
+            var footer = FolderDownloadLayoutPolicy.CalculateFooter(676);
+            T.Check("folder tree action, progress, playlist and command rows do not overlap",
+                footer.StatusTop >= footer.ActionsTop + 28 &&
+                footer.PlaylistTop >= footer.StatusTop + 22 &&
+                footer.ButtonsTop >= footer.PlaylistTop + 24 &&
+                footer.ButtonsTop + 34 <= 676);
+            var compactFooter = FolderDownloadLayoutPolicy.CalculateFooter(520);
+            T.Check("folder tree footer remains inside the minimum dialog height",
+                compactFooter.ButtonsTop >= compactFooter.PlaylistTop + 24 &&
+                compactFooter.ButtonsTop + 34 <= 520);
         }
     }
 }

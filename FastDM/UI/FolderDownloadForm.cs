@@ -125,6 +125,7 @@ namespace FastDM
             ClientSize = new Size(660, 676);
             MinimumSize = new Size(560, 520);
             Font = Theme.CreateFont(Theme.FontBody);
+            var footerLayout = FolderDownloadLayoutPolicy.CalculateFooter(ClientSize.Height, DeviceDpi);
 
             // লিঙ্ক
             Controls.Add(new Label { Text = "Folder link", Location = new Point(16, 12), AutoSize = true });
@@ -196,10 +197,10 @@ namespace FastDM
             tree.DrawNode += DrawFolderNode;
             Controls.Add(tree);
 
-            var all = new Button { Text = "Select all", Location = new Point(16, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var none = new Button { Text = "Select none", Location = new Point(122, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var expand = new Button { Text = "Expand all", Location = new Point(228, 540), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-            var collapse = new Button { Text = "Collapse all", Location = new Point(328, 540), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var all = new Button { Text = "Select all", Location = new Point(16, footerLayout.ActionsTop), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var none = new Button { Text = "Select none", Location = new Point(122, footerLayout.ActionsTop), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var expand = new Button { Text = "Expand all", Location = new Point(228, footerLayout.ActionsTop), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var collapse = new Button { Text = "Collapse all", Location = new Point(328, footerLayout.ActionsTop), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             all.Click += (s, e) => { txtFilter.Text = ""; SetAll(true); };
             none.Click += (s, e) => SetAll(false);
             expand.Click += (s, e) => tree.ExpandAll();
@@ -208,7 +209,7 @@ namespace FastDM
 
             lblStatus = new Label
             {
-                Location = new Point(16, 546),
+                Location = new Point(16, footerLayout.StatusTop),
                 Size = new Size(330, 22),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Text = "Scanning…",
@@ -220,7 +221,7 @@ namespace FastDM
 
             lblSelectedSize = new Label
             {
-                Location = new Point(350, 546),
+                Location = new Point(350, footerLayout.StatusTop),
                 Size = new Size(188, 22),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
                 Text = "Selected size: 0 B",
@@ -231,7 +232,7 @@ namespace FastDM
             };
             Controls.Add(lblSelectedSize);
 
-            btnCancelScan = new Button { Text = "Cancel scan", Location = new Point(540, 540), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Visible = false };
+            btnCancelScan = new Button { Text = "Cancel scan", Location = new Point(540, footerLayout.StatusTop - Theme.Scale(this, 3)), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Visible = false };
             btnCancelScan.Click += (s, e) => cts?.Cancel();
             Controls.Add(btnCancelScan);
 
@@ -239,7 +240,7 @@ namespace FastDM
             chkLocalPlaylist = new CheckBox
             {
                 Text = "Also create a local playlist (.m3u8) in the download folder",
-                Location = new Point(16, 578),
+                Location = new Point(16, footerLayout.PlaylistTop),
                 Size = new Size(628, 24),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Checked = false
@@ -249,7 +250,7 @@ namespace FastDM
             btnStream = new Button
             {
                 Text = "Save stream playlist…",
-                Location = new Point(16, 628),
+                Location = new Point(16, footerLayout.ButtonsTop),
                 Size = new Size(190, 34),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
                 Enabled = false
@@ -257,8 +258,8 @@ namespace FastDM
             btnStream.Click += OnSaveStreamPlaylist;
             Controls.Add(btnStream);
 
-            btnOk = new Button { Text = "Download", Location = new Point(444, 628), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Enabled = false };
-            var cancel = new Button { Text = "Cancel", Location = new Point(560, 628), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
+            btnOk = new Button { Text = "Download", Location = new Point(444, footerLayout.ButtonsTop), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Enabled = false };
+            var cancel = new Button { Text = "Cancel", Location = new Point(560, footerLayout.ButtonsTop), Size = new Size(84, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
             btnOk.Click += OnOk;
             Controls.Add(btnOk); Controls.Add(cancel);
             AcceptButton = playlistMode ? btnStream : btnOk;
