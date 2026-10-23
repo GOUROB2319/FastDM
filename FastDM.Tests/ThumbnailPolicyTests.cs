@@ -22,6 +22,27 @@ static class ThumbnailPolicyTests
             !FastDM.YtThumbnailPolicy.IsSafeImageDimensions(5000, 5000) &&
             !FastDM.YtThumbnailPolicy.IsSafeImageDimensions(0, 1));
 
+        var candidates = new[]
+        {
+            new FastDM.YtThumbnailCandidate("https://cdn.example.test/wide.webp", 2000),
+            new FastDM.YtThumbnailCandidate("https://cdn.example.test/preview.jpg", 1200),
+            new FastDM.YtThumbnailCandidate("https://cdn.example.test/small.png", 640)
+        };
+        T.Check("best non-WebP thumbnail is selected ahead of larger WebP",
+            FastDM.YtThumbnailPolicy.SelectBestCandidate(candidates, false, out bool genericNeedsConversion) ==
+                "https://cdn.example.test/preview.jpg" && !genericNeedsConversion);
+        string youtubeJpeg = FastDM.YtThumbnailPolicy.SelectBestCandidate(new[]
+        {
+            new FastDM.YtThumbnailCandidate("https://i.ytimg.com/vi_webp/abcdefghijk/maxresdefault.webp", 1280)
+        }, true, out bool youtubeNeedsConversion);
+        T.Check("YouTube vi_webp candidate maps to a directly fetchable JPEG",
+            youtubeJpeg == "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg" && !youtubeNeedsConversion);
+        T.Check("non-YouTube WebP-only thumbnail requests yt-dlp conversion",
+            FastDM.YtThumbnailPolicy.SelectBestCandidate(new[]
+            {
+                new FastDM.YtThumbnailCandidate("https://cdn.example.test/only.webp", 1280)
+            }, false, out bool webpNeedsConversion) == "https://cdn.example.test/only.webp" && webpNeedsConversion);
+
         T.Check("public IPv4 is allowed", FastDM.YtThumbnailPolicy.IsPublicAddress(IPAddress.Parse("8.8.8.8")));
         T.Check("loopback IPv4 is blocked", !FastDM.YtThumbnailPolicy.IsPublicAddress(IPAddress.Parse("127.0.0.1")));
         T.Check("RFC1918 IPv4 is blocked", !FastDM.YtThumbnailPolicy.IsPublicAddress(IPAddress.Parse("10.10.0.1")));

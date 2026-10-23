@@ -137,7 +137,16 @@ namespace FastDM
             if (needsConversion)
                 selected = valid.OrderByDescending(candidate => candidate.Width).FirstOrDefault().Url;
             needsConversion = needsConversion && IsWebp(selected);
-            return string.IsNullOrEmpty(selected) ? "" : isYouTube ? MapYouTubeWebpToJpeg(selected) : selected;
+            if (isYouTube && IsWebp(selected))
+            {
+                string jpeg = MapYouTubeWebpToJpeg(selected);
+                if (!string.Equals(jpeg, selected, StringComparison.Ordinal))
+                {
+                    selected = jpeg;
+                    needsConversion = false;
+                }
+            }
+            return string.IsNullOrEmpty(selected) ? "" : selected;
         }
 
         public static bool IsWebp(string? value) =>

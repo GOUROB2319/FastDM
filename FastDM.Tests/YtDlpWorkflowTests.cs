@@ -25,8 +25,10 @@ namespace FastDM.Tests
             const string youtubeWebpJson = """{"extractor_key":"Youtube","thumbnail":"https://i.ytimg.com/vi_webp/abcdefghijk/maxresdefault.webp","formats":[]}""";
             T.Check("YouTube vi_webp candidates map to the equivalent JPG endpoint",
                 YtDlpMetadataParser.ParseVideo(youtubeWebpJson).Thumbnail == "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg");
-            T.Check("YouTube WebP-only metadata marks the yt-dlp decoder fallback",
-                YtDlpMetadataParser.ParseVideo(youtubeWebpJson).ThumbnailNeedsYtDlpConversion);
+            var youtubeWebpInfo = YtDlpMetadataParser.ParseVideo(youtubeWebpJson);
+            T.Check("YouTube WebP-only metadata maps to a directly fetchable JPEG",
+                youtubeWebpInfo.Thumbnail == "https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg" &&
+                !youtubeWebpInfo.ThumbnailNeedsYtDlpConversion);
             const string genericWebpJson = """{"extractor_key":"Example","thumbnail":"https://cdn.example.test/thumb.webp","formats":[]}""";
             T.Check("non-YouTube WebP candidates remain available for the yt-dlp conversion fallback",
                 YtDlpMetadataParser.ParseVideo(genericWebpJson).Thumbnail == "https://cdn.example.test/thumb.webp");
