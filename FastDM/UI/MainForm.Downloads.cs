@@ -22,6 +22,88 @@ namespace FastDM
     // MainForm part: start/pause/resume/remove, open/show-in-folder and the 1-second UI tick.
     public partial class MainForm
     {
+        bool IsYouTubeBulkItem(DownloadItem item) => item.YtDlp?.IsBulkItem == true &&
+            YouTubeBulkPolicy.IsYouTubeUrl(item.YtDlp.Url ?? item.Url);
+
+        bool CanStartQueuedItem(DownloadItem item, DateTime now)
+        {
+            if (!IsYouTubeBulkItem(item)) return true;
+
+            int running = items.Count(x => x.State == DlState.Downloading && IsYouTubeBulkItem(x));
+            if (running >= YouTubeBulkPolicy.ClampConcurrency(settings.ConcurrentYouTubeDownloads))
+            {
+                item.StatusNote = YouTubeBulkPolicy.WaitingStatus;
+                return false;
+            }
+
+            if (youtubeBackoffUntil > now ||
+                lastYouTubeBulkStart.AddSeconds(YouTubeBulkPolicy.ClampDelaySeconds(settings.YouTubeItemDelaySeconds)) > now)
+            {
+                item.StatusNote = YouTubeBulkPolicy.WaitingStatus;
+                return false;
+            }
+
+            item.StatusNote = "";
+            lastYouTubeBulkStart = now;
+            return true;
+        }
+
+        void RegisterYouTubeFailure(DownloadItem item, YtDlpFailureKind kind)
+        {
+            if (!IsYouTubeBulkItem(item)) return;
+            int seconds = YouTubeBulkPolicy.BackoffSeconds(kind, youtubeBackoffFailures);
+            if (seconds <= 0) return;
+            youtubeBackoffFailures++;
+            youtubeBackoffUntil = DateTime.UtcNow.AddSeconds(seconds);
+            foreach (var queued in items.Where(x => x.State == DlState.Queued && IsYouTubeBulkItem(x)))
+                queued.StatusNote = YouTubeBulkPolicy.WaitingStatus;
+            AppLog.Write("YouTube bulk request backoff: " + seconds + " seconds after " + kind + ".");
+        }
+
+        void RegisterYtBatchItem(DownloadItem item)
+        {
+            string? batchId = item.YtDlp?.BatchId;
+            if (string.IsNullOrWhiteSpace(batchId)) return;
+            if (!ytBatches.TryGetValue(batchId, out var batch))
+            {
+                batch = new YtBatchProgress { Skipped = Math.Max(0, item.YtDlp?.BatchSkipped ?? 0) };
+                ytBatches.Add(batchId, batch);
+            }
+            batch.ItemIds.Add(item.Id);
+            lastYtBatchId = batchId;
+        }
+
+        void UpdateYtBatchProgress(DownloadItem item)
+        {
+            string? batchId = item.YtDlp?.BatchId;
+            if (string.IsNullOrWhiteSpace(batchId) || !ytBatches.TryGetValue(batchId, out var batch)) return;
+            if (item.State == DlState.Completed) batch.Completed.Add(item.Id);
+            if (item.State == DlState.Error) batch.Failed[item.Id] = item;
+            if (batch.ItemIds.Any(id => items.FirstOrDefault(x => x.Id == id)?.State is DlState.Queued or DlState.Downloading or DlState.Paused)) return;
+
+            string text = "Video batch: " + batch.Completed.Count + " done / " + batch.Failed.Count + " failed / " + batch.Skipped + " skipped";
+            if (batch.Failed.Count > 0) text += " — Retry failed";
+            lblBatchSummary.Text = text;
+            lblBatchSummary.Visible = true;
+            lblBatchSummary.ToolTipText = batch.Failed.Count > 0 ? "Retry failed downloads from this batch" : text;
+        }
+
+        void RetryFailedYtBatch()
+        {
+            if (lastYtBatchId == null || !ytBatches.TryGetValue(lastYtBatchId, out var batch) || batch.Failed.Count == 0) return;
+            foreach (var item in batch.Failed.Values.Where(x => x.State == DlState.Error))
+            {
+                item.State = DlState.Queued;
+                item.Error = null;
+                item.StatusNote = "";
+                item.RetryCount = 0;
+            }
+            batch.Failed.Clear();
+            lblBatchSummary.Visible = false;
+            MarkChanged();
+            SaveState();
+        }
+
         // ---------- টাইমার: কিউ + স্পিড ----------
         void OnTick(
             object? sender,
@@ -85,11 +167,13 @@ namespace FastDM
             foreach (var it in items
                 .Where(i => i.State == DlState.Queued && (!scheduleBlocked || i.IgnoreSchedule))
                 .OrderBy(i => i.Added)
-                .Take(availableSlots)
                 .ToList())
             {
+                if (availableSlots <= 0) break;
+                if (!CanStartQueuedItem(it, DateTime.UtcNow)) continue;
                 StartDownload(it);
                 active++;
+                availableSlots--;
             }
 
             var now = DateTime.UtcNow;
@@ -166,6 +250,8 @@ namespace FastDM
                          DlState.Queued);
 
             string activeText = "Active: " + actNow + "   Queued: " + queNow;
+            if (youtubeBackoffUntil > DateTime.UtcNow)
+                activeText += "   " + YouTubeBulkPolicy.WaitingStatus;
             if (lblActive.Text != activeText) lblActive.Text = activeText;
 
             string speedText = "↓ " + Fmt(total) + "/s";
@@ -322,6 +408,7 @@ namespace FastDM
                             ? ytException.FailureKind
                             : YtDlpDiagnostics.Classify(ex.Message);
                         ytRetryAfter = (ex as YtDlpProcessException)?.RetryAfter;
+                        RegisterYouTubeFailure(it, ytFailureKind.Value);
                     }
 
                     it.Error =
@@ -394,6 +481,8 @@ namespace FastDM
                         }
                     }
                 }
+
+                UpdateYtBatchProgress(it);
 
                 it.Speed = 0;
 

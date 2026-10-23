@@ -35,6 +35,9 @@ namespace FastDM
         public string? BaseName { get; set; }               // এক্সটেনশন ছাড়া ফাইলের নাম
         public long EstimatedBytes { get; set; }
         public bool NameFromTitle { get; set; }             // true: the file is named after the video title (used by batch imports); BaseName is not needed
+        public bool IsBulkItem { get; set; }
+        public string? BatchId { get; set; }
+        public int BatchSkipped { get; set; }
 
         [System.Text.Json.Serialization.JsonIgnore]
         public string? InfoJsonPath { get; set; }
@@ -310,16 +313,18 @@ namespace FastDM
             return info;
         }
 
-        public static async Task<YtPlaylistInfo> LoadPlaylistAsync(string url, CancellationToken ct, IProgress<string>? progress = null, int maxEntries = 100, bool omitCookies = false)
+        public static async Task<YtPlaylistInfo> LoadPlaylistAsync(string url, CancellationToken ct, IProgress<string>? progress = null, int maxEntries = 100, bool omitCookies = false, int startIndex = 1)
         {
             var args = YtDlpRunner.CommonArgs(omitCookies);
             maxEntries = Math.Clamp(maxEntries, 1, 1000);
-            args.AddRange(new[] { "--yes-playlist", "--flat-playlist", "--playlist-end", maxEntries.ToString(CultureInfo.InvariantCulture), "-J" });
+            startIndex = Math.Max(1, startIndex);
+            int endIndex = checked(startIndex + maxEntries - 1);
+            args.AddRange(new[] { "--yes-playlist", "--flat-playlist", "--playlist-start", startIndex.ToString(CultureInfo.InvariantCulture), "--playlist-end", endIndex.ToString(CultureInfo.InvariantCulture), "-J" });
             var urlInput = YtDlpUrlInput.Create(url);
             args.AddRange(urlInput.Arguments);
             var (json, diagnostic) = await LoadJsonAsync("playlist", args, urlInput.StandardInput, ct, progress);
-            var info = YtDlpMetadataParser.ParsePlaylist(json);
-            info.EntriesLimit = maxEntries;
+            var info = YtDlpMetadataParser.ParsePlaylist(json, startIndex);
+            info.EntriesLimit = endIndex;
             if (info.Entries.Count == 0)
             {
                 if (diagnostic.Length > 0 && YtDlpDiagnostics.Classify(diagnostic) != YtDlpFailureKind.Generic)
@@ -460,7 +465,9 @@ namespace FastDM
                 ? "%(title).150B.%(ext)s"
                 : Path.Combine(it.Folder, baseName.Replace("%", "%%") + ".%(ext)s");
 
+            string url = spec.Url ?? it.Url;
             var args = YtDlpRunner.CommonArgs(spec.IgnoreCookies);
+            args.AddRange(YouTubeBulkPolicy.SleepArguments(url, spec.IsBulkItem));
             args.AddRange(new[]
             {
                 "--no-playlist", "--newline", "--progress",
@@ -492,7 +499,6 @@ namespace FastDM
             long limit = SpeedLimiter.BytesPerSec;
             if (limit > 0) args.AddRange(new[] { "--limit-rate", Math.Max(1, limit / 1024) + "K" });
 
-            string url = spec.Url ?? it.Url;
             bool canUseInfoJson = !string.IsNullOrWhiteSpace(spec.InfoJsonPath) &&
                 spec.InfoJsonExpiresAt > DateTimeOffset.UtcNow && File.Exists(spec.InfoJsonPath);
             string? activeInfoJson = canUseInfoJson ? spec.InfoJsonPath : null;

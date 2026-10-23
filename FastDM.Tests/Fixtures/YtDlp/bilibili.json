@@ -1,0 +1,10 @@
+{
+  "title": "Bilibili fixture",
+  "extractor_key": "BiliBili",
+  "duration": 60,
+  "thumbnails": [{ "url": "https://i0.hdslb.com/x.jpg", "width": 640 }],
+  "formats": [
+    { "vcodec": "avc1", "acodec": "none", "height": 1080, "ext": "mp4", "filesize_approx": 1000000, "tbr": 1000 },
+    { "vcodec": "none", "acodec": "mp4a", "ext": "m4a", "filesize_approx": 100000, "tbr": 128 }
+  ]
+}

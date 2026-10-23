@@ -506,6 +506,7 @@ namespace FastDM
             int overCap = chosenRows.Count - chosen.Count;
 
             int videos = 0;
+            string videoBatchId = Guid.NewGuid().ToString("N");
             var folderUris = new List<Uri>();
             var otherUrls = new List<string>();
 
@@ -513,7 +514,7 @@ namespace FastDM
             {
                 if (r.Kind == BatchKind.Video)
                 {
-                    AddBatchVideo(r.Text, quality, folder, startNow);
+                    AddBatchVideo(r.Text, quality, folder, startNow, videoBatchId);
                     videos++;
                 }
                 else if (r.Kind == BatchKind.Folder)
@@ -596,7 +597,8 @@ namespace FastDM
             string url,
             BatchQuality quality,
             string folder,
-            bool startNow)
+            bool startNow,
+            string? batchId = null)
         {
             string label = "video";
 
@@ -631,7 +633,9 @@ namespace FastDM
                     Format = quality.Format,
                     AudioOnly = quality.AudioOnly,
                     AudioFormat = quality.AudioFormat,
-                    NameFromTitle = true
+                    NameFromTitle = true,
+                    IsBulkItem = true,
+                    BatchId = batchId
                 },
                 State =
                     startNow
@@ -640,6 +644,7 @@ namespace FastDM
             };
 
             items.Add(it);
+            RegisterYtBatchItem(it);
             selectNewId = it.Id;
         }
 
@@ -965,6 +970,7 @@ namespace FastDM
                     State = downloadNow ? DlState.Queued : DlState.Paused
                 };
                 items.Add(it);
+                RegisterYtBatchItem(it);
                 selectNewId = it.Id;
             }
 

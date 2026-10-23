@@ -806,6 +806,10 @@ namespace FastDM
             });
 
             Sub("Video sites (yt-dlp)");
+            Num("Concurrent YouTube downloads (1 recommended; maximum 2)", 1, 2,
+                YouTubeBulkPolicy.ClampConcurrency(s.ConcurrentYouTubeDownloads), v => s.ConcurrentYouTubeDownloads = v);
+            Num("Delay between YouTube playlist items (seconds)", 0, 30,
+                YouTubeBulkPolicy.ClampDelaySeconds(s.YouTubeItemDelaySeconds), v => s.YouTubeItemDelaySeconds = v);
             Hint("Use cookies from browser. Needed when YouTube says \"Sign in to confirm you're not a bot\". " +
                  "Pick the browser where you are logged in to YouTube; yt-dlp reads its cookies on this PC only and FastDM does not save them.");
 

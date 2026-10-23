@@ -86,6 +86,7 @@ namespace FastDM
         ListBox sidebar = null!;
 
         ToolStripStatusLabel lblActive = null!;
+        ToolStripStatusLabel lblBatchSummary = null!;
 
         ToolStripStatusLabel lblSpeed = null!;
 
@@ -150,6 +151,20 @@ namespace FastDM
         bool trayTipShown;
 
         int sessionCompleted;
+
+        sealed class YtBatchProgress
+        {
+            public readonly HashSet<string> ItemIds = new HashSet<string>(StringComparer.Ordinal);
+            public readonly HashSet<string> Completed = new HashSet<string>(StringComparer.Ordinal);
+            public readonly Dictionary<string, DownloadItem> Failed = new Dictionary<string, DownloadItem>(StringComparer.Ordinal);
+            public int Skipped;
+        }
+
+        readonly Dictionary<string, YtBatchProgress> ytBatches = new Dictionary<string, YtBatchProgress>(StringComparer.Ordinal);
+        string? lastYtBatchId;
+        int youtubeBackoffFailures;
+        DateTime youtubeBackoffUntil = DateTime.MinValue;
+        DateTime lastYouTubeBulkStart = DateTime.MinValue;
 
         string lastCompletedName = "";
 

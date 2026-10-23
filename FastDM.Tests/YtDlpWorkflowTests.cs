@@ -79,14 +79,21 @@ namespace FastDM.Tests
             T.Check("playlist metadata keeps reported and listed counts", playlist.Title == "Lessons" && playlist.ReportedCount == 5 && playlist.Entries.Count == 3 && playlist.CountDescription.Contains("playlist reports 5"));
             T.Check("unavailable playlist entries remain visible but are not available", playlist.AvailableCount == 2 && !playlist.Entries[2].Available);
             playlist.EntriesLimit = 3;
-            T.Check("truncated playlist previews say that only the first entries are listed", playlist.CountDescription.StartsWith("first 3 listed", StringComparison.OrdinalIgnoreCase));
+            T.Check("truncated playlist previews say how many of the total are listed", playlist.CountDescription == "First 3 of 5 listed");
             playlist.ReportedCount = null;
-            T.Check("a capped playlist without a reported total is explicitly marked unknown", playlist.CountDescription == "first 3 listed; total unknown");
+            T.Check("a capped playlist without a reported total is explicitly marked unknown", playlist.CountDescription == "First 3 listed; total unknown");
             T.Check("video links with a playlist parameter are treated as one video", !YtDlpMetadataParser.IsYouTubePlaylistUrl("https://www.youtube.com/watch?v=abcdefghijk&list=PL123"));
             T.Check("standalone playlist links are detected", YtDlpMetadataParser.IsYouTubePlaylistUrl("https://www.youtube.com/playlist?list=PL123"));
             T.Check("short video links with a playlist parameter remain single-video links", !YtDlpMetadataParser.IsYouTubePlaylistUrl("https://youtu.be/abcdefghijk?list=PL123"));
             T.Check("YouTube video URLs deduplicate despite tracking parameters", YtDlpMetadataParser.CacheKey("https://youtu.be/abcdefghijk?t=15") == YtDlpMetadataParser.CacheKey("https://www.youtube.com/watch?v=abcdefghijk&si=tracking"));
             T.Check("playlist keys use the list id", YtDlpMetadataParser.CacheKey("https://youtube.com/playlist?list=PL123") == "youtube:playlist:PL123");
+            T.Check("Mix, Liked videos and Watch Later are identified for cookie guidance", YtDlpMetadataParser.IsCookieOnlyYouTubeCollection("https://www.youtube.com/playlist?list=RDabc") && YtDlpMetadataParser.IsCookieOnlyYouTubeCollection("https://www.youtube.com/playlist?list=LL") && YtDlpMetadataParser.IsCookieOnlyYouTubeCollection("https://www.youtube.com/playlist?list=WL"));
+            string fixtureRoot = Path.Combine(AppContext.BaseDirectory, "Fixtures", "YtDlp");
+            var youtubeInfo = YtDlpMetadataParser.ParseVideo(File.ReadAllText(Path.Combine(fixtureRoot, "youtube.json")));
+            T.Check("recorded YouTube metadata includes title, thumbnail and formats", youtubeInfo.Title == "YouTube fixture" && youtubeInfo.Thumbnail?.EndsWith(".jpg") == true && youtubeInfo.Videos.Count > 0);
+            var bilibiliInfo = YtDlpMetadataParser.ParseVideo(File.ReadAllText(Path.Combine(fixtureRoot, "bilibili.json")));
+            T.Check("Bilibili DASH metadata retains thumbnail, format estimate and merge requirement", bilibiliInfo.Thumbnail == "https://i0.hdslb.com/x.jpg" && bilibiliInfo.Videos.Any(x => x.RequiresMerge && x.EstBytes == 1100000));
+            T.Check("recorded generic metadata remains usable without a filesize", YtDlpMetadataParser.ParseVideo(File.ReadAllText(Path.Combine(fixtureRoot, "generic.json"))).Videos.Count > 0);
         }
 
         static void PreviewCache()

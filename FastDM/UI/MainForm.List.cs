@@ -466,9 +466,11 @@ namespace FastDM
             changed |= SetIf(
                 l,
                 3,
-                it.State == DlState.Downloading &&
+                (it.State is DlState.Downloading or DlState.Queued) &&
                 !string.IsNullOrEmpty(it.StatusNote)
                     ? it.StatusNote
+                    : it.State == DlState.Error && it.YtDlp != null
+                        ? YouTubeBulkPolicy.ShortReason(YtDlpDiagnostics.Classify(it.Error))
                     : it.State == DlState.Queued &&
                       scheduleBlocked &&
                       !it.IgnoreSchedule

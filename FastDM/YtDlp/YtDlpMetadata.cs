@@ -57,12 +57,12 @@ namespace FastDM
 
         public string CountDescription => ReportedCount.HasValue
             ? EntriesLimit > 0 && Entries.Count >= EntriesLimit && ReportedCount.Value > Entries.Count
-                ? "first " + Entries.Count + " listed; playlist reports " + ReportedCount.Value
+                ? "First " + Entries.Count + " of " + ReportedCount.Value + " listed"
                 : ReportedCount.Value == Entries.Count
                 ? Entries.Count + (Entries.Count == 1 ? " video" : " videos")
                 : Entries.Count + " listed; playlist reports " + ReportedCount.Value
             : EntriesLimit > 0 && Entries.Count >= EntriesLimit
-                ? "first " + Entries.Count + " listed; total unknown"
+                ? "First " + Entries.Count + " listed; total unknown"
                 : Entries.Count + " entries listed; total unknown";
     }
 
@@ -233,7 +233,7 @@ namespace FastDM
             ? "  •  " + (approximate ? "~ " : "≈ ") + Fmt(bytes)
             : "";
 
-        public static YtPlaylistInfo ParsePlaylist(string json)
+        public static YtPlaylistInfo ParsePlaylist(string json, int startIndex = 1)
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -251,7 +251,7 @@ namespace FastDM
             if (!root.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Array)
                 return result;
 
-            int index = 0;
+            int index = Math.Max(0, startIndex - 1);
             foreach (var entry in entries.EnumerateArray())
             {
                 index++;
@@ -294,6 +294,16 @@ namespace FastDM
             if (query.ContainsKey("v") && query["v"].Length > 0)
                 return false;
             return query.ContainsKey("list") && query["list"].Length > 0;
+        }
+
+        public static bool IsCookieOnlyYouTubeCollection(string? url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsYouTubeHost(uri.Host)) return false;
+            var query = Query(uri.Query);
+            if (!query.TryGetValue("list", out string? list) || string.IsNullOrWhiteSpace(list)) return false;
+            return list.StartsWith("RD", StringComparison.OrdinalIgnoreCase) ||
+                list.Equals("LL", StringComparison.OrdinalIgnoreCase) ||
+                list.Equals("WL", StringComparison.OrdinalIgnoreCase);
         }
 
         public static string CacheKey(string url)

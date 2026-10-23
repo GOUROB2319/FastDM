@@ -25,7 +25,10 @@ namespace FastDM
             public override string ToString()
             {
                 string duration = Entry.Duration > 0 ? "  •  " + TimeSpan.FromSeconds(Entry.Duration).ToString(@"m\:ss") : "";
-                return Entry.Index + ". " + (Entry.Available ? Entry.Title : "Unavailable: " + Entry.Title) + duration;
+                string unavailable = Entry.Title.Contains("private", StringComparison.OrdinalIgnoreCase) ? "Private: "
+                    : Entry.Title.Contains("deleted", StringComparison.OrdinalIgnoreCase) || Entry.Title.Contains("removed", StringComparison.OrdinalIgnoreCase) ? "Deleted: "
+                    : "Unavailable: ";
+                return Entry.Index + ". " + (Entry.Available ? Entry.Title : unavailable + Entry.Title) + duration;
             }
         }
 
@@ -54,7 +57,7 @@ namespace FastDM
         readonly ScreenBoundComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
         readonly CheckedListBox playlistEntries;
         readonly TextBox txtName, txtFolder;
-        readonly Button btnStart, btnLater;
+        readonly Button btnStart, btnLater, btnLoadMore;
         readonly Button btnRetry;
         YtInfo? info;
         YtPlaylistInfo? playlist;
@@ -212,8 +215,13 @@ namespace FastDM
             lblMerge = new Label { Location = new Point(0, 122), Size = new Size(690, 24), AutoEllipsis = true, Font = mergeFont, ForeColor = Theme.P.SubText };
             singlePanel.Controls.Add(lblMerge);
 
-            lblCount = new Label { Dock = DockStyle.Top, Height = 26, Text = "Loading playlist entries…", AutoEllipsis = true };
-            playlistPanel.Controls.Add(lblCount);
+            var playlistHeader = new Panel { Dock = DockStyle.Top, Height = 30 };
+            lblCount = new Label { Dock = DockStyle.Fill, Text = "Loading playlist entries…", AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
+            btnLoadMore = new Button { Dock = DockStyle.Right, Width = 92, Text = "Load more", Visible = false, Enabled = false };
+            btnLoadMore.Click += async (s, e) => await LoadMorePlaylistAsync();
+            playlistHeader.Controls.Add(lblCount);
+            playlistHeader.Controls.Add(btnLoadMore);
+            playlistPanel.Controls.Add(playlistHeader);
             playlistEntries = new CheckedListBox
             {
                 Dock = DockStyle.Fill,
@@ -357,6 +365,9 @@ namespace FastDM
                 }
                 if (!cacheHit || preview == null)
                 {
+                    if (YtDlpMetadataParser.IsCookieOnlyYouTubeCollection(url) && YtDlpCookies.SelectSource().Kind == YtDlpCookieSourceKind.None)
+                        throw new InvalidOperationException("This YouTube Mix/Radio, Liked videos, or Watch Later collection requires a cookie source. Open Video settings and choose Firefox or an exported cookies.txt file.");
+
                     if (YtDlpMetadataParser.IsYouTubePlaylistUrl(url))
                     {
                         playlist = await YtDlpInfo.LoadPlaylistAsync(url, previewCts.Token, progress, maxPlaylistEntries, ignoreCookies);
@@ -452,6 +463,7 @@ namespace FastDM
             cmbAudio.Enabled = enabled;
             cmbPlaylistQuality.Enabled = enabled;
             playlistEntries.Enabled = enabled;
+            btnLoadMore.Enabled = enabled && PlaylistHasMore();
         }
 
         void RenderPreview()
@@ -487,6 +499,8 @@ namespace FastDM
                     lblStatus.Text = "Playlist sizes are not known yet; each video's size depends on its selected format.";
                 }
                 UpdatePlaylistCount();
+                btnLoadMore.Visible = PlaylistHasMore();
+                btnLoadMore.Enabled = !loading && PlaylistHasMore();
             }
             else if (preview?.Video is YtInfo video)
             {
@@ -611,6 +625,52 @@ namespace FastDM
             lblCount.Text = playlist.CountDescription + "  •  " + selected + " selected (limit " + maxPlaylistEntries + ")";
         }
 
+        bool PlaylistHasMore() => playlist != null &&
+            (playlist.ReportedCount.HasValue
+                ? playlist.Entries.Count < playlist.ReportedCount.Value
+                : playlist.EntriesLimit > 0 && playlist.Entries.Count >= playlist.EntriesLimit);
+
+        async Task LoadMorePlaylistAsync()
+        {
+            if (loading || playlist == null || !PlaylistHasMore()) return;
+            loading = true;
+            btnLoadMore.Enabled = false;
+            lblStatus.Text = "Loading the next playlist page…";
+            try
+            {
+                int start = playlist.Entries.Count + 1;
+                var next = await YtDlpInfo.LoadPlaylistAsync(url, previewCts.Token, null, maxPlaylistEntries, ignoreCookies, start);
+                int priorCount = playlist.Entries.Count;
+                playlist.Entries.AddRange(next.Entries);
+                playlist.ReportedCount = next.ReportedCount ?? playlist.ReportedCount;
+                playlist.EntriesLimit = next.EntriesLimit;
+                for (int i = priorCount; i < playlist.Entries.Count; i++)
+                {
+                    var entry = playlist.Entries[i];
+                    bool check = entry.Available && playlistEntries.CheckedItems.Count < maxPlaylistEntries;
+                    playlistEntries.Items.Add(new PlaylistItem { Entry = entry }, check);
+                }
+                if (preview != null) preview.Playlist = playlist;
+                YtDlpPreviewCache.Shared.Store(url, preview ?? new YtPreviewData { Playlist = playlist }, DateTimeOffset.UtcNow, ignoreCookies);
+                UpdatePlaylistCount();
+                lblSource.Text = SourceLine(playlist.Extractor, playlist.Uploader, 0) + Environment.NewLine +
+                    "Playlist entries: " + playlist.CountDescription + Environment.NewLine + "Save folder: " + txtFolder.Text;
+                lblStatus.Text = "Loaded more playlist entries.";
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = "Couldn't load more entries. " + AppLog.Redact(ex.GetBaseException().Message);
+            }
+            finally
+            {
+                loading = false;
+                btnLoadMore.Visible = PlaylistHasMore();
+                btnLoadMore.Enabled = PlaylistHasMore();
+                btnStart.Enabled = playlist?.AvailableCount > 0;
+                btnLater.Enabled = btnStart.Enabled;
+            }
+        }
+
         void Accept(bool later)
         {
             if (loading || !ValidateOutput()) return;
@@ -629,7 +689,8 @@ namespace FastDM
                         AudioOnly = quality.AudioOnly,
                         AudioFormat = quality.AudioFormat,
                         IgnoreCookies = ignoreCookies,
-                        NameFromTitle = true
+                        NameFromTitle = true,
+                        IsBulkItem = true
                     });
                 }
                 if (result.Count == 0)
@@ -637,6 +698,9 @@ namespace FastDM
                     ThemeDialog.Show(this, "Select at least one available video.", "Video playlist");
                     return;
                 }
+                string batchId = Guid.NewGuid().ToString("N");
+                int skipped = playlist.Entries.Count(x => !x.Available);
+                foreach (var spec in result) { spec.BatchId = batchId; spec.BatchSkipped = skipped; }
             }
             else if (info != null)
             {

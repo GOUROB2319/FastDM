@@ -1,0 +1,7 @@
+{
+  "title": "YouTube fixture",
+  "extractor_key": "Youtube",
+  "duration": 42,
+  "thumbnails": [{ "url": "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg", "width": 480 }],
+  "formats": [{ "vcodec": "avc1", "acodec": "mp4a", "height": 720, "ext": "mp4", "filesize": 4000000 }]
+}

@@ -66,6 +66,8 @@ namespace FastDM
         public bool UseServerTime { get; set; } = false;       // ফাইলের তারিখ = সার্ভারের Last-Modified
         public bool MarkDownloaded { get; set; } = true;       // Mark of the Web (Windows SmartScreen)
         public int MaxBatchUrls { get; set; } = 100;           // একবারে সর্বোচ্চ কয়টা লিঙ্ক
+        public int ConcurrentYouTubeDownloads { get; set; } = YouTubeBulkPolicy.DefaultConcurrency;
+        public int YouTubeItemDelaySeconds { get; set; } = YouTubeBulkPolicy.DefaultDelaySeconds;
         public bool NotifyAdded { get; set; } = false;
         public bool NotifyCompleted { get; set; } = true;
         public bool NotifyFailed { get; set; } = true;
@@ -151,6 +153,8 @@ namespace FastDM
             UseServerTime = d.UseServerTime;
             MarkDownloaded = d.MarkDownloaded;
             MaxBatchUrls = d.MaxBatchUrls;
+            ConcurrentYouTubeDownloads = d.ConcurrentYouTubeDownloads;
+            YouTubeItemDelaySeconds = d.YouTubeItemDelaySeconds;
             NotifyAdded = d.NotifyAdded;
             NotifyCompleted = d.NotifyCompleted;
             NotifyFailed = d.NotifyFailed;

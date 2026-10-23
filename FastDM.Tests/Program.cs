@@ -14,6 +14,7 @@ YtDlpProxyTests.Run();
 CookieScopeTests.Run();
 YtDlpDiagnosticsTests.Run();
 YtDlpWorkflowTests.Run();
+YouTubeBulkPolicyTests.Run();
 HttpRangeValidationTests.Run();
 DownloadDisplayNameTests.Run();
 AddUrlValidationTests.Run();

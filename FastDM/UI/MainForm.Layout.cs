@@ -321,6 +321,15 @@ namespace FastDM
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
+            lblBatchSummary = new ToolStripStatusLabel
+            {
+                Visible = false,
+                IsLink = true,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                ToolTipText = "Show the latest video batch summary"
+            };
+            lblBatchSummary.Click += (s, e) => RetryFailedYtBatch();
+
             lblLimit =
                 new ToolStripStatusLabel("Limit: Off");
 
@@ -331,6 +340,7 @@ namespace FastDM
                 new ToolStripStatusLabel("↓ 0 B/s");
 
             statusBar.Items.Add(lblActive);
+            statusBar.Items.Add(lblBatchSummary);
             statusBar.Items.Add(lblSched);
             statusBar.Items.Add(lblLimit);
             statusBar.Items.Add(lblSpeed);

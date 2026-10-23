@@ -1,0 +1,5 @@
+{
+  "title": "Generic fixture",
+  "extractor_key": "Generic",
+  "formats": [{ "vcodec": "avc1", "acodec": "mp4a", "height": 720, "ext": "mp4" }]
+}
