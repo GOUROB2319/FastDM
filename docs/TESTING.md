@@ -2,6 +2,28 @@
 
 Run these commands from the repository root in PowerShell.
 
+## Latest automated verification (2026-10-23)
+
+The latest local run passed `scripts/Test-Project.ps1`: desktop Debug build (0
+warnings/errors), package/version checks, 407 .NET regression checks, 30 local
+HTTP/process integration checks, and 20 extension tests. The standalone Release
+desktop build also passed with 0 warnings/errors. The explicitly selected Node
+bridge/localization tests passed 18/18.
+
+To check reproducibility without ignored local tools or build outputs, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1
+```
+
+This creates and removes an isolated temporary source copy, runs the Release
+build and all automated suites, validates package metadata, and builds an
+unsigned MSIX when Visual Studio MSBuild is available. The 2026-10-23 run
+generated `FastDM.Package_1.0.13.0_x64.msixbundle` and the extension ZIP. MSIX
+generation does not verify signing, installation, Store certification, or
+third-party tool redistribution rights. Local FFmpeg/ffprobe provenance is
+still unverified and remains a release blocker; see [`CODEX_AUDIT_REPORT.md`](CODEX_AUDIT_REPORT.md).
+
 ## 1. Automated checks
 
 ```powershell

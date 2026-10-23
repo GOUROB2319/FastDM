@@ -171,3 +171,19 @@ This pass began on branch `master` at `348aa6e` with a clean worktree. It follow
 | `git diff --check` | **PASS**; no whitespace errors. Git reported only LF-to-CRLF conversion notices for the rewritten extension scripts. |
 
 No interactive WinForms window, Chrome/Edge popup, screen reader, high-DPI monitor, or accessibility inspection tool was available to this run. Therefore the six areas' runtime appearance, 520/700/900 px resize behavior, Preferences/Batch minimum sizes, popup/options rendering, actual pairing states, and high-DPI behavior remain manual checks listed in [`TESTING.md`](TESTING.md). Automated layout logic/build results do not establish those visual outcomes.
+
+## Current verification — 2026-10-23
+
+This verification used the current `master` checkout at `f222e2a` (`master` was three commits ahead of `origin/master`). The worktree was clean before verification. The supplied remediation document defines five named phases, while the current request refers to six parts without naming a separate sixth work unit. No code changes were needed during this verification pass; the remediation is present in the checked-out commits. The results below supersede older test totals in this report, but do not change the outstanding manual and release gates.
+
+| Command/check | Result |
+| --- | --- |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS**; Debug desktop build with 0 warnings/errors, package/version checks, 407 .NET regression checks, 30 loopback/process integration checks, and 20 extension tests. Optional `qjs.exe` was absent. Local FFmpeg/ffprobe and seven DLLs matched the local hash lock, but upstream origin/redistribution provenance warnings remain. |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `dotnet run --project FastDM.Tests -c Release` | **PASS**; 407 passed, 0 failed. |
+| `dotnet run --project FastDM.IntegrationTests -c Release` | **PASS**; 30 passed, 0 integration failures. |
+| `node --test FastDM.Extension/tests/bridge.test.mjs FastDM.Extension/tests/locales.test.mjs` | **PASS**; 18 tests. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; source-only Release build, package checks, regression/integration/extension suites, and extension archive generation succeeded. Visual Studio MSBuild generated `FastDM.Package_1.0.13.0_x64.msixbundle` (73,434,811 bytes) in the isolated temporary copy. This is unsigned package generation only, not signing, installation, Store certification, or release approval. The script removed its temporary workspace. |
+| `git diff --check` | **PASS** after this documentation update. |
+
+No real browser profile, live YouTube extraction, FTP/SFTP server, interactive accessibility/DPI matrix, signed Store install, or reviewed FFmpeg redistribution bundle was available/verified. The strict release provenance limitation and manual checks above remain open; passing local builds and package generation do not clear them.
