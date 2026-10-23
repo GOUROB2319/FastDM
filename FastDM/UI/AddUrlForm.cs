@@ -24,6 +24,7 @@ namespace FastDM
         public string Folder => txtFolder.Text.Trim();
         public string RawText => txtUrls.Text;
         public bool FromFile { get; private set; }
+        public string? ListFileName { get; private set; }
 
         public AddUrlForm(string initialUrl, string folder)
         {
@@ -199,7 +200,7 @@ namespace FastDM
             Controls.Add(layout);
             txtUrls.TextChanged += (s, e) =>
             {
-                if (!loadingFile) FromFile = false;
+                if (!loadingFile) { FromFile = false; ListFileName = null; }
                 UpdateValidation();
             };
             txtFolder.TextChanged += (s, e) => UpdateValidation();
@@ -233,6 +234,7 @@ namespace FastDM
                 txtUrls.SelectionStart = 0;
                 txtUrls.SelectionLength = 0;
                 FromFile = true;
+                ListFileName = Path.GetFileNameWithoutExtension(ofd.FileName);
                 UpdateValidation();
             }
             catch (Exception ex)

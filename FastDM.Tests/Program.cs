@@ -10,6 +10,7 @@ FileCheckTests.Run();
 SecurityRegressionTests.Run();
 SshHostKeyTests.Run();
 DownloadConcurrencyTests.Run();
+FolderNamingPolicyTests.Run();
 YtDlpProxyTests.Run();
 CookieScopeTests.Run();
 YtDlpDiagnosticsTests.Run();

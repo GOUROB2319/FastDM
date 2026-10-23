@@ -134,7 +134,8 @@ namespace FastDM
             {
                 await StartBatchImportAsync(
                     dlg.RawText,
-                    folder);
+                    folder,
+                    dlg.ListFileName);
 
                 return;
             }
@@ -424,7 +425,8 @@ namespace FastDM
 
                     await StartBatchImportAsync(
                         File.ReadAllText(path),
-                        settings.DefaultFolder);
+                        settings.DefaultFolder,
+                        Path.GetFileNameWithoutExtension(path));
                 }
                 catch (Exception ex)
                 {
@@ -448,7 +450,8 @@ namespace FastDM
         // Check the list line by line, show the preview, then add what the user ticked.
         async Task StartBatchImportAsync(
             string text,
-            string folder)
+            string folder,
+            string? listFileName = null)
         {
             var listed =
                 items
@@ -474,7 +477,8 @@ namespace FastDM
                 new BatchImportForm(
                     rows,
                     folder,
-                    settings.MaxBatchUrls);
+                    settings.MaxBatchUrls,
+                    listFileName);
 
             Theme.Apply(dlg);
 
@@ -569,7 +573,8 @@ namespace FastDM
                 {
                     AddFolder(
                         fu,
-                        startNow);
+                        startNow,
+                        folder);
                 }
             }
 
@@ -1031,12 +1036,13 @@ namespace FastDM
         void AddFolder(
             Uri uri,
             bool startNow,
+            string? defaultLocation = null,
             bool playlistMode = false)
         {
             using var f =
                 new FolderDownloadForm(
                     uri,
-                    settings.DefaultFolder,
+                    defaultLocation ?? settings.DefaultFolder,
                     settings.MaxSimultaneous,
                     playlistMode);
 
@@ -1197,7 +1203,7 @@ namespace FastDM
                     AddFolder(
                         folder,
                         true,
-                        true);
+                        playlistMode: true);
                 }
                 catch (Exception ex)
                 {

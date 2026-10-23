@@ -15,15 +15,20 @@ namespace FastDM
         readonly ListView list;
         readonly ComboBox cmbQuality;
         readonly CheckBox chkFolders;
+        readonly CheckBox chkListFolder;
         readonly TextBox txtFolder;
+        readonly TextBox txtListFolder;
         readonly Label lblCount;
+        readonly Label lblFinalFolder;
         readonly Button btnStart;
         readonly Button btnLater;
 
         public List<BatchRow> SelectedRows { get; private set; } = new List<BatchRow>();
         public BatchQuality Quality => cmbQuality.SelectedItem as BatchQuality ?? BatchQuality.Presets[0];
         public bool FoldersAutomatically => chkFolders.Checked;
-        public string SaveFolder => txtFolder.Text.Trim();
+        public string SaveFolder => chkListFolder.Checked
+            ? FolderNamingPolicy.Combine(txtFolder.Text, txtListFolder.Text)
+            : txtFolder.Text.Trim();
 
         static string KindText(BatchKind k)
         {
@@ -40,7 +45,7 @@ namespace FastDM
         // Playlists and non-links cannot be downloaded from a batch, so they cannot be ticked.
         static bool CanTick(BatchRow r) => r.Kind != BatchKind.Invalid && r.Kind != BatchKind.Playlist;
 
-        public BatchImportForm(List<BatchRow> importRows, string defaultFolder, int maxBatchUrls)
+        public BatchImportForm(List<BatchRow> importRows, string defaultFolder, int maxBatchUrls, string? listFileName = null)
         {
             Theme.ConfigureForm(this);
             rows = importRows;
@@ -52,7 +57,7 @@ namespace FastDM
             MaximizeBox = true;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(860, 620);
+            ClientSize = new Size(860, 680);
             MinimumSize = new Size(700, 500);
             Font = Theme.CreateFont(Theme.FontBody);
 
@@ -160,12 +165,29 @@ namespace FastDM
             };
             Controls.Add(chkFolders);
 
-            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 530), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
+            chkListFolder = new CheckBox
+            {
+                Text = listFileName == null ? "Create a folder for this batch" : "Create a folder named after the list file",
+                Location = new Point(16, 518),
+                AutoSize = true,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
+                Checked = listFileName != null
+            };
+            Controls.Add(chkListFolder);
+            txtListFolder = new TextBox
+            {
+                Location = new Point(300, 515), Size = new Size(430, 26),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Text = listFileName == null ? "" : FolderNamingPolicy.Sanitize(listFileName)
+            };
+            Controls.Add(txtListFolder);
 
-            txtFolder = new TextBox { Location = new Point(80, 526), Size = new Size(650, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
+            Controls.Add(new Label { Text = "Save to", Location = new Point(16, 550), AutoSize = true, Anchor = AnchorStyles.Bottom | AnchorStyles.Left });
+
+            txtFolder = new TextBox { Location = new Point(80, 546), Size = new Size(650, 26), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, Text = defaultFolder };
             Controls.Add(txtFolder);
 
-            var browse = new Button { Text = "Browse...", Location = new Point(740, 525), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var browse = new Button { Text = "Browse...", Location = new Point(740, 545), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             browse.Click += (s, e) =>
             {
                 using var fb = new FolderBrowserDialog { SelectedPath = txtFolder.Text };
@@ -174,9 +196,12 @@ namespace FastDM
             };
             Controls.Add(browse);
 
-            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 574), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            btnLater = new Button { Text = "Download Later", Location = new Point(588, 574), Size = new Size(140, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
-            var cancel = new Button { Text = "Cancel", Location = new Point(734, 574), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
+            lblFinalFolder = new Label { Location = new Point(80, 574), Size = new Size(650, 20), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, AutoEllipsis = true };
+            Controls.Add(lblFinalFolder);
+
+            btnStart = new Button { Text = "Start downloading", Location = new Point(412, 620), Size = new Size(170, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            btnLater = new Button { Text = "Download Later", Location = new Point(588, 620), Size = new Size(140, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            var cancel = new Button { Text = "Cancel", Location = new Point(734, 620), Size = new Size(110, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.Cancel };
 
             btnStart.Click += (s, e) => Finish(DialogResult.OK);
             btnLater.Click += (s, e) => Finish(DialogResult.Yes);
@@ -188,8 +213,19 @@ namespace FastDM
             AcceptButton = btnStart;
             CancelButton = cancel;
 
+            chkListFolder.CheckedChanged += (s, e) => UpdateFinalFolder();
+            txtListFolder.TextChanged += (s, e) => UpdateFinalFolder();
+            txtFolder.TextChanged += (s, e) => UpdateFinalFolder();
+
             UpdateCount();
+            UpdateFinalFolder();
             FitBatchColumns();
+        }
+
+        void UpdateFinalFolder()
+        {
+            txtListFolder.Enabled = chkListFolder.Checked;
+            lblFinalFolder.Text = "Files will be saved to: " + SaveFolder;
         }
 
         void FitBatchColumns()

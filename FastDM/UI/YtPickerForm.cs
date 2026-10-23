@@ -57,6 +57,8 @@ namespace FastDM
         readonly ScreenBoundComboBox cmbVideo, cmbAudio, cmbPlaylistQuality;
         readonly CheckedListBox playlistEntries;
         readonly TextBox txtName, txtFolder;
+        readonly CheckBox chkPlaylistFolder;
+        readonly Label lblPlaylistFolder;
         readonly Button btnStart, btnLater, btnLoadMore;
         readonly Button btnRetry;
         YtInfo? info;
@@ -66,7 +68,9 @@ namespace FastDM
 
         public List<YtDlpSpec> Specs { get; private set; } = new List<YtDlpSpec>();
         public string? ErrorMessage { get; private set; }
-        public string SaveFolder => txtFolder.Text.Trim();
+        public string SaveFolder => playlist != null && chkPlaylistFolder.Checked
+            ? FolderNamingPolicy.Combine(txtFolder.Text, FolderNamingPolicy.PlaylistFolder(playlist.Title))
+            : txtFolder.Text.Trim();
 
         public YtPickerForm(string videoUrl, string defaultFolder, int maxPlaylistEntries = 100, bool ignoreCookies = false)
         {
@@ -95,7 +99,7 @@ namespace FastDM
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
 
             lblTitle = new Label
             {
@@ -267,7 +271,7 @@ namespace FastDM
             options.Controls.Add(txtName, 0, 3);
             root.Controls.Add(options, 0, 4);
 
-            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+            var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             var folderRow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
             folderRow.Controls.Add(new Label { Text = "Save to", AutoSize = true, Margin = new Padding(0, 7, 8, 0) });
@@ -281,6 +285,15 @@ namespace FastDM
             };
             folderRow.Controls.Add(browse);
             footer.Controls.Add(folderRow, 0, 0);
+
+            chkPlaylistFolder = new CheckBox { Text = "Create a folder for this playlist", Checked = true, AutoSize = true, Visible = false, Margin = new Padding(0, 0, 0, 0) };
+            lblPlaylistFolder = new Label { AutoSize = true, Visible = false, Margin = new Padding(0, 0, 0, 0), ForeColor = Theme.P.SubText };
+            var playlistFolderPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 22, WrapContents = false, Visible = false };
+            playlistFolderPanel.Controls.Add(chkPlaylistFolder);
+            playlistFolderPanel.Controls.Add(lblPlaylistFolder);
+            footer.Controls.Add(playlistFolderPanel, 0, 1);
+            chkPlaylistFolder.CheckedChanged += (s, e) => UpdatePlaylistFolderHint();
+            txtFolder.TextChanged += (s, e) => UpdatePlaylistFolderHint();
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
             var cancel = new Button { Text = "Cancel", Size = new Size(92, 34), DialogResult = DialogResult.Cancel };
@@ -296,8 +309,9 @@ namespace FastDM
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(btnLater);
             buttons.Controls.Add(btnStart);
-            footer.Controls.Add(buttons, 0, 1);
+            footer.Controls.Add(buttons, 0, 2);
             footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
             footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             root.Controls.Add(footer, 0, 5);
 
@@ -471,6 +485,9 @@ namespace FastDM
             if (preview?.Playlist is YtPlaylistInfo pl)
             {
                 playlist = pl;
+                chkPlaylistFolder.Visible = true;
+                chkPlaylistFolder.Parent!.Visible = true;
+                UpdatePlaylistFolderHint();
                 lblTitle.Text = pl.Title;
                 lblSource.Text = SourceLine(pl.Extractor, pl.Uploader, 0) + Environment.NewLine +
                     "Playlist entries: " + pl.CountDescription + Environment.NewLine +
@@ -505,6 +522,8 @@ namespace FastDM
             else if (preview?.Video is YtInfo video)
             {
                 info = video;
+                chkPlaylistFolder.Visible = false;
+                chkPlaylistFolder.Parent!.Visible = false;
                 lblTitle.Text = video.Title;
                 lblSource.Text = SourceLine(video.Extractor, video.Uploader, video.Duration) + Environment.NewLine +
                     "Available formats: " + video.Videos.Count + " video quality option(s)";
@@ -623,6 +642,13 @@ namespace FastDM
             if (playlist == null) return;
             int selected = playlistEntries.CheckedItems.Cast<PlaylistItem>().Count(x => x.Entry.Available);
             lblCount.Text = playlist.CountDescription + "  •  " + selected + " selected (limit " + maxPlaylistEntries + ")";
+        }
+
+        void UpdatePlaylistFolderHint()
+        {
+            if (playlist == null) return;
+            lblPlaylistFolder.Visible = chkPlaylistFolder.Checked;
+            lblPlaylistFolder.Text = chkPlaylistFolder.Checked ? "  → " + SaveFolder : "";
         }
 
         bool PlaylistHasMore() => playlist != null &&

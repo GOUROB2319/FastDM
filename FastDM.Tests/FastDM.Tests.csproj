@@ -32,6 +32,7 @@
 		<Compile Include="..\FastDM\Core\AppLog.cs" Link="Linked\AppLog.cs" />
 		<Compile Include="..\FastDM\Core\DownloadCookieScope.cs" Link="Linked\DownloadCookieScope.cs" />
 		<Compile Include="..\FastDM\Core\DownloadQueuePolicy.cs" Link="Linked\DownloadQueuePolicy.cs" />
+		<Compile Include="..\FastDM\Core\FolderNamingPolicy.cs" Link="Linked\FolderNamingPolicy.cs" />
 		<Compile Include="..\FastDM\Core\HttpRangeValidation.cs" Link="Linked\HttpRangeValidation.cs" />
 		<Compile Include="..\FastDM\Core\UrlCredential.cs" Link="Linked\UrlCredential.cs" />
 		<Compile Include="..\FastDM\YtDlp\YtDlpDiagnostics.cs" Link="Linked\YtDlpDiagnostics.cs" />

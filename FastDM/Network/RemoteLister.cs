@@ -19,6 +19,7 @@ namespace FastDM
         public long Size;                       // 0 = unknown
         public string Url = string.Empty;
         public List<RemoteNode> Children = new List<RemoteNode>();
+        public bool IsTruncated;
     }
 
     public static class RemoteLister
@@ -26,6 +27,8 @@ namespace FastDM
         public const int MaxDepth = 30;
         public const int MaxNodes = 10_000;
         public const int MaxDirectoryEntries = 1_000;
+
+        sealed class ScanLimitReachedException : Exception { }
 
         sealed class ScanBudget
         {
@@ -36,12 +39,13 @@ namespace FastDM
             public void Register(RemoteNode node)
             {
                 if (++nodes > MaxNodes)
-                    throw new InvalidDataException("The remote folder contains more than FastDM's 10,000 item scan limit.");
+                    throw new ScanLimitReachedException();
                 if (!node.IsDir) progress?.Report(++files);
             }
         }
 
-        // Folder picker navigation uses this bounded, immediate-child listing. It never walks descendants.
+        // Kept for callers that need a bounded immediate-child listing. FolderDownloadForm uses ScanAsync
+        // so its single tree includes the selected folder's descendants.
         public static async Task<RemoteNode> ListDirectoryAsync(Uri directory, IProgress<int>? progress, CancellationToken ct)
         {
             var root = new RemoteNode { IsDir = true, Name = "", Url = directory.AbsoluteUri };
@@ -116,6 +120,10 @@ namespace FastDM
                     default:
                         throw new NotSupportedException("Unsupported link type: " + root.Scheme);
                 }
+            }
+            catch (ScanLimitReachedException)
+            {
+                node.IsTruncated = true;
             }
             catch (Exception ex) when (!(ex is OperationCanceledException) && RemoteTransfer.IsAuthError(ex))
             {

@@ -93,17 +93,14 @@ namespace FastDM
     class FolderDownloadForm : Form
     {
         readonly Uri rootUri;
-        Uri currentUri;
         readonly TextBox txtName, txtLocation, txtFilter;
         readonly NumericUpDown numSim;
         readonly TreeView tree;
         readonly Label lblStatus;
         readonly Label lblSelectedSize;
-        readonly Button btnOk, btnStream, btnBack, btnUp;
-        readonly FlowLayoutPanel breadcrumb;
+        readonly Button btnOk, btnStream, btnCancelScan;
         readonly ImageList treeImages;
         readonly HashSet<TreeNode> partiallySelectedNodes = new HashSet<TreeNode>();
-        readonly Stack<Uri> history = new Stack<Uri>();
         readonly CheckBox chkLocalPlaylist;
         CancellationTokenSource? cts;
         bool suppress;
@@ -120,7 +117,6 @@ namespace FastDM
         {
             Theme.ConfigureForm(this);
             rootUri = folderUri;
-            currentUri = folderUri;
 
             Text = playlistMode ? "Create Playlist" : "Download Folder";
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -181,41 +177,12 @@ namespace FastDM
             txtFilter.TextChanged += (s, e) => ApplyFilter();
             Controls.Add(txtFilter);
 
-            btnBack = new Button { Text = "← Back", Location = new Point(16, 228), Size = new Size(82, 27), Enabled = false };
-            btnBack.Click += async (s, e) =>
-            {
-                if (history.Count == 0) return;
-                Uri previous = history.Pop();
-                await NavigateAsync(previous, rememberCurrent: false);
-            };
-            btnUp = new Button { Text = "↑ Up", Location = new Point(104, 228), Size = new Size(70, 27) };
-            btnUp.Click += async (s, e) =>
-            {
-                Uri? parent = ParentUri(currentUri);
-                if (parent != null) await NavigateAsync(parent, rememberCurrent: true);
-            };
-            breadcrumb = new FlowLayoutPanel
-            {
-                Location = new Point(184, 229),
-                Size = new Size(460, 25),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                AutoScroll = true,
-                WrapContents = false,
-                FlowDirection = FlowDirection.LeftToRight,
-                AccessibleName = "Current folder path",
-                AccessibleDescription = "Folder path. Activate a segment to navigate to it."
-            };
-            Controls.Add(btnBack);
-            Controls.Add(btnUp);
-            Controls.Add(breadcrumb);
-            RebuildBreadcrumb();
-
             // ট্রি ভিউ
             treeImages = CreateShellImageList();
             tree = new TreeView
             {
-                Location = new Point(16, 260),
-                Size = new Size(628, 272),
+                Location = new Point(16, 228),
+                Size = new Size(628, 304),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 CheckBoxes = true,
                 HideSelection = false,
@@ -227,32 +194,22 @@ namespace FastDM
             };
             tree.AfterCheck += OnAfterCheck;
             tree.DrawNode += DrawFolderNode;
-            tree.NodeMouseDoubleClick += async (s, e) =>
-            {
-                if (e.Node?.Tag is RemoteNode node && node.IsDir && Uri.TryCreate(node.Url, UriKind.Absolute, out var target))
-                    await NavigateAsync(target, rememberCurrent: true);
-            };
-            tree.KeyDown += async (s, e) =>
-            {
-                if (e.KeyCode == Keys.Enter && tree.SelectedNode?.Tag is RemoteNode node && node.IsDir &&
-                    Uri.TryCreate(node.Url, UriKind.Absolute, out var target))
-                {
-                    e.Handled = true;
-                    await NavigateAsync(target, rememberCurrent: true);
-                }
-            };
             Controls.Add(tree);
 
             var all = new Button { Text = "Select all", Location = new Point(16, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             var none = new Button { Text = "Select none", Location = new Point(122, 540), Size = new Size(100, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var expand = new Button { Text = "Expand all", Location = new Point(228, 540), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            var collapse = new Button { Text = "Collapse all", Location = new Point(328, 540), Size = new Size(94, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             all.Click += (s, e) => { txtFilter.Text = ""; SetAll(true); };
             none.Click += (s, e) => SetAll(false);
-            Controls.Add(all); Controls.Add(none);
+            expand.Click += (s, e) => tree.ExpandAll();
+            collapse.Click += (s, e) => tree.CollapseAll();
+            Controls.Add(all); Controls.Add(none); Controls.Add(expand); Controls.Add(collapse);
 
             lblStatus = new Label
             {
-                Location = new Point(236, 546),
-                Size = new Size(214, 22),
+                Location = new Point(16, 546),
+                Size = new Size(330, 22),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Text = "Scanning…",
                 AutoEllipsis = true,
@@ -263,7 +220,7 @@ namespace FastDM
 
             lblSelectedSize = new Label
             {
-                Location = new Point(456, 546),
+                Location = new Point(350, 546),
                 Size = new Size(188, 22),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
                 Text = "Selected size: 0 B",
@@ -273,6 +230,10 @@ namespace FastDM
                 AccessibleDescription = "Estimated total size of selected files."
             };
             Controls.Add(lblSelectedSize);
+
+            btnCancelScan = new Button { Text = "Cancel scan", Location = new Point(540, 540), Size = new Size(104, 28), Anchor = AnchorStyles.Bottom | AnchorStyles.Right, Visible = false };
+            btnCancelScan.Click += (s, e) => cts?.Cancel();
+            Controls.Add(btnCancelScan);
 
             // প্লেলিস্ট (VLC)
             chkLocalPlaylist = new CheckBox
@@ -307,7 +268,7 @@ namespace FastDM
             {
                 try
                 {
-                    await ListCurrentAsync();
+                    await ScanRootAsync();
                 }
                 catch (OperationCanceledException)
                 {
@@ -390,22 +351,6 @@ namespace FastDM
         }
 
         // ---------- স্ক্যান ----------
-        async Task<RemoteNode> ListWithCredentialsAsync(Uri target, CancellationToken token)
-        {
-            while (true)
-            {
-                try
-                {
-                    var progress = new Progress<int>(n => lblStatus.Text = "Loading… " + n + " file(s) found");
-                    return await RemoteLister.ListDirectoryAsync(target, progress, token);
-                }
-                catch (AuthRequiredException)
-                {
-                    if (!CredentialForm.Prompt(this, target)) throw new OperationCanceledException(token);
-                }
-            }
-        }
-
         async Task<RemoteNode> ScanWithCredentialsAsync(Uri target, IProgress<int> progress, CancellationToken token)
         {
             while (true)
@@ -418,99 +363,27 @@ namespace FastDM
             }
         }
 
-        async Task ListCurrentAsync()
+        async Task ScanRootAsync()
         {
             cts?.Cancel();
             cts?.Dispose();
             cts = new CancellationTokenSource();
             btnOk.Enabled = false;
             btnStream.Enabled = false;
-            btnBack.Enabled = history.Count > 0;
-            btnUp.Enabled = ParentUri(currentUri) != null;
+            btnCancelScan.Visible = true;
             try
             {
-                lblStatus.Text = "Loading directory…";
+                lblStatus.Text = "Scanning…";
                 lblSelectedSize.Text = "Selected size: calculating…";
-                BuildTree(await ListWithCredentialsAsync(currentUri, cts.Token));
-                RebuildBreadcrumb();
+                var progress = new Progress<int>(n => lblStatus.Text = "Scanning… " + n.ToString("N0") + " items");
+                var root = await ScanWithCredentialsAsync(rootUri, progress, cts.Token);
+                BuildTree(root);
+                if (root.IsTruncated)
+                    lblStatus.Text = "Showing first " + RemoteLister.MaxNodes.ToString("N0") + " items";
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); lblSelectedSize.Text = "Selected size: unavailable"; }
-        }
-
-        async Task NavigateAsync(Uri target, bool rememberCurrent)
-        {
-            cts?.Cancel();
-            cts?.Dispose();
-            cts = new CancellationTokenSource();
-            btnOk.Enabled = false;
-            btnStream.Enabled = false;
-            try
-            {
-                lblStatus.Text = "Loading directory…";
-                lblSelectedSize.Text = "Selected size: calculating…";
-                var listing = await ListWithCredentialsAsync(target, cts.Token);
-                if (rememberCurrent) history.Push(currentUri);
-                currentUri = target;
-                BuildTree(listing);
-                RebuildBreadcrumb();
-                btnBack.Enabled = history.Count > 0;
-                btnUp.Enabled = ParentUri(currentUri) != null;
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { lblStatus.Text = "Could not open directory: " + AppLog.Redact(ex.Message); lblSelectedSize.Text = "Selected size: unavailable"; }
-        }
-
-        void RebuildBreadcrumb()
-        {
-            breadcrumb.SuspendLayout();
-            var previousCrumbs = breadcrumb.Controls.Cast<Control>().ToArray();
-            breadcrumb.Controls.Clear();
-            foreach (Control crumb in previousCrumbs) crumb.Dispose();
-            string authority = currentUri.GetLeftPart(UriPartial.Authority);
-            string query = currentUri.Query;
-
-            void AddCrumb(string text, string escapedPath)
-            {
-                if (breadcrumb.Controls.Count > 0)
-                    breadcrumb.Controls.Add(new Label { Text = "›", AutoSize = true, Margin = new Padding(3, 3, 3, 0), ForeColor = Theme.P.SubText });
-
-                var link = new LinkLabel
-                {
-                    Text = text,
-                    AutoSize = true,
-                    Margin = new Padding(2, 3, 2, 0),
-                    LinkBehavior = LinkBehavior.HoverUnderline,
-                    Tag = new Uri(authority + escapedPath + query)
-                };
-                link.LinkClicked += async (s, e) =>
-                {
-                    if (link.Tag is Uri target)
-                        await NavigateAsync(target, rememberCurrent: true);
-                };
-                breadcrumb.Controls.Add(link);
-            }
-
-            AddCrumb(currentUri.Host, "/");
-            var segments = currentUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            string accumulated = "";
-            foreach (string segment in segments)
-            {
-                accumulated += segment + "/";
-                AddCrumb(Uri.UnescapeDataString(segment), "/" + accumulated);
-            }
-            breadcrumb.ResumeLayout(true);
-        }
-
-        static Uri? ParentUri(Uri target)
-        {
-            string path = Uri.UnescapeDataString(target.AbsolutePath).TrimEnd('/');
-            if (path.Length == 0) return null;
-            int slash = path.LastIndexOf('/');
-            string parent = slash <= 0 ? "/" : path.Substring(0, slash + 1);
-            var builder = new UriBuilder(target) { Path = parent, Fragment = "" };
-            Uri result = builder.Uri;
-            return result.AbsoluteUri.Equals(target.AbsoluteUri, StringComparison.OrdinalIgnoreCase) ? null : result;
+            catch (Exception ex) { lblStatus.Text = "Could not scan folder: " + AppLog.Redact(ex.Message); lblSelectedSize.Text = "Selected size: unavailable"; }
+            finally { btnCancelScan.Visible = false; }
         }
 
         void BuildTree(RemoteNode root)
@@ -778,29 +651,16 @@ namespace FastDM
             DialogResult = DialogResult.OK;
         }
 
-        async Task CollectSelectedAsync(List<PickedFile> files, CancellationToken token)
+        Task CollectSelectedAsync(List<PickedFile> files, CancellationToken token)
         {
-            string relative = RelativePath(rootUri, currentUri);
             var filter = ParseFilter();
-            int selectedFolders = CountSelectedFolders(tree.Nodes);
-            int completed = 0;
             foreach (TreeNode n in tree.Nodes)
-                await CollectSelectedNodeAsync(n, relative, files, filter, selectedFolders, () => ++completed, token);
+                CollectSelectedTreeNode(n, "", files, filter, token);
+            return Task.CompletedTask;
         }
 
-        static int CountSelectedFolders(TreeNodeCollection nodes)
-        {
-            int count = 0;
-            foreach (TreeNode node in nodes)
-            {
-                if (node.Tag is RemoteNode { IsDir: true } && node.Checked) count++;
-                else count += CountSelectedFolders(node.Nodes);
-            }
-            return count;
-        }
-
-        async Task CollectSelectedNodeAsync(TreeNode node, string relative, List<PickedFile> files,
-            HashSet<string> filter, int selectedFolders, Func<int> nextFolder, CancellationToken token)
+        static void CollectSelectedTreeNode(TreeNode node, string relative, List<PickedFile> files,
+            HashSet<string> filter, CancellationToken token)
         {
             if (node.Tag is not RemoteNode item) return;
             token.ThrowIfCancellationRequested();
@@ -811,18 +671,9 @@ namespace FastDM
                 return;
             }
 
-            string nestedRelative = Path.Combine(relative, SafeSeg(item.Name));
-            if (node.Checked)
-            {
-                lblStatus.Text = "Scanning selected folder " + nextFolder() + " of " + selectedFolders + "…";
-                var progress = new Progress<int>(count => lblStatus.Text = "Scanning selected folder… " + count + " file(s) found");
-                var subtree = await ScanWithCredentialsAsync(new Uri(item.Url), progress, token);
-                CollectRemote(subtree, nestedRelative, files, filter);
-                return;
-            }
-
+            string nestedRelative = FolderNamingPolicy.AppendRelative(relative, item.Name);
             foreach (TreeNode child in node.Nodes)
-                await CollectSelectedNodeAsync(child, nestedRelative, files, filter, selectedFolders, nextFolder, token);
+                CollectSelectedTreeNode(child, nestedRelative, files, filter, token);
         }
 
         HashSet<string> ParseFilter() => txtFilter.Text
@@ -832,26 +683,6 @@ namespace FastDM
 
         static bool MatchesFilter(string name, HashSet<string> filter) =>
             filter.Count == 0 || filter.Contains(Path.GetExtension(name));
-
-        static string RelativePath(Uri root, Uri current)
-        {
-            string basePath = Uri.UnescapeDataString(root.AbsolutePath).TrimEnd('/');
-            string path = Uri.UnescapeDataString(current.AbsolutePath).TrimEnd('/');
-            if (path.Equals(basePath, StringComparison.OrdinalIgnoreCase)) return "";
-            string prefix = basePath.Length == 0 ? "/" : basePath + "/";
-            return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                ? string.Join(Path.DirectorySeparatorChar.ToString(), path.Substring(prefix.Length).Split('/').Select(SafeSeg))
-                : "";
-        }
-
-        static void CollectRemote(RemoteNode dir, string rel, List<PickedFile> files, HashSet<string> filter)
-        {
-            foreach (var child in dir.Children)
-            {
-                if (child.IsDir) CollectRemote(child, Path.Combine(rel, SafeSeg(child.Name)), files, filter);
-                else if (MatchesFilter(child.Name, filter)) files.Add(new PickedFile { Url = child.Url, Name = child.Name, Size = child.Size, RelDir = rel });
-            }
-        }
 
         // ---------- স্ট্রিম প্লেলিস্ট (সার্ভারের লিঙ্ক, ডাউনলোড ছাড়াই VLC-তে চলে) ----------
         async void OnSaveStreamPlaylist(object? sender, EventArgs e)
