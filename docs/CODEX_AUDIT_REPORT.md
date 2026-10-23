@@ -187,3 +187,30 @@ This verification used the current `master` checkout at `f222e2a` (`master` was 
 | `git diff --check` | **PASS** after this documentation update. |
 
 No real browser profile, live YouTube extraction, FTP/SFTP server, interactive accessibility/DPI matrix, signed Store install, or reviewed FFmpeg redistribution bundle was available/verified. The strict release provenance limitation and manual checks above remain open; passing local builds and package generation do not clear them.
+
+## Fourth-pass UI and folder behavior — 2026-10-23
+
+This pass followed the six requested parts while preserving the bridge, host, request-size/time, cookie, credential, and diagnostic-redaction boundaries. The standalone Resume/Pause toolbar buttons were already absent; Parts 1–5 strengthen or verify their requested behavior in separate commits:
+
+| Part | Change and regression coverage | Commit |
+| --- | --- | --- |
+| 1. Main toolbar | Centralized icon-collapse eligibility and tested that Schedule and After downloads retain text while secondary actions may collapse. Existing deferred post-layout measurement, collapse order, and toolbar events remain in place. | `793a503` |
+| 2. Download list | Shared the scaled 8-logical-pixel numeric padding contract and extended coverage for 96-DPI minima, right alignment, and exact fill at common desktop widths. Existing row-diff redraw, double buffering, native grid-line suppression, header filler painting, and resize hooks remain intact. | `9259a36` |
+| 3. Video preview | A YouTube `vi_webp`-only candidate now maps to a directly fetchable JPEG without invoking yt-dlp conversion. Tests cover widest non-WebP preference, mapped JPEG selection, non-YouTube WebP fallback, and the updated metadata contract. Existing HTTPS-only, DNS/private-address, redirect, size, timeout, proxy, and image-dimension checks remain enabled. | `8ac416b` |
+| 4. Video site workflows | Extracted queue admission into a testable policy and verified YouTube bulk concurrency, inter-item delay/backoff, and bypass for single-video/other-site items. Existing playlist pagination, batch result/retry status, cookie guidance, extractor fixtures, and MP4 merge behavior remain. | `2ab0489` |
+| 5. Folder and queue behavior | Positioned folder-tree action/progress/playlist/command rows through a testable layout policy to prevent overlap at normal and minimum dialog heights. Existing list-file/playlist folder naming, nested relative paths, bounded recursive scan, cancellation, and tri-state selection remain. | `68d20d5` |
+
+### Fourth-pass verification
+
+| Command/check | Result |
+| --- | --- |
+| `dotnet build FastDM/FastDM.csproj -c Release -p:Platform=x64` | **PASS**; 0 warnings, 0 errors. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1` | **PASS** after Part 5 and again after the Part 6 documentation edit; final run reported 418 .NET checks passed, package/version checks passed, 30 integration checks passed, and 20 extension tests passed. Debug build had 0 warnings/errors. |
+| `node --test FastDM.Extension/tests` | **NOT SUPPORTED by the installed Node v24.21.0 invocation on Windows**; Node resolved the directory as a module and returned `MODULE_NOT_FOUND`. |
+| `node --test FastDM.Extension/tests/*.test.mjs` | **PASS**; 22 extension tests. |
+| `powershell -ExecutionPolicy Bypass -File scripts/Test-CleanWorkspace.ps1` | **PASS**; isolated source-only Release build and all test/package checks passed; generated unsigned `FastDM.Package_1.0.13.0_x64.msixbundle` (73,437,974 bytes) and `FastDM-Extension-0.1.0.zip` (34,467 bytes). The temporary copy was removed. This is not signed-package, Store-install, certification, or redistribution-provenance verification. |
+| `git diff --check` | **PASS** after documentation edits. |
+
+### Manual verification still required
+
+No interactive WinForms session or live video-site run was performed. Verify toolbar labels at 1359 px with the sidebar closed; column fill and no gap after sidebar toggles; status-bar contrast; absence of visible list/sidebar/header flicker with four active downloads; dropdown placement at screen edges; YouTube and Bilibili thumbnail rendering; playlist- and text-list-named destinations; and a three-level FTP tree with filtering, selection, cancellation, and size totals. A live YouTube/Bilibili extraction, real FTP/SFTP server, high-DPI/screen-reader matrix, signed Store install, and FFmpeg redistribution review remain unverified. Local FFmpeg/ffprobe provenance remains a release blocker.

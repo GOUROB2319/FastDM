@@ -24,6 +24,20 @@ generation does not verify signing, installation, Store certification, or
 third-party tool redistribution rights. Local FFmpeg/ffprobe provenance is
 still unverified and remains a release blocker; see [`CODEX_AUDIT_REPORT.md`](CODEX_AUDIT_REPORT.md).
 
+## Fourth-pass manual checks (2026-10-23)
+
+Automated tests cannot verify these interactive layout and external-service behaviors. Run them on Windows with the app open:
+
+- Resize to 1359 px with the sidebar closed; Schedule and After downloads must retain icon and text, and the overflow chevron must appear only after lower-priority actions collapse.
+- Toggle the sidebar repeatedly; all list columns must fill the viewport without a right-side gap. Check status-bar labels in both themes.
+- Run four downloads and watch the sidebar, list rows, header, and details panel for blinking or unnecessary full redraws.
+- Open video, audio, and playlist quality dropdowns near all screen edges; each list must remain inside the working area and open upward when needed.
+- Preview a YouTube thumbnail and a Bilibili thumbnail; confirm the fallback placeholder appears on failure without blocking the dialog.
+- Import a `.txt`/`.csv` list and confirm the default destination uses the sanitized file name. Preview a playlist and confirm its destination uses the sanitized playlist title; toggle each folder option and check the displayed final path.
+- Open an FTP folder with at least three nested levels; verify the complete tree, initial expansion, checkboxes and partial-parent labels, extension filter, selected-size total, expand/collapse, and cancellation while scanning.
+
+Live YouTube/Bilibili extraction and thumbnail availability depend on upstream services and were not part of the automated verification. Use only authorized test content and user-selected cookie sources; do not share session cookies.
+
 ## 1. Automated checks
 
 ```powershell
