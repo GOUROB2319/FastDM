@@ -915,7 +915,7 @@ namespace FastDM
 
             bool sorted = e.ColumnIndex == sortColumn;
             bool rightAligned = DownloadColumnLayout.IsRightAligned(e.ColumnIndex);
-            int padding = Theme.Scale(this, 8);
+            int padding = Theme.Scale(this, DownloadColumnLayout.NumericCellHorizontalPadding);
             var tr = new Rectangle(
                 e.Bounds.X + padding,
                 e.Bounds.Y,
@@ -1079,7 +1079,7 @@ namespace FastDM
             else
             {
                 bool rightAligned = DownloadColumnLayout.IsRightAligned(e.ColumnIndex);
-                int padding = Theme.Scale(this, 8);
+                int padding = Theme.Scale(this, DownloadColumnLayout.NumericCellHorizontalPadding);
                 var tr = new Rectangle(
                     r.X + (rightAligned ? padding : Theme.Scale(this, 6)),
                     r.Y,

@@ -12,9 +12,12 @@ static class DownloadColumnLayoutTests
         T.Check("normal width restores every download column", normal.All(w => w > 0));
         T.Check("normal width uses the full available table width", normal.Sum() <= 900 && normal.Sum() >= 896);
         T.Check("name and progress receive useful extra width", normal[0] >= 260 && normal[2] >= 170);
-        T.Check("size, speed and ETA retain readable minimum widths", normal[1] >= 84 && normal[4] >= 100 && normal[5] >= 76);
+        T.Check("numeric columns meet the 96-DPI minimums of 84, 100 and 76 pixels",
+            normal[1] >= 84 && normal[4] >= 100 && normal[5] >= 76);
         T.Check("size, speed and ETA use right alignment", FastDM.DownloadColumnLayout.IsRightAligned(1) &&
             FastDM.DownloadColumnLayout.IsRightAligned(4) && FastDM.DownloadColumnLayout.IsRightAligned(5));
+        T.Check("numeric cell and header padding is 8 logical pixels",
+            FastDM.DownloadColumnLayout.NumericCellHorizontalPadding == 8);
         T.Check("name and progress keep left alignment", !FastDM.DownloadColumnLayout.IsRightAligned(0) &&
             !FastDM.DownloadColumnLayout.IsRightAligned(2));
 
@@ -28,5 +31,7 @@ static class DownloadColumnLayoutTests
         var resizedBack = FastDM.DownloadColumnLayout.Fit(900);
         T.Check("columns return after the window grows", resizedBack.All(w => w > 0));
         T.Check("zero width produces safe zero-sized columns", FastDM.DownloadColumnLayout.Fit(0).All(w => w == 0));
+        T.Check("columns fill common desktop widths exactly",
+            new[] { 520, 700, 1359 }.All(width => FastDM.DownloadColumnLayout.Fit(width).Sum() == width));
     }
 }

@@ -6,6 +6,7 @@ namespace FastDM
     // Keeps the download list usable at narrow widths while restoring every column when space returns.
     internal static class DownloadColumnLayout
     {
+        public const int NumericCellHorizontalPadding = 8;
         static readonly int[] LogicalMinimumWidths = { 140, 84, 112, 96, 100, 76, 100 };
         static readonly int[] RightAligned = { 1, 4, 5 };
 
