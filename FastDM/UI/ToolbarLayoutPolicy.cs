@@ -19,5 +19,8 @@ namespace FastDM
         public static bool MustKeepText(string? toolTip) =>
             string.Equals(toolTip, "Schedule", StringComparison.Ordinal) ||
             string.Equals(toolTip, "After downloads", StringComparison.Ordinal);
+
+        public static bool CanCollapseToIcon(string? toolTip) =>
+            !MustKeepText(toolTip);
     }
 }

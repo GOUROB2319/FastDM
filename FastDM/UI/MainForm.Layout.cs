@@ -592,7 +592,7 @@ namespace FastDM
                      .FirstOrDefault(i => i.ToolTipText == tip);
 
             return ToolbarLayoutPolicy.CollapseOrder
-                .Where(tip => !ToolbarLayoutPolicy.MustKeepText(tip))
+                .Where(ToolbarLayoutPolicy.CanCollapseToIcon)
                 .Select(ByTip)
                 .Where(i => i != null)
                 .Select(i => i!)
@@ -675,7 +675,7 @@ namespace FastDM
                 if (!ToolbarOverflows())
                     break;
 
-                if (ToolbarLayoutPolicy.MustKeepText(i.ToolTipText))
+                if (!ToolbarLayoutPolicy.CanCollapseToIcon(i.ToolTipText))
                     continue;
 
                 if (string.IsNullOrEmpty(i.ToolTipText) || i is ToolStripDropDownButton)

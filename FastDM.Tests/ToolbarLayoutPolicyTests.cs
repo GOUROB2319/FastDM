@@ -15,7 +15,12 @@ static class ToolbarLayoutPolicyTests
             }));
         T.Check("Schedule and After downloads always keep their text",
             FastDM.ToolbarLayoutPolicy.MustKeepText("Schedule") &&
-            FastDM.ToolbarLayoutPolicy.MustKeepText("After downloads"));
+            FastDM.ToolbarLayoutPolicy.MustKeepText("After downloads") &&
+            !FastDM.ToolbarLayoutPolicy.CanCollapseToIcon("Schedule") &&
+            !FastDM.ToolbarLayoutPolicy.CanCollapseToIcon("After downloads"));
+        T.Check("secondary toolbar actions can collapse to icons",
+            FastDM.ToolbarLayoutPolicy.CanCollapseToIcon("Details") &&
+            FastDM.ToolbarLayoutPolicy.CanCollapseToIcon("Settings and updates"));
         T.Check("per-item Pause/Resume and Resume/Pause All are not collapsed by the icon-only policy",
             !FastDM.ToolbarLayoutPolicy.CollapseOrder.Contains("Resume") &&
             !FastDM.ToolbarLayoutPolicy.CollapseOrder.Contains("Pause") &&
