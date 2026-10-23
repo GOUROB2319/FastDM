@@ -13,6 +13,17 @@ namespace FastDM.Tests
             T.Check("playlist work gets yt-dlp pacing while single videos do not", YouTubeBulkPolicy.SleepArguments("https://youtube.com/watch?v=abc", true).Count == 6 && YouTubeBulkPolicy.SleepArguments("https://youtube.com/watch?v=abc", false).Count == 0);
             T.Check("rate and bot failures use 30, 60, then 120 second backoff", YouTubeBulkPolicy.BackoffSeconds(YtDlpFailureKind.RateLimited, 0) == 30 && YouTubeBulkPolicy.BackoffSeconds(YtDlpFailureKind.BotVerification, 1) == 60 && YouTubeBulkPolicy.BackoffSeconds(YtDlpFailureKind.RateLimited, 2) == 120);
             T.Check("playlist reasons stay short and actionable", YouTubeBulkPolicy.ShortReason(YtDlpFailureKind.GeoRestricted) == "Geo-blocked" && YouTubeBulkPolicy.ShortReason(YtDlpFailureKind.FormatUnavailable) == "Format unavailable");
+
+            var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+            T.Check("single YouTube videos and other sites bypass bulk queue pacing",
+                YouTubeBulkPolicy.CanStartBulkItem(false, 4, 1, now, now.AddMinutes(1), now, 30));
+            T.Check("bulk YouTube queue respects configured concurrency",
+                !YouTubeBulkPolicy.CanStartBulkItem(true, 1, 1, now, DateTime.MinValue, DateTime.MinValue, 0) &&
+                YouTubeBulkPolicy.CanStartBulkItem(true, 1, 2, now, DateTime.MinValue, DateTime.MinValue, 0));
+            T.Check("bulk YouTube queue waits for backoff and inter-item delay",
+                !YouTubeBulkPolicy.CanStartBulkItem(true, 0, 1, now, now.AddSeconds(1), DateTime.MinValue, 0) &&
+                !YouTubeBulkPolicy.CanStartBulkItem(true, 0, 1, now, DateTime.MinValue, now.AddSeconds(-2), 3) &&
+                YouTubeBulkPolicy.CanStartBulkItem(true, 0, 1, now, DateTime.MinValue, now.AddSeconds(-3), 3));
         }
     }
 }

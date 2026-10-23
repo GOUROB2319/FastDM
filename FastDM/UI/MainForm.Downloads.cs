@@ -27,24 +27,20 @@ namespace FastDM
 
         bool CanStartQueuedItem(DownloadItem item, DateTime now)
         {
-            if (!IsYouTubeBulkItem(item)) return true;
-
             int running = items.Count(x => x.State == DlState.Downloading && IsYouTubeBulkItem(x));
-            if (running >= YouTubeBulkPolicy.ClampConcurrency(settings.ConcurrentYouTubeDownloads))
+            if (!YouTubeBulkPolicy.CanStartBulkItem(IsYouTubeBulkItem(item), running,
+                settings.ConcurrentYouTubeDownloads, now, youtubeBackoffUntil,
+                lastYouTubeBulkStart, settings.YouTubeItemDelaySeconds))
             {
                 item.StatusNote = YouTubeBulkPolicy.WaitingStatus;
                 return false;
             }
 
-            if (youtubeBackoffUntil > now ||
-                lastYouTubeBulkStart.AddSeconds(YouTubeBulkPolicy.ClampDelaySeconds(settings.YouTubeItemDelaySeconds)) > now)
+            if (IsYouTubeBulkItem(item))
             {
-                item.StatusNote = YouTubeBulkPolicy.WaitingStatus;
-                return false;
+                item.StatusNote = "";
+                lastYouTubeBulkStart = now;
             }
-
-            item.StatusNote = "";
-            lastYouTubeBulkStart = now;
             return true;
         }
 

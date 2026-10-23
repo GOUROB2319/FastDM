@@ -23,6 +23,14 @@ namespace FastDM
         public static int ClampConcurrency(int value) => Math.Clamp(value, 1, 2);
         public static int ClampDelaySeconds(int value) => Math.Clamp(value, 0, 30);
 
+        public static bool CanStartBulkItem(bool isYouTubeBulkItem, int running, int concurrency,
+            DateTime now, DateTime backoffUntil, DateTime lastStart, int delaySeconds)
+        {
+            if (!isYouTubeBulkItem) return true;
+            if (running >= ClampConcurrency(concurrency) || backoffUntil > now) return false;
+            return lastStart.AddSeconds(ClampDelaySeconds(delaySeconds)) <= now;
+        }
+
         public static int BackoffSeconds(YtDlpFailureKind kind, int priorFailures)
         {
             if (kind is not (YtDlpFailureKind.RateLimited or YtDlpFailureKind.BotVerification)) return 0;
