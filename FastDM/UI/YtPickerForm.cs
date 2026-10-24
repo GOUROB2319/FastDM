@@ -31,8 +31,10 @@ namespace FastDM
         static readonly HttpClient ThumbnailClient = new HttpClient(new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(4)
-        }) { Timeout = TimeSpan.FromSeconds(5), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
+            UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(4),
+            ConnectCallback = ThumbnailUrlPolicy.ConnectToPublicAddressAsync
+        }) { Timeout = Timeout.InfiniteTimeSpan, MaxResponseContentBufferSize = 2 * 1024 * 1024 };
         readonly string url;
         readonly int maxPlaylistEntries;
         readonly bool ignoreCookies;
@@ -55,6 +57,7 @@ namespace FastDM
         YtPlaylistInfo? playlist;
         YtPreviewData? preview;
         bool loading;
+        int previewGeneration;
 
         public List<YtDlpSpec> Specs { get; private set; } = new List<YtDlpSpec>();
         public string? ErrorMessage { get; private set; }
@@ -290,6 +293,8 @@ namespace FastDM
             };
             FormClosed += (s, e) =>
             {
+                previewGeneration++;
+                previewCts.Cancel();
                 thumbnail.Image?.Dispose();
                 previewCts.Dispose();
                 mergeFont.Dispose();
@@ -300,6 +305,7 @@ namespace FastDM
         async Task LoadPreviewAsync()
         {
             if (loading || IsDisposed) return;
+            int generation = ++previewGeneration;
             loading = true;
             ErrorMessage = null;
             Text = "Video download preview";
@@ -313,6 +319,7 @@ namespace FastDM
             var previousImage = thumbnail.Image;
             thumbnail.Image = null;
             previousImage?.Dispose();
+            thumbnailSkeleton.SetLoading(true);
             thumbnailSkeleton.Visible = true;
             info = null;
             playlist = null;
@@ -383,8 +390,10 @@ namespace FastDM
                 loadingProgress.Visible = false;
                 btnRetry.Visible = !canAccept;
                 if (!canAccept) SetPreviewControlsEnabled(false);
-                if (info?.Thumbnail is string imageUrl) _ = LoadThumbnailAsync(imageUrl, previewCts.Token);
-                else thumbnailSkeleton.Visible = false;
+                if (info != null && info.ThumbnailCandidates.Count > 0)
+                    _ = LoadThumbnailAsync(info.ThumbnailCandidates, previewCts.Token, generation);
+                else
+                    ShowThumbnailFallback(generation);
             }
             catch (OperationCanceledException) when (previewCts.IsCancellationRequested)
             {
@@ -658,76 +667,133 @@ namespace FastDM
             return true;
         }
 
-        async Task LoadThumbnailAsync(string imageUrl, CancellationToken ct)
+        async Task LoadThumbnailAsync(IReadOnlyList<string> imageUrls, CancellationToken cancellationToken, int generation)
         {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(12));
+
             try
             {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(TimeSpan.FromSeconds(5));
-                ct = timeout.Token;
-                if (!TryTrustedThumbnailUri(imageUrl, out var current)) return;
-                HttpResponseMessage? response = null;
-                for (int redirect = 0; redirect <= 3; redirect++)
+                foreach (string imageUrl in imageUrls.Take(8))
                 {
-                    response = await ThumbnailClient.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
-                    if (!IsRedirect(response.StatusCode)) break;
-                    Uri? next = response.Headers.Location == null ? null : response.Headers.Location.IsAbsoluteUri
+                    if (!IsCurrentThumbnailGeneration(generation)) return;
+
+                    try
+                    {
+                        Bitmap? image = await DownloadThumbnailAsync(imageUrl, timeout.Token);
+                        if (image == null) continue;
+
+                        if (!IsCurrentThumbnailGeneration(generation))
+                        {
+                            image.Dispose();
+                            return;
+                        }
+
+                        Image? previous = thumbnail.Image;
+                        thumbnail.Image = image;
+                        previous?.Dispose();
+                        return;
+                    }
+                    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLog.Write("Video preview thumbnail candidate failed (" +
+                            ex.GetBaseException().GetType().Name + "): " +
+                            AppLog.Redact(ex.GetBaseException().Message));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Video preview thumbnail unavailable (" +
+                    ex.GetBaseException().GetType().Name + "): " +
+                    AppLog.Redact(ex.GetBaseException().Message));
+            }
+            finally
+            {
+                if (IsCurrentThumbnailGeneration(generation))
+                    ShowThumbnailFallback(generation);
+            }
+        }
+
+        async Task<Bitmap?> DownloadThumbnailAsync(string imageUrl, CancellationToken cancellationToken)
+        {
+            if (!TryTrustedThumbnailUri(imageUrl, out var current))
+                return null;
+
+            for (int redirect = 0; redirect <= 3; redirect++)
+            {
+                using var response = await ThumbnailClient.GetAsync(
+                    current, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                if (IsRedirect(response.StatusCode))
+                {
+                    if (redirect == 3 || response.Headers.Location == null)
+                        return null;
+
+                    Uri next = response.Headers.Location.IsAbsoluteUri
                         ? response.Headers.Location
                         : new Uri(current, response.Headers.Location);
-                    response.Dispose();
-                    response = null;
-                    if (next == null || !TryTrustedThumbnailUri(next.AbsoluteUri, out current)) return;
+                    if (!TryTrustedThumbnailUri(next.AbsoluteUri, out var trustedNext))
+                        return null;
+
+                    current = trustedNext;
+                    continue;
                 }
-                if (response == null) return;
-                using (response)
-                {
-                    if (!response.IsSuccessStatusCode || response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true) return;
-                if (response.Content.Headers.ContentLength > 2 * 1024 * 1024) return;
-                using var stream = await response.Content.ReadAsStreamAsync(ct);
+
+                if (!response.IsSuccessStatusCode ||
+                    response.Content.Headers.ContentType?.MediaType?.StartsWith(
+                        "image/", StringComparison.OrdinalIgnoreCase) != true ||
+                    response.Content.Headers.ContentLength > 2 * 1024 * 1024)
+                    return null;
+
+                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var memory = new MemoryStream();
                 var buffer = new byte[8192];
                 int total = 0;
                 while (true)
                 {
-                    int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+                    int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
                     if (count == 0) break;
                     total += count;
-                    if (total > 2 * 1024 * 1024) return;
+                    if (total > 2 * 1024 * 1024) return null;
                     memory.Write(buffer, 0, count);
                 }
+
                 memory.Position = 0;
-                using var image = Image.FromStream(memory);
-                if (image.Width <= 0 || image.Height <= 0 || image.Width > 4096 || image.Height > 4096 || (long)image.Width * image.Height > 16_000_000)
-                    return;
-                var copy = new Bitmap(image);
-                if (IsDisposed) { copy.Dispose(); return; }
-                var old = thumbnail.Image;
-                thumbnail.Image = copy;
-                old?.Dispose();
-                thumbnailSkeleton.Visible = false;
-                }
+                using var decoded = Image.FromStream(memory, useEmbeddedColorManagement: false, validateImageData: true);
+                if (decoded.Width <= 0 || decoded.Height <= 0 ||
+                    decoded.Width > 4096 || decoded.Height > 4096 ||
+                    (long)decoded.Width * decoded.Height > 16_000_000)
+                    return null;
+
+                return new Bitmap(decoded);
             }
-            catch (Exception ex)
-            {
-                if (!IsDisposed) thumbnailSkeleton.Visible = false;
-                AppLog.Write("Video preview thumbnail unavailable: " + ex.Message);
-            }
+
+            return null;
         }
 
-        static bool TryTrustedThumbnailUri(string value, out Uri uri)
+        static bool TryTrustedThumbnailUri(string value, out Uri uri) =>
+            ThumbnailUrlPolicy.TryCreateAllowedUri(value, out uri);
+
+        bool IsCurrentThumbnailGeneration(int generation) =>
+            !IsDisposed && !Disposing && generation == previewGeneration;
+
+        void ShowThumbnailFallback(int generation)
         {
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps ||
-                !string.IsNullOrEmpty(parsed.UserInfo))
+            if (!IsCurrentThumbnailGeneration(generation)) return;
+
+            if (thumbnail.Image != null)
             {
-                uri = null!;
-                return false;
+                thumbnailSkeleton.Visible = false;
+                return;
             }
-            uri = parsed;
-            string host = parsed.IdnHost;
-            return host.Equals("ytimg.com", StringComparison.OrdinalIgnoreCase) ||
-                host.EndsWith(".ytimg.com", StringComparison.OrdinalIgnoreCase) ||
-                host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
-                host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+
+            thumbnailSkeleton.SetLoading(false);
+            thumbnailSkeleton.Visible = true;
         }
 
         static bool IsRedirect(System.Net.HttpStatusCode status) =>
