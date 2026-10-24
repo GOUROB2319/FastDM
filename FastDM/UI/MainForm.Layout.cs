@@ -137,7 +137,18 @@ namespace FastDM
                 PlaceholderText = "Filter by name or URL",
                 AccessibleName = "Search downloads"
             };
-            searchBox.TextChanged += (s, e) => RebuildList();
+            searchDebounceTimer = new System.Windows.Forms.Timer { Interval = 180 };
+            searchDebounceTimer.Tick += (s, e) =>
+            {
+                searchDebounceTimer.Stop();
+                if (!IsDisposed && !Disposing && IsHandleCreated)
+                    RebuildList();
+            };
+            searchBox.TextChanged += (s, e) =>
+            {
+                searchDebounceTimer.Stop();
+                searchDebounceTimer.Start();
+            };
             searchBox.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter)

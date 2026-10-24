@@ -210,6 +210,7 @@ namespace FastDM
                 timer?.Stop();
                 navTimer?.Stop();
                 toolbarFitTimer?.Stop();
+                searchDebounceTimer?.Stop();
             }
             catch (Exception exIgnored3) { AppLog.Write("MainForm.Shell (ignored): " + exIgnored3.Message); }
 
@@ -236,6 +237,7 @@ namespace FastDM
             }
 
             trayMenu?.Dispose();
+            searchDebounceTimer?.Dispose();
         }
 
         // ---------- নোটিফিকেশন ----------

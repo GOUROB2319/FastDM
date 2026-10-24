@@ -7,6 +7,7 @@ namespace FastDM.Tests
         public static void Run()
         {
             MetadataParsing();
+            ThumbnailCandidatesAndPolicy();
             PlaylistParsing();
             PreviewCache();
             RetryAndDiagnostics();
@@ -58,6 +59,51 @@ namespace FastDM.Tests
                 unknownEstimate.Videos.Count == 2 && unknownEstimate.Videos.All(x =>
                     x.EstBytes == 0 && !x.Label.Contains("≈", StringComparison.Ordinal) &&
                     !x.Label.Contains("~", StringComparison.Ordinal)));
+        }
+
+        static void ThumbnailCandidatesAndPolicy()
+        {
+            T.Section("Thumbnail URL safety and fallback candidates");
+
+            const string json = """
+                {
+                  "title":"TikTok preview",
+                  "extractor_key":"TikTok",
+                  "thumbnail":"http://127.0.0.1/private.jpg",
+                  "thumbnails":[
+                    {"url":"http://p16-sign-va.tiktokcdn.com/insecure.jpg","width":900,"height":1600,"preference":20},
+                    {"url":"https://p16-sign-va.tiktokcdn.com/low.jpg","width":320,"height":568,"preference":1},
+                    {"url":"https://p16-sign-va.tiktokcdn.com/high.jpg","width":720,"height":1280,"preference":5},
+                    {"url":"https://p16-sign-va.tiktokcdn.com/mid.jpg","width":640,"height":1138,"preference":3}
+                  ],
+                  "formats":[]
+                }
+                """;
+
+            var parsed = YtDlpMetadataParser.ParseVideo(json);
+            T.Check("TikTok CDN thumbnail candidates are retained and ordered by preference",
+                parsed.Thumbnail == "https://p16-sign-va.tiktokcdn.com/high.jpg" &&
+                parsed.ThumbnailCandidates.Count == 3 &&
+                parsed.ThumbnailCandidates[1] == "https://p16-sign-va.tiktokcdn.com/mid.jpg" &&
+                parsed.ThumbnailCandidates[2] == "https://p16-sign-va.tiktokcdn.com/low.jpg");
+            T.Check("unsafe direct and insecure alternative thumbnail URLs are excluded",
+                parsed.ThumbnailCandidates.All(x => !x.Contains("127.0.0.1", StringComparison.Ordinal) &&
+                    !x.StartsWith("http://", StringComparison.OrdinalIgnoreCase)));
+
+            T.Check("public HTTPS TikTok CDN URLs are allowed",
+                ThumbnailUrlPolicy.IsAllowedUrl("https://p16-sign-va.tiktokcdn.com/cover.jpg"));
+            T.Check("plain HTTP thumbnail URLs are rejected",
+                !ThumbnailUrlPolicy.IsAllowedUrl("http://p16-sign-va.tiktokcdn.com/cover.jpg"));
+            T.Check("localhost and private IP thumbnail URLs are rejected",
+                !ThumbnailUrlPolicy.IsAllowedUrl("https://localhost/cover.jpg") &&
+                !ThumbnailUrlPolicy.IsAllowedUrl("https://127.0.0.1/cover.jpg") &&
+                !ThumbnailUrlPolicy.IsAllowedUrl("https://192.168.1.4/cover.jpg"));
+            T.Check("public IPs are accepted while loopback/private addresses are rejected",
+                ThumbnailUrlPolicy.IsPublicAddress(System.Net.IPAddress.Parse("8.8.8.8")) &&
+                ThumbnailUrlPolicy.IsPublicAddress(System.Net.IPAddress.Parse("2001:4860:4860::8888")) &&
+                !ThumbnailUrlPolicy.IsPublicAddress(System.Net.IPAddress.Loopback) &&
+                !ThumbnailUrlPolicy.IsPublicAddress(System.Net.IPAddress.Parse("10.0.0.3")) &&
+                !ThumbnailUrlPolicy.IsPublicAddress(System.Net.IPAddress.IPv6Loopback));
         }
 
         static void PlaylistParsing()

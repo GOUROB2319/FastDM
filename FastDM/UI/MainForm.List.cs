@@ -332,6 +332,9 @@ namespace FastDM
                   .OfType<DownloadItem>()
                   .Select(it => it.Id)
                   .ToHashSet();
+            string? topVisibleId = lv.TopItem?.Tag is DownloadItem topVisible
+                ? topVisible.Id
+                : null;
 
             lv.BeginUpdate();
 
@@ -369,6 +372,7 @@ namespace FastDM
             lv.EndUpdate();
             UpdateEmptyState();
 
+            bool selectedNewItem = false;
             if (selectNewId != null)
             {
                 string id = selectNewId;
@@ -387,7 +391,18 @@ namespace FastDM
                     target.Selected = true;
                     target.Focused = true;
                     target.EnsureVisible();
+                    selectedNewItem = true;
                 }
+            }
+
+            // Rebuilding after a search/filter change should not jump back to the top
+            // when the previously visible row still exists. A newly added row takes priority.
+            if (!selectedNewItem && topVisibleId != null)
+            {
+                var topTarget = lv.Items
+                    .Cast<ListViewItem>()
+                    .FirstOrDefault(l => l.Tag is DownloadItem d && d.Id == topVisibleId);
+                if (topTarget != null) lv.TopItem = topTarget;
             }
 
             if (UpdateSideCounts()) sidebar.Invalidate();
