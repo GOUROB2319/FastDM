@@ -149,6 +149,11 @@ namespace FastDM
                     await socket.ConnectAsync(new IPEndPoint(address, port), cancellationToken).ConfigureAwait(false);
                     return new NetworkStream(socket, ownsSocket: true);
                 }
+                catch (OperationCanceledException)
+                {
+                    socket.Dispose();
+                    throw;
+                }
                 catch (SocketException ex)
                 {
                     socket.Dispose();
