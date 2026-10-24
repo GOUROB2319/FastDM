@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
@@ -31,7 +32,7 @@ namespace FastDM
 
             string host = parsed.IdnHost.TrimEnd('.').ToLowerInvariant();
             if (host.Length == 0 ||
-                !host.Contains('.', StringComparison.Ordinal) ||
+                !host.Contains(".", StringComparison.Ordinal) ||
                 host is "localhost" ||
                 host.EndsWith(".localhost", StringComparison.Ordinal) ||
                 host.EndsWith(".local", StringComparison.Ordinal) ||
