@@ -93,6 +93,8 @@ namespace FastDM
 
     class ThumbnailSkeleton : Control
     {
+        bool loading = true;
+
         public ThumbnailSkeleton()
         {
             DoubleBuffered = true;
@@ -101,16 +103,47 @@ namespace FastDM
             AccessibleDescription = "The video thumbnail is loading.";
         }
 
+        public void SetLoading(bool value)
+        {
+            if (loading == value) return;
+            loading = value;
+            AccessibleName = loading ? "Thumbnail loading placeholder" : "Thumbnail unavailable";
+            AccessibleDescription = loading
+                ? "The video thumbnail is loading."
+                : "The thumbnail could not be retrieved. Video details and download options are still available.";
+            Invalidate();
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             e.Graphics.Clear(Theme.P.Hover);
-            int inset = Theme.Scale(this, 12);
-            int barHeight = Math.Max(3, Theme.Scale(this, 5));
-            using var brush = new SolidBrush(Theme.P.Border);
-            e.Graphics.FillRectangle(brush, inset, inset, Math.Max(1, Width - inset * 2), barHeight);
-            e.Graphics.FillRectangle(brush, inset, inset + barHeight * 2, Math.Max(1, Width - inset * 4), barHeight);
-            e.Graphics.FillRectangle(brush, inset, inset + barHeight * 4, Math.Max(1, Width - inset * 3), barHeight);
+
+            if (loading)
+            {
+                int inset = Theme.Scale(this, 12);
+                int barHeight = Math.Max(3, Theme.Scale(this, 5));
+                using var brush = new SolidBrush(Theme.P.Border);
+                e.Graphics.FillRectangle(brush, inset, inset, Math.Max(1, Width - inset * 2), barHeight);
+                e.Graphics.FillRectangle(brush, inset, inset + barHeight * 2, Math.Max(1, Width - inset * 4), barHeight);
+                e.Graphics.FillRectangle(brush, inset, inset + barHeight * 4, Math.Max(1, Width - inset * 3), barHeight);
+                return;
+            }
+
+            int captionHeight = Math.Min(Theme.Scale(this, 22), Math.Max(16, Height / 3));
+            var glyphBounds = new Rectangle(0, 0, Width, Math.Max(0, Height - captionHeight));
+            using (var glyphFont = new Font("Segoe UI Symbol", Math.Max(16, Theme.Scale(this, 24)), FontStyle.Regular, GraphicsUnit.Pixel))
+            {
+                TextRenderer.DrawText(e.Graphics, "▶", glyphFont, glyphBounds, Theme.P.SubText,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+
+            using var captionFont = Theme.CreateFont(Theme.FontSmall);
+            TextRenderer.DrawText(e.Graphics, "Thumbnail unavailable", captionFont,
+                new Rectangle(2, Height - captionHeight, Math.Max(0, Width - 4), captionHeight),
+                Theme.P.SubText,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
     }
 
