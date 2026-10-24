@@ -333,7 +333,8 @@ namespace FastDM
                 previewCts.CancelAfter(TimeSpan.FromSeconds(90));
                 var progress = new Progress<string>(text =>
                 {
-                    if (!IsDisposed) lblStatus.Text = text;
+                    if (!IsDisposed && generation == previewGeneration)
+                        lblStatus.Text = text;
                 });
 
                 bool cacheHit = YtDlpPreviewCache.Shared.TryGet(url, DateTimeOffset.UtcNow, out preview, ignoreCookies) && preview != null;
