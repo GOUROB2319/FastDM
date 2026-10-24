@@ -23,6 +23,7 @@ namespace FastDM
     {
         public string Title = "video";
         public string? Extractor, Uploader, Thumbnail;
+        public List<string> ThumbnailCandidates = new List<string>();
         public double Duration;
         public bool HasAudio;
         public long BestAudioBytes;
@@ -90,13 +91,15 @@ namespace FastDM
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            var thumbnailCandidates = GetThumbnailCandidates(root);
             var info = new YtInfo
             {
                 Title = String(root, "title") ?? "video",
                 Extractor = String(root, "extractor_key") ?? String(root, "extractor"),
                 Uploader = String(root, "uploader") ?? String(root, "channel"),
                 Duration = Number(root, "duration"),
-                Thumbnail = Thumbnail(root)
+                Thumbnail = thumbnailCandidates.FirstOrDefault(),
+                ThumbnailCandidates = thumbnailCandidates
             };
 
             if (!root.TryGetProperty("formats", out var formats) || formats.ValueKind != JsonValueKind.Array)
@@ -331,16 +334,48 @@ namespace FastDM
                 formats[height] = candidate;
         }
 
-        static string? Thumbnail(JsonElement root)
+        static List<string> GetThumbnailCandidates(JsonElement root)
         {
+            var candidates = new List<(string Url, int Preference, long Pixels, int Order)>();
+            int order = 0;
+
             string? direct = String(root, "thumbnail");
-            if (direct != null) return AbsoluteHttpUrl(direct);
-            if (!root.TryGetProperty("thumbnails", out var thumbnails) || thumbnails.ValueKind != JsonValueKind.Array)
-                return null;
-            return thumbnails.EnumerateArray()
-                .Where(x => x.ValueKind == JsonValueKind.Object)
-                .Select(x => AbsoluteHttpUrl(String(x, "url")))
-                .LastOrDefault(x => x != null);
+            if (ThumbnailUrlPolicy.TryCreateAllowedUri(direct, out var directUri))
+            {
+                // Keep the canonical URL first, but retain alternatives so a stale CDN URL
+                // does not leave the preview without an image.
+                candidates.Add((directUri.AbsoluteUri, int.MaxValue, long.MaxValue, order++));
+            }
+
+            if (root.TryGetProperty("thumbnails", out var thumbnails) && thumbnails.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var thumbnail in thumbnails.EnumerateArray())
+                {
+                    if (thumbnail.ValueKind != JsonValueKind.Object ||
+                        !ThumbnailUrlPolicy.TryCreateAllowedUri(String(thumbnail, "url"), out var uri))
+                        continue;
+
+                    int preference = (int)Math.Clamp(Number(thumbnail, "preference"), -1_000_000, 1_000_000);
+                    int width = (int)Math.Clamp(Number(thumbnail, "width"), 0, 100_000);
+                    int height = (int)Math.Clamp(Number(thumbnail, "height"), 0, 100_000);
+                    long pixels = (long)width * height;
+                    candidates.Add((uri.AbsoluteUri, preference, pixels, order++));
+                }
+            }
+
+            var result = new List<string>(Math.Min(8, candidates.Count));
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var candidate in candidates
+                .OrderByDescending(x => x.Preference)
+                .ThenByDescending(x => x.Pixels)
+                .ThenBy(x => x.Order))
+            {
+                if (!seen.Add(candidate.Url)) continue;
+                result.Add(candidate.Url);
+                if (result.Count == 8) break;
+            }
+
+            return result;
         }
 
         static string? AbsoluteHttpUrl(string? value) =>
