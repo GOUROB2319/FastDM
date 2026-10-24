@@ -715,7 +715,7 @@ namespace FastDM
             }
             finally
             {
-                if (IsCurrentThumbnailGeneration(generation))
+                if (IsCurrentThumbnailGeneration(generation) && !cancellationToken.IsCancellationRequested)
                     ShowThumbnailFallback(generation);
             }
         }
