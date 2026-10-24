@@ -99,6 +99,8 @@ namespace FastDM
 
         TextBox searchBox = null!;
 
+        System.Windows.Forms.Timer searchDebounceTimer = null!;
+
         System.Windows.Forms.Timer navTimer = null!;
 
         readonly Stopwatch navAnimation = new Stopwatch();
